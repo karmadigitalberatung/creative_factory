@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Ideen · Creative Factory{% endblock %}
+{% block main %}
+<section class="ideen-seite">
+  <div class="head">
+    <div class="kopf-text">
+      <span class="label">Ideenwerkstatt · {{ zaehler.neu }} neu{% if zaehler.gemerkt %} · {{ zaehler.gemerkt }} gemerkt{% endif %}{% if letzter %} · Radar zuletzt {{ letzter }}{% endif %}</span>
+      <h1>Ideen</h1>
+    </div>
+    <div class="kopf-aktionen"><a class="button" href="/leitlinien">Leitlinien</a><a class="button" href="/planen">Zum Redaktionsplan</a></div>
+  </div>
+  <p class="lead">Claude schlägt laufend Ideen vor, der <strong>Trendradar</strong> liefert aktuelle Aufhänger, die <strong>Swipe-Datei</strong> Posts, die dir gefallen. Du entscheidest:
+    <strong>Vorbereiten</strong> macht aus einer Idee einen Post im Redaktionsplan, <strong>Verwerfen</strong> sagt Claude, dass solche Ideen nicht mehr kommen sollen.</p>
+
+  {% if radar_fehler %}<p class="hinweis-leiste klein warn">Der letzte Radar-Lauf ist schiefgegangen: {{ radar_fehler.error }}</p>{% endif %}
+
+  <nav class="ansicht-tabs" aria-label="Bereich">
+    <a href="/ideen" class="{{ 'on' if tab == 'vorschlaege' }}" {% if tab == 'vorschlaege' %}aria-current="page"{% endif %}>Vorschläge <span class="anzahl-klein">{{ zaehler.neu }}</span></a>
+    <a href="/ideen?tab=trends" class="{{ 'on' if tab == 'trends' }}" {% if tab == 'trends' %}aria-current="page"{% endif %}>Trends <span class="anzahl-klein">{{ trends|length }}</span></a>
+    <a href="/ideen?tab=swipe" class="{{ 'on' if tab == 'swipe' }}" {% if tab == 'swipe' %}aria-current="page"{% endif %}>Swipe-Datei <span class="anzahl-klein">{{ swipes|length }}</span></a>
+  </nav>
+
+  {% if tab != 'vorschlaege' %}
+  {% include "_radar.html" %}
+  {% else %}
+  <div class="card ideen-werkzeug">
+    {% if ki_text %}
+    <form method="post" action="/ideen/mehr" class="row" data-busy="Claude sucht neue Ideen …">
+      <label>Anzahl <select name="anzahl">{% for n in [3, 6, 9] %}<option {{ 'selected' if n == 6 }}>{{ n }}</option>{% endfor %}</select></label>
+      <label class="grow">Thema oder Anlass (optional) <input name="thema" placeholder="z. B. Jahresrückblick, Kundenfrage der Woche, neues Angebot"></label>
+      {% if red.aktiv and red_frei %}<label class="check small"><input type="checkbox" name="termine" value="1" checked> auf {{ red_frei|length }} freie Termine verteilen</label>{% endif %}
+      <button class="primary" {{ 'disabled' if sucht }}>Neue Ideen vorschlagen</button>
+    </form>
+    <p class="small muted">Vorschläge richten sich nach deinen <a href="/leitlinien">Leitlinien</a>{% if ll.saeulen %}: {% for s in ll.saeulen %}{{ s.name }}{{ ' · ' if not loop.last }}{% endfor %}{% else %}. Dort trägst du Themen, Haltung, No-Gos und Vorbilder ein.{% endif %}{% if trends_neu %} · <a href="/ideen?tab=trends">{{ trends_neu }} neue Trends im Radar</a>{% endif %}</p>
+    {% else %}
+    <p class="muted">Für Vorschläge braucht es den Claude-Schlüssel in der Datei <code>.env</code> (ANTHROPIC_API_KEY).</p>
+    {% endif %}
+  </div>
+
+  <nav class="status-pillen" aria-label="Ideen filtern">
+    {% for k, n in ansichten.items() %}<a href="/ideen?status={{ k }}" class="{{ 'on' if status == k }}" {% if status == k %}aria-current="page"{% endif %}>{{ n }} <span class="anzahl-klein">{{ zaehler[k] }}</span></a>{% endfor %}
+  </nav>
+
+  <form method="post" action="/ideen/aktion" id="ideen-form" {% if sucht %}data-arbeitet="Claude sucht neue Ideen" data-poll="/jobs"{% endif %}>
+    <input type="hidden" name="zurueck" value="/ideen?status={{ status }}">
+    {% if ideen_liste %}
+    <div class="ideen-raster">
+      {% for i in ideen_liste %}
+      <article class="idee-karte">
+        <div class="idee-kopf">
+          {% if status in ['neu', 'gemerkt'] %}<input type="checkbox" name="idee" value="{{ i.id }}" aria-label="„{{ i.titel }}“ auswählen">{% endif %}
+          <span class="chip">{{ i.format }}{% if i.slides_n > 1 %} · {{ i.slides_n }}{% endif %}</span>
+          {% if i.saeule %}<span class="chip">{{ i.saeule }}</span>{% endif %}
+          {% if i.datum %}<span class="chip dunkel">{{ i.datum[8:10] }}.{{ i.datum[5:7] }}.</span>{% endif %}
+          {% if i.quelle != 'werkstatt' %}<span class="chip">{{ {'redaktion': 'von der Redaktion', 'chat': 'aus dem Chat', 'radar': 'aus dem Radar'}.get(i.quelle, i.quelle) }}</span>{% endif %}
+          {% if i.neu_seit and status == 'neu' %}<span class="chip hinweis">neu</span>{% endif %}
+        </div>
+        <h3 class="idee-titel">{{ i.titel }}</h3>
+        {% if i.aufhaenger %}<p class="idee-hook">{{ i.aufhaenger }}</p>{% endif %}
+        {% if i.warum %}<p class="small muted">{{ i.warum }}</p>{% endif %}
+        <details class="entwurf">
+          <summary class="small">Entwurf ansehen</summary>
+          {% if i.cover %}<p class="small"><strong>{{ i.cover }}</strong></p>{% endif %}
+          <ol class="small entwurf-slides">{% for s in i.entwurf.slides %}<li>{{ (s.zeile1 ~ ' ' ~ s.zeile2) if s.zeile1 is defined else (s.lead or s.text or s.titel or s.zahl or '') }}</li>{% endfor %}</ol>
+          {% if i.entwurf.skript %}<p class="small muted">Skript: {{ i.entwurf.skript[:220] }}{{ '…' if i.entwurf.skript|length > 220 }}</p>{% endif %}
+          {% if i.entwurf.caption_ig %}<p class="small muted">Caption: {{ i.entwurf.caption_ig[:220] }}{{ '…' if i.entwurf.caption_ig|length > 220 }}</p>{% endif %}
+          {% if i.entwurf.vorher_pruefen %}<p class="small warn">Prüfen: {{ i.entwurf.vorher_pruefen }}</p>{% endif %}
+        </details>
+        <div class="idee-aktionen">
+          {% if status in ['neu', 'gemerkt'] %}
+          <button class="small primary" name="aktion" value="vorbereiten" formaction="/ideen/aktion?nur={{ i.id }}">Vorbereiten</button>
+          {% if status == 'neu' %}<button class="small" name="aktion" value="gemerkt" formaction="/ideen/aktion?nur={{ i.id }}">Merken</button>{% endif %}
+          <button class="small link danger" name="aktion" value="verworfen" formaction="/ideen/aktion?nur={{ i.id }}">Verwerfen</button>
+          {% elif status == 'verworfen' %}
+          <button class="small" name="aktion" value="neu" formaction="/ideen/aktion?nur={{ i.id }}">Doch wieder vorschlagen</button>
+          {% elif i.post_id %}
+          <a class="button small" href="/planen/{{ i.post_id }}">Zum Post</a>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="leer-hinweis">{% if status == 'neu' %}Gerade keine neuen Ideen. Lass dir oben welche vorschlagen{% if not red.aktiv %} oder schalte unter <a href="/planen#redaktion">Redaktionsplan</a> die Redaktion ein, dann kommen jeden Tag welche{% endif %}.{% elif status == 'gemerkt' %}Nichts gemerkt.{% elif status == 'uebernommen' %}Noch keine Idee vorbereitet.{% else %}Nichts verworfen.{% endif %}</p>
+    {% endif %}
+
+    {% if status in ['neu', 'gemerkt'] and ideen_liste %}
+    <div class="auswahl-leiste" hidden>
+      <strong data-auswahl-zahl>0 ausgewählt</strong>
+      <button class="primary" name="aktion" value="vorbereiten">Als Posts vorbereiten</button>
+      <button name="aktion" value="vorbereiten_visuals" title="Übernimmt die Ideen und startet gleich die Gestaltung der Visuals">… und Visuals erstellen</button>
+      {% if status == 'neu' %}<button name="aktion" value="gemerkt">Merken</button>{% endif %}
+      <button class="link danger" name="aktion" value="verworfen">Verwerfen</button>
+      <button type="button" class="link" data-auswahl-leeren>Auswahl aufheben</button>
+    </div>
+    {% endif %}
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

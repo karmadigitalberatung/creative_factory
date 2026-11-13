@@ -58,6 +58,104 @@ Am Post: Video, Begründung, Transkript (Geschnittenes durchgestrichen), „Neu 
 Werkzeuge: `imageio-ffmpeg` (ffmpeg 7.1) und `faster-whisper`; das Modell liegt in `data/models/` (ca. 460 MB, einmalig geladen).
 Test: 24-s-Aufnahme → 18-s-Reel in ca. 25 s auf einem M1 Max.
 
+## Reels ohne Aufnahme (reine Animation)
+
+Reel und Talking Head teilen sich die Video-Ansicht. Ohne Aufnahme entsteht das Reel als HTML-Animation (`schnitt.animieren`):
+Skript (oder die Szenentexte) → Wörter mit geschätzten Lesezeiten → Claude führt Regie (`ai.animation`, Szenen lückenlos, je Szene ein
+Hintergrund in Markenfarbe) oder ohne Claude je Szene eine Karte (`schnitt.auto_animation`) → Motion-Seite ohne Kamera-Ebene
+(`regie.seite(..., ohne_kamera=True)`, Lage „frei“) → Chrome rendert jedes Bild → MP4 1080 × 1920 mit stummer Tonspur.
+Mit Aufnahme läuft der bekannte Schnitt, die Motion Graphics liegen darüber.
+
+**Video-Stil:** Reels folgen dem Brand Guide über `auftreten.video_stil` (`app/motion/stil.py`): Ecken, Schatten, Karten (gefüllt, Kontur,
+ohne Box), Pillen, Listenmarker, Haarlinien, Titelgewicht und -laufweite, Versalien, Akzent sparsam, Fotos schwarzweiß, Ecken-Mikrotexte
+mit Seitenzahl (`{titel}` = Titel des Posts), Untertitel-Stil und Übergang. Claude leitet ihn aus Layout-Prinzipien und Musterseiten ab
+(`ai.video_stil`, vor dem ersten Reel und nach neuen Musterseiten; von Hand angepasst bleibt er). `motion.css` liest alles über Variablen und
+Klassen am `#stage`; die Regie bekommt Stil und Musterseiten als Bilder. Editorial-Bausteine: titelwort, label, haarlinie, zweispalter, vollfoto. Test: 22-s-Reel in ca. 25 s (ohne Claude) bzw. 45 s (mit Claude).
+
+## Ideenwerkstatt (Planen → Ideen) und Redaktionsplan (Planen → Redaktionsplan)
+
+Ideen und Produktion sind getrennt. **Ideen** (`app/ideen.py`, Tabelle `ideen`): Claude schlägt vor (Knopf „Neue Ideen vorschlagen“,
+proaktive Redaktion, Redaktions-Chat), jede Idee hat Titel, Aufhänger, Format, warum sie passt, Terminvorschlag und den fertigen Entwurf.
+Die Person entscheidet je Karte oder für mehrere: **Vorbereiten** (wird Post im Redaktionsplan, Status „Entwurf“, optional gleich mit
+Visuals), **Merken**, **Verwerfen**. Übernommene und verworfene Ideen plus die „Richtung“ gehen in jeden neuen Vorschlag ein
+(`ideen.lernkontext`). Im **Redaktionsplan** landet nur, was vorbereitet wurde.
+
+## Website als Vorlage fürs Auftreten
+
+Ist beim Einrichten eine Website angegeben, übernimmt `app/website.py` daraus das Auftreten. Das ist Standard, solange die Person nichts anderes will.
+
+1. Headless Chrome öffnet die Seite am Desktop und am Handy, blendet Cookie-Banner aus und macht Screenshots. Dazu misst ein Skript Farben nach Fläche und Textmenge, die Schriften von Überschriften, Fließtext und Buttons und sucht das Logo. Ein SVG-Logo wird freigestellt gerendert.
+2. Die Schriftdateien kommen aus den @font-face-Regeln der Website oder von Google Fonts. Schriften von Lizenzdiensten wie Adobe Fonts werden nicht geladen: Claude wählt dafür eine ähnliche freie Schrift, und die Seite Auftreten weist darauf hin, dass man die Originaldatei hochladen kann.
+3. Bis zu 10 Fotos der Website (Startseite und bis zu 4 Unterseiten aus dem Menü) kommen als Fotos in die Mediathek. Herausgefiltert werden kleine Bilder, Logos, Icons, Grafiken mit wenigen Farben und Dubletten; schon übernommene Bilder werden nicht doppelt geladen.
+4. Die Leitlinien (Themen-Säulen, Haltung, Widerspruch, No-Gos, Format-Vorlieben) werden aus Website und Auftreten als Entwurf vorausgefüllt; schon Eingetragenes bleibt.
+5. Claude leitet aus Screenshots, Messwerten und Website-Text Farben mit Rollen, Schriften, Layout-Prinzipien und Bildstil ab, den Schreibstil nur, wenn er noch leer ist. Die Screenshots landen als Vorbilder in der Mediathek, danach werden die Musterseiten im Stil der Website gestaltet, mit möglichst vielen verschiedenen Fotos, und der Video-Stil wird neu abgeleitet.
+
+Auf der Seite Auftreten lässt sich das mit „Von der Website neu übernehmen“ wiederholen; „Letzte Änderung zurücknehmen“ macht es rückgängig.
+
+## Einstellungen und Nutzerverwaltung
+
+Unten links in der Seitenleiste:
+
+- **Mein Konto**: das eigene Passwort ändern.
+- **Nutzer** (nur für Admins): alle Konten mit Marke, Rolle, Anzahl Posts und letztem Login.
+  - Neue Nutzer mit Startpasswort anlegen.
+  - Ein Passwort neu setzen, zum Admin machen oder zurückstufen, sperren und entsperren. Gesperrte Konten können sich nicht anmelden; eine laufende Sitzung endet beim nächsten Klick.
+  - **Öffnen** zeigt ein Konto so, wie die Person es sieht. Oben steht dann ein Hinweis mit „Zurück zum Admin-Account“ (Sitzung: `admin_uid`).
+- Rollen stehen in `users.rolle` (`nutzer` oder `admin`). Gibt es keinen Admin, wird beim Start das älteste Konto Admin.
+
+## Leitlinien (Planen → Leitlinien)
+
+In `app/leitlinien.py` liegen die Vorgaben, an die sich Ideen, Trendradar, Redaktion und Chat halten (gespeichert im Auftreten unter `leitlinien`):
+
+- **Themen-Säulen** mit optionalem Anteil und Beschreibung. Jede Idee wird einer Säule zugeordnet (`ideen.saeule`). Die Seite zeigt, wie sich die vorbereiteten Ideen der letzten 60 Tage verteilen; kommt eine Säule zu kurz, bevorzugt Claude sie. Der Trendradar sucht nach den Säulen.
+- **Wie ich denke**, **Wo ich widerspreche**, **No-Gos**, **Format-Vorlieben**, **Vorbild-Konten** (mit dem, was einem daran gefällt) und **Sonst noch**.
+- „Leere Felder von Claude vorschlagen lassen“ entwirft aus Auftreten, Website und bisherigen Posts einen Vorschlag. Was schon eingetragen ist, bleibt; Vorbild-Konten erfindet Claude nicht.
+- Die frühere „Richtung“ der Ideenwerkstatt und die Themen des Trendradars wurden beim Start einmalig übernommen.
+
+## Trendradar (Planen → Ideen, Reiter Trends und Swipe-Datei)
+
+Futter für die Ideenwerkstatt, in `app/radar.py`. Trends und Swipe-Datei sind Reiter auf der Ideen-Seite neben den Vorschlägen (`/radar` leitet dorthin um):
+
+- **Trends**: Claude sucht mit der Websuche (Server-Werkzeug `web_search`), was in den Themen der Person gerade läuft: News, Studien, Debatten, Anlässe und belegte Format-Trends. Jeder Trend kommt mit Quellen, einem eigenen Winkel, einem passenden Format und dem Datum, bis zu dem der Aufhänger trägt. Ohne Quelle wird kein Trend übernommen. Gesucht wird nach den Themen-Säulen aus den Leitlinien; ohne Säulen leitet Claude die Themen aus dem Auftreten ab. Der Radar läuft auf Knopfdruck und, wenn die Redaktion aktiv ist, einmal pro Woche.
+- **Swipe-Datei**: Posts, die einem aufgefallen sind (Text, Screenshot oder Link; Instagram oder LinkedIn). Claude zerlegt sie in Hook, Hook-Art, Aufbau und ein übertragbares Muster.
+- **Idee daraus machen**: legt eine Idee in die Werkstatt (Quelle „aus dem Radar“), auf die Marke angepasst und nicht kopiert.
+- Muster aus der Swipe-Datei und offene Trends fließen in alle Ideen-Vorschläge ein (`ideen.lernkontext`).
+- Reichweiten-Zahlen von Instagram oder LinkedIn sind nicht enthalten, weil es dafür keine offene Schnittstelle gibt. Ein Monitor für Vorbild-Konten über die Instagram-Schnittstelle von Meta (Business Discovery) wäre ein möglicher nächster Schritt.
+
+## Layout-Editor: Elemente und Verläufe
+
+- **Element hinzufügen** (wenn nichts gewählt ist): Text, Rechteck, Kreis, Linie, Verlauf, Foto, Logo, in den Farben der Marke. Neue Elemente liegen obenauf und sind gleich gewählt; ein neuer Text öffnet sofort zum Schreiben.
+- **Farben**: Text, Textblock, Liste, Form und Verlauf bekommen per Klick eine Farbe aus dem Auftreten. Bei Formen lassen sich Art, Ecken und Deckkraft einstellen.
+- **Texte**: Alle Texte sind direkt bearbeitbar, auch solche, die zu keinem Feld der Slide gehören. Enter macht eine neue Zeile, ⌘Enter schließt. In verknüpften Slide-Feldern wird der Umbruch als „|“ gespeichert.
+- **Verlauf** (Renderer, Element `verlauf`): stufenlos, mit eigenem Bereich (x, y, breite, hoehe), Seite mit voller Farbe (`von`), Länge des Übergangs (`anteil`), voll deckendem Teil (`voll`) und optional einer zweiten Farbe (`farbe_bis`, Farbe A → Farbe B). Statt `von` geht auch `winkel` in Grad (Richtung der vollen Farbe: 0 oben, 90 rechts, 180 unten, 270 links), im Editor als Regler, der alle 15° einrastet. Auch der Hintergrund-Verlauf nimmt `winkel`. Claude soll Verläufe nie aus vielen Rechtecken zusammensetzen.
+
+## Fotos für einen Post
+
+Bei Reel und Story im Reiter **Fotos**, bei Carousel und Einzelbild in der Karte **Fotos für die Slides**:
+
+- **Fotos für diesen Post erzeugen**: Claude plant 2 bis 6 Fotos passend zu den Szenen und im Look der vorhandenen Fotos der Marke (`ai.reel_fotos_plan`). Der Bildgenerator erzeugt sie im Hochformat (9:16 für Video, 4:5 für Slides), mit dem Referenzfoto oder einer gemerkten Person, wo sie im Bild sein soll. Sie landen in der Mediathek und werden dem Post zugeordnet.
+- **Aus der Mediathek wählen**: vorhandene Fotos zuordnen. Die Auswahl steht in `inhalt.reel_fotos` (höchstens 8).
+- Beim Gestalten von Slides sieht Claude die gewählten Fotos und verteilt sie auf die Slides (je Slide möglichst ein anderes); ein einzelnes KI-Foto aus der Bildidee entfällt dann.
+- Beim Animieren bekommt die Szene diese Fotos als `foto1`, `foto2` … und Claude setzt sie als Vollbild oder Bild ein. Vollbild-Fotos bekommen einen Verlauf in der dunklen Markenfarbe, damit die Schrift lesbar bleibt.
+
+## Proaktive Redaktion, Story, Kanäle je Post
+
+**Redaktion plant mit** (`app/redaktion.py`, Einstellungen unter Planen): Rhythmus (z. B. Mo/Mi/Fr 08:30), Vorlauf, Obergrenze offener Ideen.
+Eine Hintergrund-Schleife prüft alle 10 Minuten; einmal am Tag (ab 6 Uhr) legt der Redaktions-Mitarbeiter für freie Termine im Rhythmus
+Ideen in die Ideenwerkstatt und meldet offene Punkte im Redaktions-Chat. Freie Termine rechnet die App, Claude kann nur diese belegen; nichts wird von selbst
+freigegeben oder verschoben; ohne Arbeit kein Claude-Aufruf. „Jetzt vorschlagen“ startet einen Lauf sofort.
+
+**Dashboard:** die nächsten 7 Tage (freie Rhythmus-Tage markiert), die nächsten Ideen mit „Freigeben“, daneben die Redaktion (Chat mit Schnellfragen).
+**Chat auf allen Seiten:** Symbol unten rechts öffnet ein Seitenfenster mit dem passenden Chat (`main._chatbox`): am Post der Chat zum Post,
+bei Auftreten der Chat zur Marke, sonst die Redaktion. Jede Nachricht trägt mit, wo die Person gerade ist (z. B. „Planen, Ansicht Kalender
+(November 2026)“), offen bleibt beim Seitenwechsel offen.
+**Planen** in drei Ansichten (Tabs, die letzte bleibt gemerkt): Kalender (Monat), Tabelle (sortierbar, mit Kanälen) und Board (nach Status).
+
+**Story** ist ein eigenes Format im Video-Layout (9:16, Animation mit oder ohne Aufnahme, oben 280 px und unten 520 px frei, keine Ecken-Texte).
+
+**Kanäle je Post** (`posts.kanaele`, `buffer.kanaele_fuer_post`): aus den unter Connectors ausgewählten Buffer-Kanälen; auf Instagram und
+Facebook mit Platzierung (Feed-Post, Reel, Story), z. B. Reel und Story gleichzeitig. Das Senden an Buffer folgt.
+
 ## Stand
 
 Lokal getestet ohne API-Schlüssel: Start, Auftreten mit Musterseiten, eigene Posts (Carousel, Einzelbild, Talking Head), Freigabe → Visuals → Zur Abnahme, Talking Head → Input mit Skript → Upload, Abnahme mit Datum → Kalender, Text ändern ohne neues Layout.
@@ -65,7 +163,7 @@ Lokal getestet ohne API-Schlüssel: Start, Auftreten mit Musterseiten, eigene Po
 Mit Schlüsseln getestet (13.11.2026): Chat zum Auftreten (ca. 55 s), Ideen (3 Stück ca. 50 s), Gestalten und Prüfen eines Carousels mit 8 Slides (ca. 100 s), Chat am Post mit Layout- und Caption-Änderung (ca. 15 s). KI-Fotos: Aufruf funktioniert, Google meldete aber „Guthaben aufgebraucht“; die App gestaltet dann mit Referenzfoto weiter und schreibt den Grund in den Chat des Posts.
 
 Offen:
-1. **Buffer** per OAuth anbinden und Posts übergeben (Dateien brauchen öffentliche URLs).
+1. **Buffer:** Verbinden und Kanalauswahl stehen unter „Connectors“ (`app/buffer.py`, GraphQL-API api.buffer.com): per persönlichem API-Schlüssel oder, mit `BUFFER_CLIENT_ID` in `.env`, per OAuth mit PKCE. Offen: Posts übergeben (`createPost`), dafür brauchen Bilder öffentliche HTTPS-URLs.
 2. **Motion-Graphics-Reels** (Szenen animiert rendern). Videoschnitt: Untertitel-Stil (Größe, Position, Box) nur über `auftreten.video`, noch nicht in der Oberfläche; Gesichtserkennung für den Bildausschnitt fehlt (Ausschnitt mittig, leicht oben).
 3. **Server:** VPS mit HTTPS, Postgres, eigener Worker, Backups.
 4. **Konto:** Passwort vergessen, E-Mail-Bestätigung, Löschen, AGB und Datenschutz, Abrechnung.

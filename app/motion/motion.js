@@ -28,6 +28,7 @@
     return r;
   }
   function kamera(t) {
+    if (R.ohne_kamera) { cam.style.display = 'none'; return; }   // reine Animation ohne Aufnahme
     const r = rect(t);
     const z = R.zooms.some(([a, b]) => t >= a && t < b) ? 1.12 : 1;
     const k = Math.max(r.w / R.quelle.w, r.h / R.quelle.h) * z;
@@ -38,6 +39,7 @@
   }
   let src = '';
   function bild(t) {
+    if (R.ohne_kamera) return Promise.resolve();
     const n = Math.max(1, Math.min(R.n, Math.round(t * R.fps) + 1));
     const s = R.frames.replace('#', String(n).padStart(5, '0'));
     if (s === src) return Promise.resolve();
@@ -75,7 +77,13 @@
     const st = a.el.style;
     switch (a.typ) {
       case 'sichtbar': st.visibility = t >= a.s - 0.2 && t < a.e ? '' : 'hidden'; break;
-      case 'kreis': { const r = a.direkt ? (t >= a.t ? 150 : 0) : 150 * p(t, a.t, 0.65, E.inOut); st.clipPath = `circle(${r}% at var(--cx) var(--cy))`; break; }
+      case 'kreis': {   // Szenenwechsel, Art aus dem Video-Stil der Marke
+        const u = R.uebergang || 'kreis';
+        if (a.direkt || u === 'schnitt') { st.opacity = t >= a.t ? 1 : 0; break; }
+        if (u === 'blende') { st.opacity = p(t, a.t, 0.55, E.inOut); break; }
+        if (u === 'schieben') { const k = p(t, a.t, 0.6, E.inOut); st.opacity = t >= a.t ? 1 : 0; st.translate = `0 ${mix(1920, 0, k)}px`; break; }
+        const r = 150 * p(t, a.t, 0.65, E.inOut); st.clipPath = `circle(${r}% at var(--cx) var(--cy))`; break;
+      }
       case 'szene': {
         const i = p(t, a.s, 0.5, E.out), o = p(t, a.e - 0.3, 0.3, E.in);
         st.opacity = i * (1 - o); st.translate = `0 ${mix(70, 0, i) + 40 * o}px`; st.scale = String(mix(0.96, 1, i) - 0.03 * o); break;
@@ -104,6 +112,27 @@
     }
   }
 
+  // ── Hell oder dunkel unter Untertiteln und Ecken (je nach aktiver Szene) ─
+  const SZ = $$('.sz').map((el) => ({ el, s: +el.dataset.s, e: +el.dataset.e, dunkel: el.classList.contains('auf-dunkel') }));
+  const ecken = $('.ecken'), seite = $('.seitenzahl');
+  function aktiv(t) { let k = -1; SZ.forEach((z, i) => { if (z.s - 0.1 <= t && t < z.e + 0.4) k = i; }); return k; }
+  function grund(t) {
+    const k = aktiv(t);
+    const dunkel = k >= 0 ? SZ[k].dunkel : (R.ohne_kamera ? !!R.grund_dunkel : true);
+    if (ut) ut.classList.toggle('auf-dunkel', dunkel);
+    if (ecken) ecken.classList.toggle('auf-dunkel', dunkel);
+    if (seite && SZ.length) seite.textContent = `${String(Math.max(0, k) + 1).padStart(2, '0')}/${String(SZ.length).padStart(2, '0')}`;
+  }
+  // Riesiges Titelwort: Schriftgröße so, dass es die Breite der Zone füllt
+  function titelwoerter() {
+    for (const el of $$('.titelwort')) {
+      const zone = el.closest('.zone') || el.parentElement;
+      el.style.fontSize = '200px';
+      const w = el.scrollWidth || 1;
+      el.style.fontSize = Math.min(460, 200 * (zone.clientWidth * 0.98) / w) + 'px';
+    }
+  }
+
   // ── Untertitel ──────────────────────────────────────────────────────────
   const ut = $('.ut'), utp = $('.ut p');
   let key = '';
@@ -121,12 +150,13 @@
 
   window.SEEK = (t) => {
     kamera(t);
+    grund(t);
     for (const a of A) anwenden(a, t);
     untertitel(t);
     return bild(t);
   };
   window.READY = Promise.all([document.fonts.ready, ...$$('img').filter((i) => i.src).map((i) => i.decode().catch(() => {}))])
-    .then(() => window.SEEK(0)).then(() => true);
+    .then(() => { titelwoerter(); return window.SEEK(0); }).then(() => true);
   // Vorschau im Browser: ?t=12.5 zeigt ein Standbild, ?play spielt ab
   const q = new URLSearchParams(location.search);
   window.READY.then(() => {

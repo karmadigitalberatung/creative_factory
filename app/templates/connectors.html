@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Connectors · Creative Factory{% endblock %}
+{% block main %}
+<section class="connectors">
+  <div class="head">
+    <div class="kopf-text">
+      <h1>Connectors</h1>
+      <span class="muted">Verbinde deine Tools. Über Buffer gehen fertige Posts an die Kanäle, die du hier auswählst.</span>
+    </div>
+  </div>
+
+  <div class="card connector">
+    <div class="connector-kopf">
+      <span class="connector-logo" aria-hidden="true">B</span>
+      <div class="grow">
+        <h2>Buffer</h2>
+        <span class="muted small">Plant und veröffentlicht Posts auf Instagram, LinkedIn, Facebook, Threads und mehr.</span>
+      </div>
+      {% if buf %}<span class="status-punkt an">Verbunden</span>{% else %}<span class="status-punkt">Nicht verbunden</span>{% endif %}
+    </div>
+
+    {% if not buf %}
+    <div class="connector-wege">
+      {% if oauth %}
+      <div class="stack">
+        <a class="button primary" href="/connectors/buffer/verbinden">Mit Buffer verbinden</a>
+        <span class="hint">Du meldest dich bei Buffer an und erlaubst der Creative Factory, Posts anzulegen.</span>
+      </div>
+      {% endif %}
+      <details class="schluessel-weg" {{ 'open' if not oauth }}>
+        <summary>{{ 'Oder mit API-Schlüssel verbinden' if oauth else 'Mit API-Schlüssel verbinden' }}</summary>
+        <ol class="schritte small">
+          <li>In Buffer <a href="https://publish.buffer.com/settings/api" target="_blank" rel="noopener">Einstellungen → API</a> öffnen.</li>
+          <li>Unter „API keys“ einen neuen Schlüssel anlegen und kopieren. Buffer zeigt ihn nur einmal.</li>
+          <li>Hier einfügen und verbinden.</li>
+        </ol>
+        <form method="post" action="/connectors/buffer/schluessel" class="row" data-busy="Verbindet mit Buffer …">
+          <label class="grow">API-Schlüssel <input type="password" name="schluessel" autocomplete="off" spellcheck="false" required placeholder="Schlüssel aus Buffer einfügen"></label>
+          <button class="primary">Verbinden</button>
+        </form>
+        {% if not oauth %}<p class="hint">Für die Anmeldung per Klick („Mit Buffer verbinden“) braucht die App eine eigene Registrierung bei Buffer (BUFFER_CLIENT_ID in .env). Der Schlüssel gilt nur für dein eigenes Buffer-Konto.</p>{% endif %}
+      </details>
+    </div>
+
+    {% else %}
+    <div class="connector-konto">
+      <span class="small">
+        {% if buf.konto.name or buf.konto.email %}<strong>{{ buf.konto.name or buf.konto.email }}</strong>{% if buf.konto.name and buf.konto.email %} · {{ buf.konto.email }}{% endif %} · {% endif %}
+        {{ 'per Anmeldung' if buf.art == 'oauth' else 'per API-Schlüssel' }}{% if buf.geladen %} · Kanäle geladen {{ buf.geladen|zeit }}{% endif %}
+      </span>
+      <span class="grow"></span>
+      <form method="post" action="/connectors/buffer/aktualisieren" data-busy="Lädt Kanäle …"><button class="small">Kanäle neu laden</button></form>
+      <form method="post" action="/connectors/buffer/trennen" onsubmit="return confirm('Buffer trennen? Die Kanalauswahl geht verloren.')"><button class="small link danger">Trennen</button></form>
+    </div>
+
+    <form method="post" action="/connectors/buffer/kanaele" class="stack">
+      <div class="row wrapless">
+        <h3 class="grow">Welche Kanäle willst du bespielen?</h3>
+        <span class="muted small" data-zaehler>{{ buf.auswahl|length }} von {{ buf.kanaele|length }} ausgewählt</span>
+      </div>
+      {% if not buf.kanaele %}
+      <p class="muted">In diesem Buffer-Konto ist noch kein Kanal verbunden. Verbinde Instagram, LinkedIn & Co. zuerst in <a href="https://publish.buffer.com" target="_blank" rel="noopener">Buffer</a> und lade die Kanäle dann neu.</p>
+      {% endif %}
+      {% for org, kanaele in gruppen.items() %}
+      {% if gruppen|length > 1 %}<span class="label">{{ org }}</span>{% endif %}
+      <div class="kanaele">
+        {% for k in kanaele %}
+        <label class="kanal {{ 'aus' if k.getrennt or k.gesperrt }}">
+          <input type="checkbox" name="kanal" value="{{ k.id }}" {{ 'checked' if k.id in buf.auswahl }} {{ 'disabled' if k.getrennt or k.gesperrt }}>
+          {% if k.avatar %}<img src="{{ k.avatar }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="kanal-initial">{{ (k.name or k.dienst_name)[:1]|upper }}</span>{% endif %}
+          <span class="kanal-text">
+            <strong class="ellipsis">{{ k.name or k.handle }}</strong>
+            <span class="small muted ellipsis">{{ k.dienst_name }}{% if k.typ %} · {{ k.typ }}{% endif %}{% if k.handle and k.handle != k.name %} · {{ k.handle }}{% endif %}</span>
+            {% if k.getrennt %}<span class="small warn">In Buffer neu verbinden</span>{% elif k.gesperrt %}<span class="small warn">In Buffer gesperrt</span>{% endif %}
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% if buf.kanaele %}<div class="row"><button class="primary">Auswahl speichern</button></div>{% endif %}
+    </form>
+    <p class="hint">Als Nächstes: fertige Posts aus „Planen“ direkt an diese Kanäle übergeben. Dafür brauchen die Bilder eine öffentliche Adresse, also die App auf einem Server.</p>
+    {% endif %}
+  </div>
+
+  <p class="muted small">Weitere Connectors (z. B. Kalender, Cloud-Speicher) kommen später an diese Stelle.</p>
+</section>
+{% endblock %}

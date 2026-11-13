@@ -242,6 +242,30 @@ def referenz_sheet(brand_id, person_id):
         loeschen(brand_id, alt)
 
 
+MAX_PERSONEN = 3
+
+
+def erwaehnungen(brand_id, text):
+    """@Name im Text auflösen. Gibt (Text ohne @, erwähnte Personen in Reihenfolge, höchstens MAX_PERSONEN) zurück.
+    Längster passender Name gewinnt, damit „@Anna Maria“ nicht als „@Anna“ gelesen wird."""
+    alle = sorted(db.q("SELECT * FROM personen WHERE brand_id=?", brand_id), key=lambda p: -len(p["name"]))
+    gefunden, aus, i = [], [], 0
+    while i < len(text):
+        if text[i] == "@":
+            rest = text[i + 1:]
+            p = next((p for p in alle if rest[:len(p["name"])].lower() == p["name"].lower()
+                      and not (len(rest) > len(p["name"]) and (rest[len(p["name"])].isalnum() or rest[len(p["name"])] == "_"))), None)
+            if p:
+                if p["id"] not in [g["id"] for g in gefunden]:
+                    gefunden.append(p)
+                aus.append(p["name"])
+                i += 1 + len(p["name"])
+                continue
+        aus.append(text[i])
+        i += 1
+    return "".join(aus), gefunden[:MAX_PERSONEN]
+
+
 def person_refs(brand_id, person_id):
     """Bilder und Beschreibung, mit denen Gemini die Person wiedererkennt."""
     p = db.one("SELECT * FROM personen WHERE id=? AND brand_id=?", person_id, brand_id)
@@ -256,14 +280,77 @@ def person_refs(brand_id, person_id):
     return refs, p["beschreibung"]
 
 
-def erzeugen(brand_id, beschreibung, person_id=None, format="4:5", post_id=None, generator=None):
+def erzeugen(brand_id, beschreibung, person_id=None, format="4:5", post_id=None, generator=None, setzen=True):
     """Job: Bild mit Gemini erzeugen und in die Mediathek legen (optional gleich als Foto eines Posts)."""
     b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
-    refs, person_text = person_refs(brand_id, person_id) if person_id else ([], "")
-    if not person_id and b["ref_photo"] and post_id:
+    text, erwaehnt = erwaehnungen(brand_id, beschreibung)
+    if person_id and person_id not in [p["id"] for p in erwaehnt]:   # Auswahlfeld am Post: zählt wie eine Erwähnung vorne
+        p = db.one("SELECT * FROM personen WHERE id=? AND brand_id=?", person_id, brand_id)
+        erwaehnt = ([p] if p else []) + erwaehnt
+    erwaehnt = erwaehnt[:MAX_PERSONEN]
+    pro_person = 4 if len(erwaehnt) == 1 else 2   # mehrere Personen: je 2 Referenzen, damit alle in die Grenze der Generatoren passen
+    personen_refs = []
+    for p in erwaehnt:
+        refs, desc = person_refs(brand_id, p["id"])
+        personen_refs.append({"name": p["name"], "beschreibung": desc or "", "refs": refs[:pro_person]})
+    refs = []
+    if not erwaehnt and b["ref_photo"] and post_id:
         refs = [Image.open(storage.abs_path(brand_id, b["ref_photo"])).convert("RGB")]
-    raw, gen = ai.bild_erzeugen(b, beschreibung, refs=refs, format=format, person=person_text, generator=generator)
-    m = speichern(brand_id, raw, "generiert", beschreibung[:80], f"{beschreibung} ({config.GENERATOREN[gen]})", person_id=person_id)
-    if post_id:
+    raw, gen = ai.bild_erzeugen(b, text, refs=refs, format=format, personen=personen_refs, generator=generator)
+    m = speichern(brand_id, raw, "generiert", text[:80], f"{beschreibung} ({config.GENERATOREN[gen]})",
+                  person_id=erwaehnt[0]["id"] if erwaehnt else None)
+    if post_id and setzen:   # setzen=False: nur für eine Slide gedacht (Layout-Editor), Foto des Posts bleibt
         db.run("UPDATE posts SET photo=?, bildidee=?, updated=? WHERE id=? AND brand_id=?", m["datei"], beschreibung, db.now(), post_id, brand_id)
     return m
+
+
+# ---------------------------------------------------------------- Fotos für ein Reel
+
+def post_fotos(brand_id, post):
+    """Die für ein Reel gewählten Fotos: [(Name „foto1“…, Mediathek-Zeile)] aus inhalt["reel_fotos"]."""
+    ids = (json.loads(post["inhalt"]).get("reel_fotos") or []) if post else []
+    out = []
+    for mid in ids:
+        m = db.one("SELECT * FROM medien WHERE id=? AND brand_id=?", mid, brand_id)
+        if m:
+            out.append((f"foto{len(out) + 1}", m))
+    return out
+
+
+def reel_fotos_setzen(brand_id, post_id, ids):
+    p = db.one("SELECT inhalt FROM posts WHERE id=? AND brand_id=?", post_id, brand_id)
+    inhalt = json.loads(p["inhalt"])
+    inhalt["reel_fotos"] = [int(i) for i in ids][:8]
+    db.run("UPDATE posts SET inhalt=?, updated=? WHERE id=?", json.dumps(inhalt, ensure_ascii=False), db.now(), post_id)
+
+
+def reel_fotos_erzeugen(brand_id, post_id, anzahl=4, person_id=None, generator=None):
+    """Job: Claude plant passende Fotos zu den Szenen (im Look der vorhandenen Fotos), der Bildgenerator erzeugt sie im Hochformat.
+    Die neuen Fotos kommen in die Mediathek und werden dem Reel zugeordnet (zu bereits gewählten dazu)."""
+    b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
+    p = db.one("SELECT * FROM posts WHERE id=? AND brand_id=?", post_id, brand_id)
+    plan = ai.reel_fotos_plan(b, p, anzahl, ai._fotos_der_mediathek(b, 6))
+    personen = []
+    if person_id:
+        pe = db.one("SELECT * FROM personen WHERE id=? AND brand_id=?", person_id, brand_id)
+        if pe:
+            refs, desc = person_refs(brand_id, pe["id"])
+            personen = [{"name": pe["name"], "beschreibung": desc or "", "refs": refs[:4]}]
+    ref = [Image.open(storage.abs_path(brand_id, b["ref_photo"])).convert("RGB")] if b["ref_photo"] and not personen else []
+    neu, fehler = [], []
+    for f in plan:
+        try:
+            mit = f["mit_person"] and (personen or ref)
+            raw, gen = ai.bild_erzeugen(b, f["beschreibung"], refs=ref if mit and not personen else None,
+                                        format="9:16" if p["format"] in marke.VIDEO_FORMATE else "4:5",
+                                        personen=personen if mit else None, generator=generator)
+            m = speichern(brand_id, raw, "generiert", f["titel"][:80], f"Für „{p['titel']}“: {f['beschreibung']} ({config.GENERATOREN[gen]})",
+                          person_id=personen and mit and person_id or None)
+            neu.append(m["id"])
+        except Exception as e:
+            fehler.append(ai.fehlertext(e))
+    if not neu:
+        raise ai.AIFehler("Es konnte kein Foto erzeugt werden: " + (fehler[0] if fehler else "unbekannter Fehler"))
+    alt = json.loads(db.one("SELECT inhalt FROM posts WHERE id=?", post_id)["inhalt"]).get("reel_fotos") or []
+    reel_fotos_setzen(brand_id, post_id, alt + neu)
+    return len(neu)

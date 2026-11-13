@@ -6,10 +6,27 @@
     <h1>Dein <em>Auftreten.</em></h1>
     <form method="post" action="/auftreten/zurueck"><button class="link">Letzte Änderung zurücknehmen</button></form>
   </div>
-  <p class="lead">Schreibstil, Farben, Schriften, Logo und Layout-Prinzipien. Das ist der Rahmen, in dem jeder Post individuell gestaltet wird. Am einfachsten legst du alles im Chat rechts fest.</p>
+  <p class="lead">Schreibstil, Farben, Schriften, Logo und Layout-Prinzipien. Das ist der Rahmen, in dem jeder Post individuell gestaltet wird. Am einfachsten legst du alles im Chat fest (Symbol unten rechts).</p>
 
-  <div class="split">
+  <div class="voll">
     <div class="col-main stack">
+      <div class="card stack" id="website" {% if website_laeuft %}data-arbeitet="Claude liest deine Website und übernimmt Farben, Schriften und Layout" data-poll="/jobs"{% endif %}>
+        <div class="row"><h2 class="grow">Website als Vorlage</h2></div>
+        {% if auf.website_analyse %}
+        <p class="small">{{ auf.website_analyse.zusammenfassung }}</p>
+        <p class="hint">Übernommen von {{ auf.website_analyse.url }} am {{ auf.website_analyse.datum[8:10] }}.{{ auf.website_analyse.datum[5:7] }}.{% if auf.website_analyse.schriften %} · Schriften: {{ auf.website_analyse.schriften|join(', ') }}{% endif %}. Die Screenshots liegen als Vorbilder in der Mediathek, die Fotos der Website bei den Fotos{% if auf.leitlinien and auf.leitlinien.saeulen %}, die <a href="/leitlinien">Leitlinien</a> sind vorausgefüllt{% endif %}.</p>
+        {% if auf.website_analyse.lizenz_schriften %}<p class="small warn">{{ auf.website_analyse.lizenz_schriften|join(', ') }} {{ 'kommen' if auf.website_analyse.lizenz_schriften|length > 1 else 'kommt' }} von einem Lizenzdienst (z. B. Adobe Fonts) und {{ 'wurden' if auf.website_analyse.lizenz_schriften|length > 1 else 'wurde' }} durch eine ähnliche freie Schrift ersetzt. Wenn du die Schriftdatei hast, lade sie unten unter Schriften hoch und wähle sie aus.</p>{% endif %}
+        {% else %}
+        <p class="muted small">Farben, Schriften, Logo und Layout werden von deiner Website übernommen, damit deine Posts sofort nach dir aussehen.</p>
+        {% endif %}
+        {% if website_fehler %}<p class="small warn">Beim letzten Versuch ging etwas schief: {{ website_fehler.error }}</p>{% endif %}
+        <form method="post" action="/auftreten/website" class="row" data-busy="Claude liest deine Website …">
+          <label class="grow">Website <input name="url" type="url" value="{{ auf.website }}" placeholder="https://"></label>
+          <button {{ 'disabled' if not ki_text or website_laeuft }}>{{ 'Von der Website neu übernehmen' if auf.website_analyse else 'Von der Website übernehmen' }}</button>
+        </form>
+        <p class="hint">Ersetzt Farben, Schriften, Layout-Prinzipien und Bildstil und gestaltet die Musterseiten neu. Rückgängig mit „Letzte Änderung zurücknehmen“.</p>
+      </div>
+
       <div class="card muster-karte" {% if laeuft %}data-arbeitet="Claude gestaltet deine Musterseiten" data-poll="/jobs"{% endif %}>
         <div class="row"><h2 class="grow">Musterseiten</h2>
           <form method="post" action="/auftreten/muster"><button class="link small">neu erstellen</button></form></div>
@@ -18,6 +35,61 @@
           {% for m in muster %}<img src="/media/muster/{{ m }}?v={{ b.muster_at|int }}" alt="Musterseite {{ loop.index }}">{% endfor %}
         </div>
         {% if b.muster_design %}<p class="hint">Gestaltet im Stil deiner Vorbilder. Neue Posts orientieren sich an diesen Musterseiten.</p>{% endif %}
+      </div>
+
+
+      <div class="card stack" id="video-stil" {% if vstil_laeuft %}data-arbeitet="Claude leitet den Video-Stil ab" data-poll="/jobs"{% endif %}>
+        <div class="row"><h2 class="grow">Video-Stil</h2>
+          <form method="post" action="/auftreten/video-stil/ableiten"><button class="link small" {{ 'disabled' if not ki_text }}>aus Brand Guide neu ableiten</button></form></div>
+        <p class="muted small">So sehen Reels aus: Motion Graphics, Untertitel und Übergänge im Look deiner Slides.
+          {% if vstil_quelle == 'claude' %}Abgeleitet aus Layout-Prinzipien und Musterseiten.{% elif vstil_quelle == 'hand' %}Von Hand angepasst – bleibt, bis du ihn neu ableitest.{% else %}Geschätzt aus den Layout-Prinzipien; wird vor dem ersten Reel genauer abgeleitet.{% endif %}</p>
+        {% if vstil.beschreibung %}<p class="small">{{ vstil.beschreibung }}</p>{% endif %}
+        <div class="chips">
+          <span class="chip">Ecken {{ vstil.radius }} px</span>
+          <span class="chip">{{ 'mit Schatten' if vstil.schatten else 'ohne Schatten' }}</span>
+          <span class="chip">Karten: {{ {'flaeche': 'gefüllt', 'kontur': 'Kontur', 'keine': 'ohne Box'}[vstil.karten] }}</span>
+          <span class="chip">Pille: {{ 'Kontur' if vstil.pille == 'kontur' else 'gefüllt' }}</span>
+          <span class="chip">Listen: {{ {'kreis': 'Kreis', 'zahl': 'Zahl', 'strich': 'Strich'}[vstil.liste] }}</span>
+          <span class="chip">Untertitel: {{ {'box': 'Box', 'schatten': 'Schatten', 'klar': 'frei'}[vstil.untertitel.stil] }}</span>
+          <span class="chip">Übergang: {{ {'kreis': 'Kreisblende', 'blende': 'Überblendung', 'schieben': 'Schieben', 'schnitt': 'harter Schnitt'}[vstil.uebergang] }}</span>
+          {% if vstil.haarlinien %}<span class="chip">Haarlinien</span>{% endif %}
+          {% if vstil.foto_sw %}<span class="chip">Fotos schwarzweiß</span>{% endif %}
+          {% if vstil.akzent_sparsam %}<span class="chip">Akzent sparsam</span>{% endif %}
+          {% if vstil.titel_versal %}<span class="chip">Titel in Versalien</span>{% endif %}
+          {% if vstil.ecken.oben_links or vstil.ecken.oben_rechts %}<span class="chip">Ecken-Texte</span>{% endif %}
+        </div>
+        <details><summary class="small">Anpassen</summary>
+          <form method="post" action="/auftreten/video-stil" class="stack">
+            <label>Beschreibung für die Regie <textarea name="beschreibung" rows="3">{{ vstil.beschreibung }}</textarea></label>
+            <div class="row">
+              <label>Ecken (px) <input type="number" name="radius" min="0" max="60" value="{{ vstil.radius }}"></label>
+              <label>Karten <select name="karten">{% for k, n in [('flaeche', 'gefüllt'), ('kontur', 'Kontur'), ('keine', 'ohne Box')] %}<option value="{{ k }}" {{ 'selected' if vstil.karten == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Pille <select name="pille">{% for k, n in [('gefuellt', 'gefüllt'), ('kontur', 'Kontur')] %}<option value="{{ k }}" {{ 'selected' if vstil.pille == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Listen <select name="liste">{% for k, n in [('kreis', 'Kreis'), ('zahl', 'Zahl'), ('strich', 'Strich')] %}<option value="{{ k }}" {{ 'selected' if vstil.liste == k }}>{{ n }}</option>{% endfor %}</select></label>
+            </div>
+            <div class="row">
+              <label>Ausrichtung <select name="ausrichtung">{% for k, n in [('links', 'links'), ('mitte', 'Mitte')] %}<option value="{{ k }}" {{ 'selected' if vstil.ausrichtung == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Übergang <select name="uebergang">{% for k, n in [('kreis', 'Kreisblende'), ('blende', 'Überblendung'), ('schieben', 'Schieben'), ('schnitt', 'harter Schnitt')] %}<option value="{{ k }}" {{ 'selected' if vstil.uebergang == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Untertitel <select name="ut_stil">{% for k, n in [('box', 'Box'), ('schatten', 'Schatten'), ('klar', 'frei')] %}<option value="{{ k }}" {{ 'selected' if vstil.untertitel.stil == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Untertitel-Gewicht <input type="number" name="ut_gewicht" min="100" max="900" step="50" value="{{ vstil.untertitel.gewicht }}"></label>
+            </div>
+            <div class="row wrapless">
+              <label class="check small"><input type="checkbox" name="schatten" value="1" {{ 'checked' if vstil.schatten }}> Schatten</label>
+              <label class="check small"><input type="checkbox" name="haarlinien" value="1" {{ 'checked' if vstil.haarlinien }}> Haarlinien</label>
+              <label class="check small"><input type="checkbox" name="foto_sw" value="1" {{ 'checked' if vstil.foto_sw }}> Fotos schwarzweiß</label>
+              <label class="check small"><input type="checkbox" name="akzent_sparsam" value="1" {{ 'checked' if vstil.akzent_sparsam }}> Akzent sparsam</label>
+              <label class="check small"><input type="checkbox" name="titel_versal" value="1" {{ 'checked' if vstil.titel_versal }}> Titelwort in Versalien</label>
+              <label class="check small"><input type="checkbox" name="ut_versal" value="1" {{ 'checked' if vstil.untertitel.versal }}> Untertitel in Versalien</label>
+            </div>
+            <div class="row">
+              <label class="grow">Ecke oben links <textarea name="ecke_ol" rows="2" placeholder="z. B. KARMA DIGITAL&#10;WIEN">{{ vstil.ecken.oben_links }}</textarea></label>
+              <label class="grow">Ecke oben rechts <textarea name="ecke_or" rows="2">{{ vstil.ecken.oben_rechts }}</textarea></label>
+              <label class="grow">Ecke unten links <textarea name="ecke_ul" rows="2" placeholder="{titel} = Titel des Posts">{{ vstil.ecken.unten_links }}</textarea></label>
+              <label class="check small"><input type="checkbox" name="seitenzahl" value="1" {{ 'checked' if vstil.ecken.seitenzahl }}> Seitenzahl unten rechts</label>
+            </div>
+            <div class="row"><button class="primary">Video-Stil speichern</button></div>
+          </form>
+        </details>
       </div>
 
       <div class="card">
@@ -30,7 +102,7 @@
           {% endfor %}
         </div>
         {% else %}
-        <p class="muted small">Noch keine Vorbilder. Häng im Chat rechts Bilder an: Posts, die dir gefallen, Pinterest-Screenshots oder eigene Layouts. Claude leitet daraus deine Layout-Prinzipien und Musterseiten ab.</p>
+        <p class="muted small">Noch keine Vorbilder. Häng im Chat (unten rechts) Bilder an: Posts, die dir gefallen, Pinterest-Screenshots oder eigene Layouts. Claude leitet daraus deine Layout-Prinzipien und Musterseiten ab.</p>
         {% endif %}
       </div>
 
@@ -114,13 +186,6 @@
       </div>
     </div>
 
-    <aside class="col-side">
-      {% set chat_title = 'Social Corporate Design anlegen' %}
-      {% set chat_hint = 'z. B. „Lies meine Website und schlag mir ein Auftreten vor“, „Ich bin Farbberaterin, warm und elegant, viel Weißraum“, „Akzent eher Salbeigrün“' %}
-      {% set chat_bereich = 'auftreten' %}
-      {% set post_id = None %}
-      {% include "_chat.html" %}
-    </aside>
   </div>
 </section>
 {% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Leitlinien · Creative Factory{% endblock %}
+{% block main %}
+<section class="ideen-seite">
+  <div class="head">
+    <div class="kopf-text">
+      <span class="label">Steuert Ideen, Trendradar, Redaktion und Chat</span>
+      <h1>Leitlinien</h1>
+    </div>
+    <div class="kopf-aktionen"><a class="button" href="/ideen">Zur Ideenwerkstatt</a></div>
+  </div>
+  <p class="lead">Worüber du postest, wie du denkst und wen du gut findest. Claude hält sich bei jedem Vorschlag daran. Je ehrlicher und konkreter, desto mehr klingen die Ideen nach dir.</p>
+
+  {% if fehler %}<p class="hinweis-leiste klein warn">Der Entwurf ist schiefgegangen: {{ fehler.error }}</p>{% endif %}
+
+  <form method="post" action="/leitlinien" class="leitlinien" {% if entwirft %}data-arbeitet="Claude entwirft deine Leitlinien" data-poll="/jobs"{% endif %}>
+    {% if ki_text %}
+    <div class="hinweis-leiste klein entwurf-leiste">
+      <span>{% if leer %}Noch leer? Claude macht dir einen Entwurf aus deinem Auftreten, deiner Website und deinen bisherigen Posts.{% else %}Claude kann leere Felder aus Auftreten, Website und bisherigen Posts vorschlagen. Was du schon eingetragen hast, bleibt.{% endif %}</span>
+      <button class="small" name="entwurf" value="1" {{ 'disabled' if entwirft }}>{{ 'Entwirft …' if entwirft else 'Leere Felder von Claude vorschlagen lassen' }}</button>
+    </div>
+    {% endif %}
+
+    <section class="card">
+      <div class="bereich-zeile"><h2>Themen-Säulen</h2><span class="small muted">bis zu {{ max_saeulen }}, Anteil optional</span></div>
+      <p class="small muted">Die großen Themen, über die du regelmäßig postest. Jede Idee wird einer Säule zugeordnet, der Trendradar sucht danach.</p>
+      <div class="saeulen">
+        <div class="saeule-zeile kopf small muted"><span>Säule</span><span>Anteil</span><span>Worum es geht</span><span>zuletzt</span></div>
+        {% for i in range(max_saeulen) %}{% set s = ll.saeulen[i] if i < ll.saeulen|length else {} %}{% set v = vert[i] if i < vert|length else {} %}
+        <div class="saeule-zeile">
+          <input name="saeule_name_{{ i }}" value="{{ s.name or '' }}" placeholder="{{ ['z. B. KI-Websites', 'z. B. Unternehmer und Vater', 'z. B. Hinter den Kulissen', '', '', ''][i] }}" aria-label="Säule {{ i + 1 }}">
+          <label class="prozent"><input name="saeule_anteil_{{ i }}" type="number" min="0" max="100" step="5" value="{{ s.anteil or '' }}" aria-label="Anteil Säule {{ i + 1 }} in Prozent"> %</label>
+          <input name="saeule_beschreibung_{{ i }}" value="{{ s.beschreibung or '' }}" placeholder="{{ 'z. B. Was KI für Websites kleiner Firmen wirklich bringt' if i == 0 else '' }}" aria-label="Beschreibung Säule {{ i + 1 }}">
+          <span class="small {{ 'warn' if v.zu_kurz else 'muted' }}" title="Anteil der vorbereiteten Ideen in den letzten 60 Tagen">{% if v and gesamt %}{{ v.ist }} %{% if v.zu_kurz %} · zu wenig{% endif %}{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% if gesamt %}<p class="hint">„zuletzt“: Anteil der {{ gesamt }} Ideen, die du in den letzten 60 Tagen vorbereitet hast. Kommt eine Säule zu kurz, bevorzugt Claude sie.</p>{% endif %}
+    </section>
+
+    <div class="leitlinien-raster">
+      <section class="card">
+        <h2>Wie ich denke</h2>
+        <p class="small muted">Deine Überzeugungen, eine pro Zeile. Daraus entsteht deine Haltung in den Posts.</p>
+        <textarea name="haltung" rows="6" placeholder="- Eine Website ist ein Verkäufer, keine Visitenkarte.&#10;- KI ersetzt keine Agentur, aber schlechte Agenturen.&#10;- Familie geht vor, auch im Q4.">{{ ll.haltung }}</textarea>
+      </section>
+      <section class="card">
+        <h2>Wo ich widerspreche</h2>
+        <p class="small muted">Gegenpositionen zu dem, was alle sagen. Das sind die stärksten Aufhänger.</p>
+        <textarea name="widerspruch" rows="6" placeholder="- Viele sagen, man braucht jeden Tag Content. Ich finde: lieber zweimal die Woche etwas mit Substanz.">{{ ll.widerspruch }}</textarea>
+      </section>
+      <section class="card">
+        <h2>No-Gos</h2>
+        <p class="small muted">Was nie vorkommen soll: Themen, Wörter, Tonfall.</p>
+        <textarea name="no_gos" rows="4" placeholder="- keine Politik&#10;- keine Hustle-Sprüche und keine Emojis-Ketten&#10;- keine Kunden namentlich ohne Freigabe">{{ ll.no_gos }}</textarea>
+      </section>
+      <section class="card">
+        <h2>Format-Vorlieben</h2>
+        <p class="small muted">Was dir liegt und was nicht.</p>
+        <textarea name="formate" rows="4" placeholder="z. B. lieber Carousels und animierte Reels, Talking Head höchstens alle zwei Wochen, Storys spontan">{{ ll.formate }}</textarea>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="bereich-zeile"><h2>Vorbild-Konten</h2><span class="small muted">bis zu {{ max_vorbilder }}</span></div>
+      <p class="small muted">Konten, die du gut findest, und vor allem <strong>was</strong> dir daran gefällt. Claude übernimmt Machart und Stil, nie Inhalte. Posts von ihnen, die dir auffallen, legst du im <a href="/ideen?tab=swipe">Ideen unter Swipe-Datei</a> ab.</p>
+      <div class="vorbilder">
+        {% for i in range(max_vorbilder) %}{% set v = ll.vorbilder[i] if i < ll.vorbilder|length else {} %}
+        <div class="vorbild-zeile {{ 'leer' if not v and i > ll.vorbilder|length + 1 }}">
+          <input name="vorbild_konto_{{ i }}" value="{{ v.konto or '' }}" placeholder="{{ '@konto oder Name' if i == 0 else '' }}" aria-label="Vorbild {{ i + 1 }}">
+          <select name="vorbild_plattform_{{ i }}" aria-label="Plattform Vorbild {{ i + 1 }}">{% for pf in ['', 'Instagram', 'LinkedIn', 'beide'] %}<option value="{{ pf }}" {{ 'selected' if (v.plattform or '') == pf }}>{{ pf or 'Plattform' }}</option>{% endfor %}</select>
+          <input name="vorbild_was_{{ i }}" value="{{ v.was or '' }}" placeholder="{{ 'z. B. Hooks mit konkreten Zahlen, ruhige Carousels mit viel Weißraum' if i == 0 else '' }}" aria-label="Was dir an Vorbild {{ i + 1 }} gefällt">
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Sonst noch</h2>
+      <p class="small muted">Alles andere, was Claude wissen soll, zum Beispiel aktuelle Schwerpunkte.</p>
+      <textarea name="sonstiges" rows="3" placeholder="z. B. Fokus Q1 auf KI-Werbefilme, im Dezember ruhiger posten">{{ ll.sonstiges }}</textarea>
+    </section>
+
+    <div class="speicher-leiste"><button class="primary">Leitlinien speichern</button><span class="hint">Gilt sofort für neue Vorschläge.</span></div>
+  </form>
+</section>
+{% endblock %}

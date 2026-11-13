@@ -1,0 +1,30 @@
+{# Fotos für einen Post: Reel/Story (Reiter Fotos) und Carousel/Einzelbild (Karte unter dem Post). Felder hängen per form=… an Formularen außerhalb von #postform. #}
+          {% set ding = ('die Story' if p.format == 'Story' else 'das Reel') if video else ('den Post' if p.format == 'Einzelbild' else 'das Carousel') %}
+          <p class="muted small">{% if video %}Fotos, die die Animation als Vollbild oder Bild in die Szenen setzt. Claude plant sie passend zu den Szenen und im Look deiner vorhandenen Fotos; danach links „Neu animieren“.{% else %}Fotos, aus denen die Slides gestaltet werden, je Slide möglichst ein anderes. Claude plant sie passend zu den Slides und im Look deiner vorhandenen Fotos; danach „Neu gestalten“.{% endif %}</p>
+          {% if reel_fotos %}
+          <div class="reel-fotos-raster gross">
+            {% for n, m in reel_fotos %}
+            <label class="reel-foto" title="{{ m.titel }}"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy">
+              <input type="checkbox" name="foto" value="{{ m.id }}" checked form="reelgewaehltform" aria-label="{{ m.titel }} verwenden"><span>{{ m.titel }}</span></label>
+            {% endfor %}
+          </div>
+          <div class="row"><button class="small" form="reelgewaehltform">Auswahl übernehmen</button><span class="hint">Haken weg entfernt ein Foto aus {{ ding|replace('die ', 'der ')|replace('das ', 'dem ')|replace('den ', 'dem ') }}; in der Mediathek bleibt es.</span></div>
+          {% else %}
+          <p class="leer-hinweis">Noch keine Fotos für {{ ding }}. {% if video %}Ohne Fotos arbeitet die Animation mit Schrift, Grafik und deinem Referenzfoto.{% else %}Ohne Auswahl nimmt die Gestaltung das Hauptfoto und passende Fotos aus der Mediathek.{% endif %}</p>
+          {% endif %}
+          {% if ki_text and ki_bild %}
+          <div class="row">
+            <label>Anzahl <select name="anzahl" form="reelfotoform">{% for n in [2, 3, 4, 6] %}<option {{ 'selected' if n == 4 }}>{{ n }}</option>{% endfor %}</select></label>
+            {% if personen %}<label>Person <select name="person_id" form="reelfotoform"><option value="">Referenzfoto der Marke</option>{% for pe in personen %}<option value="{{ pe.id }}">{{ pe.name }}</option>{% endfor %}</select></label>{% endif %}
+            <button class="small primary" form="reelfotoform" {{ 'disabled' if laeuft }}>{{ 'Weitere Fotos erzeugen' if reel_fotos else 'Fotos für diesen Post erzeugen' }}</button>
+          </div>
+          {% endif %}
+          <details class="aus-mediathek">
+            <summary class="small">Aus der Mediathek wählen</summary>
+            {% set gewaehlt = reel_fotos|map(attribute='1.id')|list %}
+            <div class="reel-fotos-raster">
+              {% for m in bilder %}<label class="reel-foto" title="{{ m.titel }}"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy">
+                <input type="checkbox" name="foto" value="{{ m.id }}" {{ 'checked' if m.id in gewaehlt }} form="reelauswahlform" aria-label="{{ m.titel }}"></label>{% endfor %}
+            </div>
+            <button class="small" form="reelauswahlform">Für {{ ding }} verwenden</button>
+          </details>

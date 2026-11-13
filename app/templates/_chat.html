@@ -1,10 +1,11 @@
-<div class="card chat" data-post="{{ post_id or '' }}" data-bereich="{{ chat_bereich }}">
+<div class="card chat" data-post="{{ post_id or '' }}" data-bereich="{{ chat_bereich }}" data-seite="{{ chat_seite or '' }}">
   <h2>{{ chat_title }}</h2>
   <div class="messages">
     {% for m in chat %}<div class="msg {{ m.role }}">{% if m.bilder %}<span class="msg-bilder">{% for x in m.bilder|jsonliste %}<img src="/media/{{ x }}" alt="">{% endfor %}</span>{% endif %}{{ m.text }}</div>{% endfor %}
     {% if not chat %}<p class="muted small">{{ chat_hint }}</p>{% endif %}
   </div>
   {% if ki_text %}
+  {% if schnellfragen %}<div class="schnellfragen">{% for f in schnellfragen %}<button type="button" class="small" data-frage="{{ f }}">{{ f }}</button>{% endfor %}</div>{% endif %}
   <form class="chatform">
     <textarea name="nachricht" rows="3" placeholder="{{ 'Was soll sich ändern? Du kannst auch Bilder anhängen.' if chat_bereich == 'auftreten' else ('Frag etwas, plan um oder bitte um neue Ideen …' if chat_bereich == 'planen' else 'Was soll sich ändern?') }}"></textarea>
     {% if chat_bereich == 'auftreten' %}

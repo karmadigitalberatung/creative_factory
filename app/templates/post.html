@@ -1,86 +1,112 @@
 {% extends "base.html" %}
 {% block title %}{{ p.titel or 'Post' }} · Planen{% endblock %}
 {% block main %}
-<section>
+{% set video = p.format in ['Reel', 'Talking Head', 'Story'] %}
+<section class="post-detail">
   <a class="back" href="/planen">← Planen</a>
   <div class="head">
-    <h1>{{ p.titel or 'Ohne Titel' }} <em class="status-word">{{ p.status }}</em></h1>
-    <span class="muted">{{ p.format }}{% if p.datum %} · {{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{{ p.datum[:4] }} {{ p.uhrzeit }}{% endif %}</span>
+    <div class="kopf-text">
+      <h1>{{ p.titel or 'Ohne Titel' }} <em class="status-word s-{{ p.status|lower|replace(' ', '-') }}">{{ p.status|status }}</em></h1>
+      <span class="muted">{{ p.format }}{% if p.datum %} · {{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{{ p.datum[:4] }} {{ p.uhrzeit }}{% endif %}{% set kz = kanaele|selectattr('an')|list %}{% if kz %} · {% for k in kz %}{{ k.dienst_name }}{% if k.an != ['post'] %} ({{ k.an|map('replace', 'post', 'Feed')|map('replace', 'reel', 'Reel')|map('replace', 'story', 'Story')|join(', ') }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}{% endif %}</span>
+    </div>
+    <div class="kopf-aktionen">
+      {% if video and p.video %}
+      <a class="button small" href="/planen/{{ p.id }}/reel.mp4">Video (MP4)</a>
+      <a class="button small" href="/media/posts/{{ p.id }}/reel-cover.jpg" download>Titelbild</a>
+      <button class="small" disabled title="Kommt als Nächstes: Posts an Buffer übergeben">An Buffer senden</button>
+      {% elif p.rendered_at and not video %}
+      <a class="button small" href="/planen/{{ p.id }}/download">Alle Slides (ZIP)</a>
+      <a class="button small" href="/planen/{{ p.id }}/linkedin.pdf">LinkedIn-PDF</a>
+      <button class="small" disabled title="Kommt als Nächstes: Verbindung zu Buffer per OAuth">An Buffer senden</button>
+      {% endif %}
+      <button type="button" class="small chat-auf" data-chat-auf>Chat{% if chat %} <span class="zahl">{{ chat|length }}</span>{% endif %}</button>
+    </div>
   </div>
   {% if p.vorher_pruefen %}<p class="note"><strong>Vorher prüfen:</strong> {{ p.vorher_pruefen }}</p>{% endif %}
+  {% if fehler and not laeuft %}<p class="error">Fehler: {{ fehler }}</p>{% endif %}
 
-  <div class="split">
-    <div class="col-main">
-      <div class="card preview" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
-        {% if fehler and not laeuft %}<p class="error">Fehler: {{ fehler }}</p>{% endif %}
-        {% if p.format == 'Talking Head' %}
-          {% if p.video %}
-          <div class="reel">
-            <video controls playsinline preload="metadata" poster="/media/posts/{{ p.id }}/reel-cover.jpg?v={{ p.rendered_at|int }}"
-                   src="/media/{{ p.video }}?v={{ p.rendered_at|int }}"></video>
-            <div class="stack grow">
-              {% if cut %}
-              <p class="muted small">{{ cut.info.laenge }} s · {{ cut.info.teile }} Schnitte · {{ cut.info.zeilen }} Untertitel{% if cut.info.einblendungen %} · {{ cut.info.einblendungen }} Motion-Szenen{% endif %}{% if cut.titel %} · Titel „{{ cut.titel }}“{% endif %}</p>
-              {% if cut.begruendung %}<p class="small">{{ cut.begruendung }}</p>{% endif %}
-              {% if cut.einblendungen %}
-              <div><span class="muted small">Motion-Szenen im Video</span>
-                <div class="einblendungen">{% for f in cut.einblendungen %}<img src="/media/posts/{{ p.id }}/{{ f }}?v={{ p.rendered_at|int }}" alt="Einblendung {{ loop.index }}">{% endfor %}</div></div>
-              {% endif %}
-              <details><summary class="small">Transkript (durchgestrichen = rausgeschnitten)</summary>
-                <p class="transcript">{% for w, drin in cut.woerter %}<span class="{{ '' if drin else 'cut' }}">{{ w }}</span> {% endfor %}</p></details>
-              {% endif %}
-              <div class="row">
-                <a class="button" href="/planen/{{ p.id }}/reel.mp4">Video laden (MP4)</a>
-                <a class="button" href="/media/posts/{{ p.id }}/reel-cover.jpg" download>Titelbild</a>
-              </div>
-              <form method="post" action="/planen/{{ p.id }}/schneiden" class="row">
-                {% if ki_text %}<button name="art" value="claude" class="small">Neu schneiden (Claude)</button>{% endif %}
-                <button name="art" value="auto" class="small">Automatisch schneiden</button>
-              </form>
-            </div>
+  {# Formulare für Aufnahme und Schnitt stehen außerhalb, ihre Felder hängen per form="…" daran (keine verschachtelten Formulare) #}
+  <form method="post" action="/planen/{{ p.id }}/video" enctype="multipart/form-data" id="videoform" data-busy="Wird hochgeladen …" data-busy-ziel=".video-spalte"></form>
+  <form method="post" action="/planen/{{ p.id }}/schneiden" id="schnittform" data-busy="Wird geschnitten …" data-busy-ziel=".video-spalte"></form>
+  <form method="post" action="/planen/{{ p.id }}/animieren" id="animierform" data-busy="Animiert Reel …" data-busy-ziel=".video-spalte"></form>
+  <form method="post" action="/planen/{{ p.id }}/reel-fotos" id="reelfotoform" data-busy="Erzeugt Fotos …" {% if video %}data-busy-ziel=".video-spalte"{% else %}data-busy-ziel="#post-fotos"{% endif %}></form>
+  <form method="post" action="/planen/{{ p.id }}/reel-fotos/auswahl" id="reelauswahlform"></form>
+  <form method="post" action="/planen/{{ p.id }}/reel-fotos/auswahl" id="reelgewaehltform"></form>
+
+  <form method="post" action="/planen/{{ p.id }}" id="postform">
+    <div class="card eckdaten">
+      <div class="row">
+        <label class="grow">Arbeitstitel <input name="titel" value="{{ p.titel }}"></label>
+        <label>Format <select name="format" data-format-vorher="{{ p.format }}" data-hat-visuals="{{ 1 if (p.rendered_at or p.video) else 0 }}">{% for f in formate %}<option {{ 'selected' if f == p.format }}>{{ f }}</option>{% endfor %}</select></label>
+        <label>Datum <input type="date" name="datum" value="{{ p.datum }}"></label>
+        <label>Uhrzeit <input type="time" name="uhrzeit" value="{{ p.uhrzeit }}"></label>
+      </div>
+    </div>
+
+    {% if video %}
+    <div class="video-layout">
+      <div class="video-spalte" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
+        {% if p.video %}
+        <video controls playsinline preload="metadata" poster="/media/posts/{{ p.id }}/reel-cover.jpg?v={{ p.rendered_at|int }}"
+               src="/media/{{ p.video }}?v={{ p.rendered_at|int }}"></video>
+        {% else %}
+        <div class="video-leer">
+          <span>{{ 'Noch keine Aufnahme' if p.format == 'Talking Head' else 'Noch kein Video' }}</span>
+          <span class="small leise">{% if p.format == 'Talking Head' %}Skript und Anleitung stehen unter <a href="/input">Input</a>, oder lade die Aufnahme hier hoch.{% else %}{{ 'Die Story' if p.format == 'Story' else 'Das Reel' }} entsteht als Animation aus Skript und Szenen – mit oder ohne eigene Aufnahme. Beim Freigeben wird es erzeugt.{% endif %}</span>
+        </div>
+        {% endif %}
+        <div class="aufnahme">
+          <label>{{ 'Aufnahme' if p.format == 'Talking Head' else 'Aufnahme (optional)' }}
+            <input type="file" name="datei" accept="video/*" required form="videoform"></label>
+          <button form="videoform" class="small">{{ 'Neue Aufnahme hochladen' if p.video_roh else 'Aufnahme hochladen' }}</button>
+          <span class="hint">{% if p.format == 'Talking Head' %}Wird transkribiert, geschnitten und mit Motion Graphics überlagert.{% else %}Mit Aufnahme liegt sie unter den Motion Graphics, ohne bleibt {{ 'die Story' if p.format == 'Story' else 'das Reel' }} reine Animation.{% endif %}</span>
+        </div>
+        {% if p.format in ['Reel', 'Story'] and not p.video_roh and not laeuft %}
+        <div class="aufnahme">
+          <span class="label">Ohne Aufnahme</span>
+          <div class="row">
+            <button form="animierform" name="art" value="claude" class="small {{ '' if p.video else 'primary' }}" {{ 'disabled' if not ki_text }}>{{ 'Neu animieren' if p.video else 'Animation erzeugen' }}</button>
+            <button form="animierform" name="art" value="auto" class="small">{{ 'Einfach neu animieren' if p.video else 'Einfache Animation' }}</button>
           </div>
-          {% elif not laeuft %}
-          <p class="muted">Für diesen Post brauchen wir eine Aufnahme von dir. Skript und Anleitung stehen unter <a href="/input">Input</a>, oder lade das Video direkt hier hoch.</p>
-          {% endif %}
-          <form method="post" action="/planen/{{ p.id }}/video" enctype="multipart/form-data" class="row" data-busy="Wird hochgeladen …">
-            <input type="file" name="datei" accept="video/*" required><button>{{ 'Neue Aufnahme hochladen' if p.video_roh else 'Aufnahme hochladen' }}</button>
-          </form>
-        {% elif p.rendered_at %}
-        <div class="slides">
-          {% for i in range(1, p.slide_count + 1) %}
-          <a href="/media/posts/{{ p.id }}/slide-{{ '%02d' % i }}.png?v={{ p.rendered_at|int }}" target="_blank">
-            <img src="/media/posts/{{ p.id }}/slide-{{ '%02d' % i }}.png?v={{ p.rendered_at|int }}" alt="Slide {{ i }}" loading="lazy"></a>
-          {% endfor %}
+          <span class="hint">Aus Skript und Szenen{% if ki_text %}: Claude führt Regie, „einfach“ macht je Szene eine Karte{% else %} (ohne Claude-Schlüssel: je Szene eine Karte){% endif %}. Dauert etwa so lange wie das Reel.</span>
         </div>
-        <div class="row">
-          <a class="button" href="/planen/{{ p.id }}/download">Alle Slides (ZIP)</a>
-          <a class="button" href="/planen/{{ p.id }}/linkedin.pdf">LinkedIn-PDF</a>
-          <button class="button" disabled title="Kommt als Nächstes: Verbindung zu Buffer per OAuth">An Buffer senden</button>
-        </div>
-        {% elif not laeuft %}
-        <p class="muted">{% if p.status == 'Idee' %}Noch eine Idee. Prüf die Texte und gib frei, dann entstehen die Visuals.{% else %}Noch keine Visuals.{% endif %}</p>
         {% endif %}
       </div>
 
-      <form method="post" action="/planen/{{ p.id }}" class="stack" id="postform">
-        <div class="card stack">
-          <div class="row">
-            <label class="grow">Arbeitstitel <input name="titel" value="{{ p.titel }}"></label>
-            <label>Format <select name="format">{% for f in formate %}<option {{ 'selected' if f == p.format }}>{{ f }}</option>{% endfor %}</select></label>
-            <label>Datum <input type="date" name="datum" value="{{ p.datum }}"></label>
-            <label>Uhrzeit <input type="time" name="uhrzeit" value="{{ p.uhrzeit }}"></label>
-          </div>
+      <div class="video-inhalt">
+        {% set tab = request.query_params.get('tab') if request.query_params.get('tab') in ['skript', 'szenen', 'schnitt', 'fotos', 'caption'] else ('schnitt' if cut else 'skript') %}
+        <div class="reiter" role="tablist">
+          <button type="button" role="tab" data-reiter="skript" class="{{ 'on' if tab == 'skript' }}">Skript</button>
+          <button type="button" role="tab" data-reiter="szenen">Szenen</button>
+          {% if cut %}<button type="button" role="tab" data-reiter="schnitt" class="{{ 'on' if tab == 'schnitt' }}">{{ 'Animation' if cut.animation else 'Schnitt' }}</button>{% endif %}
+          {% if video %}<button type="button" role="tab" data-reiter="fotos" class="{{ 'on' if tab == 'fotos' }}">Fotos{% if reel_fotos %} <span class="anzahl-klein">{{ reel_fotos|length }}</span>{% endif %}</button>{% endif %}
+          <button type="button" role="tab" data-reiter="caption">Caption</button>
         </div>
 
-        <div class="card stack">
-          <h2>Inhalt der Slides</h2>
-          <div id="slides" class="stack">
+        <div data-reiter-inhalt="skript" class="stack" {{ 'hidden' if tab != 'skript' }}>
+          <label>{{ 'Skript zum Sprechen' if p.format == 'Talking Head' else 'Skript' }}
+            <span class="hint">{% if p.format == 'Talking Head' %}Erscheint bei der Aufnahme als Teleprompter (unter Input).{% else %}Gesprochener oder eingeblendeter Text in Reihenfolge – Grundlage für Szenen und Timing.{% endif %}</span>
+            <textarea name="skript" rows="14">{{ inhalt.skript or '' }}</textarea></label>
+        </div>
+
+        <div data-reiter-inhalt="szenen" class="stack" hidden>
+          <span class="hint">{% if p.format == 'Talking Head' %}Titel und Aussagen, die als Motion Graphics über die Aufnahme kommen.{% else %}Jede Szene ist eine Aussage der Animation.{% endif %}</span>
+          {% if cut and cut.einblendungen %}
+          <div><span class="label">Motion-Szenen im Video</span>
+            <div class="einblendungen">{% for f in cut.einblendungen %}<img src="/media/posts/{{ p.id }}/{{ f }}?v={{ p.rendered_at|int }}" alt="Szene {{ loop.index }}">{% endfor %}</div></div>
+          {% endif %}
+          {% if p.rendered_at and p.slide_count and not p.video %}
+          <div><span class="label">Bisher als Slides gestaltet</span>
+            <div class="einblendungen alt">{% for n in range(1, p.slide_count + 1) %}<a href="/media/posts/{{ p.id }}/slide-{{ '%02d' % n }}.png?v={{ p.rendered_at|int }}" target="_blank"><img src="/media/posts/{{ p.id }}/slide-{{ '%02d' % n }}.png?v={{ p.rendered_at|int }}" alt="Slide {{ n }}"></a>{% endfor %}</div>
+            <span class="hint">Entstanden, bevor Reels als Video geplant wurden. Die Texte unten bleiben die Grundlage für die Animation.</span></div>
+          {% endif %}
+          <div id="slides" class="slide-karten einspaltig">
             {% for s in slides %}
             {% set i = loop.index0 %}
             <div class="slide-edit" data-i="{{ i }}">
-              <div class="row">
-                <span class="nr">{{ loop.index }}</span>
-                <select name="art_{{ i }}" class="art">{% for k, n in arten.items() %}<option value="{{ k }}" {{ 'selected' if k == s.art }}>{{ n }}</option>{% endfor %}</select>
+              <div class="slide-kopf">
+                <span class="nr">Szene {{ loop.index }}</span>
+                <select name="art_{{ i }}" class="art" aria-label="Art der Szene">{% for k, n in arten.items() %}<option value="{{ k }}" {{ 'selected' if k == s.art }}>{{ n }}</option>{% endfor %}</select>
                 <span class="grow"></span>
                 <label class="check small"><input type="checkbox" name="weg_{{ i }}" value="1"> entfernen</label>
               </div>
@@ -91,88 +117,200 @@
             </div>
             {% endfor %}
           </div>
-          <button type="button" id="addslide" class="small">+ Slide</button>
-          {% if p.format == 'Talking Head' %}
-          <label>Skript zum Sprechen <textarea name="skript" rows="6">{{ inhalt.skript or '' }}</textarea></label>
-          {% endif %}
+          <button type="button" id="addslide" class="small">+ Szene</button>
         </div>
 
-        <div class="card stack">
-          <label>Bildidee <span class="hint">für ein KI-Foto, wenn der Post eins braucht</span><textarea name="bildidee" rows="2">{{ p.bildidee }}</textarea></label>
-          <label>Vorher prüfen <span class="hint">Aussagen, die du bestätigen musst</span><input name="vorher_pruefen" value="{{ p.vorher_pruefen }}"></label>
-          <label>Caption Instagram <textarea name="caption_ig" rows="5">{{ p.caption_ig }}</textarea></label>
-          <label>Caption LinkedIn <textarea name="caption_li" rows="5">{{ p.caption_li }}</textarea></label>
-        </div>
-
-        <div class="row sticky-actions" id="abnehmen">
-          <button name="aktion" value="speichern">Speichern</button>
-          {% if p.status == 'Idee' %}<button class="primary" name="aktion" value="freigeben">Freigeben und Visuals erstellen</button>{% endif %}
-          {% if p.status in ['Freigegeben', 'In Arbeit', 'Zur Abnahme', 'Geplant'] and p.format != 'Talking Head' %}<button name="aktion" value="neu_gestalten">Neu gestalten</button>{% endif %}
-          {% if p.status in ['Zur Abnahme', 'Freigegeben', 'In Arbeit'] and (p.rendered_at or p.video) %}<button class="primary" name="aktion" value="abnehmen">Abnehmen und einplanen</button>{% endif %}
-          {% if p.status == 'Geplant' %}<button name="aktion" value="gepostet">Als gepostet markieren</button>{% endif %}
-        </div>
-      </form>
-
-      <div class="card stack">
-        <h2>Foto</h2>
-        <div class="row top">
-          {% if p.photo %}<img class="thumb" src="/media/{{ p.photo }}" alt="Foto des Posts">{% elif b.ref_photo %}<img class="thumb faded" src="/media/{{ b.ref_photo }}" alt="Referenzfoto" title="Ohne eigenes Foto wird dein Referenzfoto genutzt">{% endif %}
-          <div class="stack grow">
-            <form method="post" action="/planen/{{ p.id }}/foto" enctype="multipart/form-data" class="row">
-              <input type="file" name="foto" accept="image/*" required><button>Foto hochladen</button>
-            </form>
-            <form method="post" action="/planen/{{ p.id }}/foto-ki" class="stack">
-              <label>Foto mit KI erzeugen {% if not ki_bild %}<span class="hint">(kein Bildgenerator in .env)</span>{% endif %}
-                <textarea name="beschreibung" rows="2" placeholder="Szene, Licht, Hintergrund, Pose …">{{ p.bildidee }}</textarea></label>
-              <div class="row">
-                <label class="grow">Person <select name="person_id"><option value="">Referenzfoto der Marke</option>{% for pe in personen %}<option value="{{ pe.id }}">{{ pe.name }}</option>{% endfor %}</select></label>
-                <label>Generator <select name="generator"><option value="">Automatisch</option>{% for k, n in generatoren.items() %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
-                <button {{ 'disabled' if not ki_bild }}>Foto erzeugen</button>
-              </div>
-            </form>
-            {% if medien_auswahl %}
-            <details {{ 'open' if not p.photo }}><summary class="small">Aus der Mediathek wählen</summary>
-              <form method="post" action="/planen/{{ p.id }}/foto-medien" class="pick">
-                {% for m in medien_auswahl %}<button name="medien_id" value="{{ m.id }}" class="pick-item {{ 'on' if m.datei == p.photo }}" title="{{ m.titel }}"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy"></button>{% endfor %}
-              </form>
-              <a class="small" href="/mediathek">Zur Mediathek</a>
-            </details>
-            {% endif %}
+        {% if cut %}
+        <div data-reiter-inhalt="schnitt" class="stack" {{ 'hidden' if tab != 'schnitt' }}>
+          <p class="muted small">{{ cut.info.laenge }} s · {% if cut.animation %}reine Animation{% else %}{{ cut.info.teile }} Schnitte{% endif %} · {{ cut.info.zeilen }} Untertitel{% if cut.info.einblendungen %} · {{ cut.info.einblendungen }} Motion-Szenen{% endif %}{% if cut.titel %} · Titel „{{ cut.titel }}“{% endif %}</p>
+          {% if cut.begruendung %}<p class="small">{{ cut.begruendung }}</p>{% endif %}
+          {% if p.video_roh %}
+          <div class="row">
+            {% if ki_text %}<button form="schnittform" name="art" value="claude" class="small">Neu schneiden (Claude)</button>{% endif %}
+            <button form="schnittform" name="art" value="auto" class="small">Automatisch schneiden</button>
           </div>
+          {% else %}<span class="hint">Nach Änderungen an Skript oder Szenen erst speichern, dann links „Neu animieren“.</span>{% endif %}
+          {% if not cut.animation %}<details><summary class="small">Transkript (durchgestrichen = rausgeschnitten)</summary>
+            <p class="transcript">{% for w, drin in cut.woerter %}<span class="{{ '' if drin else 'cut' }}">{{ w }}</span> {% endfor %}</p></details>{% endif %}
+        </div>
+        {% endif %}
+
+        {% if p.format in ['Reel', 'Story'] %}
+        <div data-reiter-inhalt="fotos" class="stack reel-fotos" {{ 'hidden' if tab != 'fotos' }}>
+          {% include "_post_fotos.html" %}
+        </div>
+        {% endif %}
+        <div data-reiter-inhalt="caption" class="stack" hidden>
+          <label>Caption Instagram <textarea name="caption_ig" rows="9" data-max="2200">{{ p.caption_ig }}</textarea><span class="hint zaehler"></span></label>
+          <label>Caption LinkedIn <textarea name="caption_li" rows="9" data-max="3000">{{ p.caption_li }}</textarea><span class="hint zaehler"></span></label>
         </div>
       </div>
-
-      {% if inputs %}
-      <div class="card stack">
-        <h2>Aufnahmen</h2>
-        {% for i in inputs %}<p>{{ i.art }} · <strong>{{ i.status }}</strong>{% if i.datei %} · <a href="/media/{{ i.datei }}" target="_blank">ansehen</a>{% endif %} · <a href="/input">zu Input</a></p>{% endfor %}
-      </div>
-      {% endif %}
-
-      <form method="post" action="/planen/{{ p.id }}/verwerfen" onsubmit="return confirm('Post wirklich löschen?')">
-        <button class="link danger">Post löschen</button>
-      </form>
     </div>
 
-    <aside class="col-side">
-      {% set chat_title = 'Chat zu diesem Post' %}
-      {% set chat_hint = 'z. B. „Cover mit großem Foto und Titel unten“, „Slide 3 als Liste“, „mehr Terracotta“, „Captions kürzer“' %}
-      {% set chat_bereich = 'post' %}
-      {% set post_id = p.id %}
-      {% include "_chat.html" %}
-    </aside>
+    {% else %}
+    <div class="bereich" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
+      {% set raster = p.rendered_at and design_n %}
+      <div class="bereich-kopf">
+        <h2>Slides</h2>
+        <span class="muted small">{% if raster %}Klick auf eine Slide, um Text, Bild, Farben, Position und Größe direkt darin zu ändern.{% elif p.status == 'Idee' %}Noch eine Idee. Prüf die Texte und gib frei, dann entstehen die Visuals.{% else %}Noch keine Visuals.{% endif %}</span>
+      </div>
+      {% if raster %}
+      <div class="slide-raster">
+        {% for n in range(1, p.slide_count + 1) %}
+        <figure class="slide-karte">
+          <button type="button" class="slide-oeffnen" {% if n <= design_n %}data-layout="{{ n }}"{% else %}disabled{% endif %} title="Slide {{ n }} bearbeiten">
+            <img src="/media/posts/{{ p.id }}/slide-{{ '%02d' % n }}.png?v={{ p.rendered_at|int }}" alt="Slide {{ n }}" loading="lazy"></button>
+          <figcaption>
+            <span class="nr">Slide {{ n }}</span>
+            {% if n in manuell %}<span class="chip" title="Layout von Hand angepasst">angepasst</span>{% endif %}
+            <span class="grow"></span>
+          </figcaption>
+        </figure>
+        {% endfor %}
+      </div>
+      <details class="umbauen">
+        <summary>Slides umbauen <span class="hint">hinzufügen, entfernen oder Art ändern – danach wird der Post neu gestaltet</span></summary>
+      {% endif %}
+      <div id="slides" class="slide-karten">
+        {% for s in slides %}
+        {% set i = loop.index0 %}
+        <div class="slide-edit" data-i="{{ i }}">
+          <div class="slide-kopf">
+            <span class="nr">Slide {{ loop.index }}</span>
+            <select name="art_{{ i }}" class="art" aria-label="Art der Slide">{% for k, n in arten.items() %}<option value="{{ k }}" {{ 'selected' if k == s.art }}>{{ n }}</option>{% endfor %}</select>
+            <span class="grow"></span>
+            <label class="check small"><input type="checkbox" name="weg_{{ i }}" value="1"> entfernen</label>
+          </div>
+          <label data-f="a"><span></span><input name="a_{{ i }}" value="{{ s.a }}"></label>
+          <label data-f="b"><span></span><textarea name="b_{{ i }}" rows="3">{{ s.b }}</textarea></label>
+          <label data-f="c"><span></span><input name="c_{{ i }}" value="{{ s.c }}"></label>
+          <label data-f="liste"><span></span><textarea name="liste_{{ i }}" rows="4">{{ s.liste }}</textarea></label>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" id="addslide" class="small">+ Slide</button>
+      {% if raster %}</details>{% endif %}
+    </div>
+
+    <div class="bereich">
+      <div class="bereich-kopf"><h2>Captions</h2></div>
+      <div class="caption-zeile">
+        <div class="slide-bild">
+          {% if p.rendered_at and p.slide_count %}<img src="/media/posts/{{ p.id }}/slide-01.png?v={{ p.rendered_at|int }}" alt="Cover">
+          {% elif p.photo %}<img src="/media/{{ p.photo }}" alt="Foto des Posts">
+          {% else %}<div class="slide-leer"><span>Cover</span><span class="small leise">noch nicht gestaltet</span></div>{% endif %}
+        </div>
+        <div class="slide-felder">
+          <div class="reiter" role="tablist">
+            <button type="button" role="tab" class="on" data-reiter="ig">Instagram</button>
+            <button type="button" role="tab" data-reiter="li">LinkedIn</button>
+          </div>
+          <label data-reiter-inhalt="ig"><span class="sr">Caption Instagram</span><textarea name="caption_ig" rows="12" data-max="2200">{{ p.caption_ig }}</textarea><span class="hint zaehler"></span></label>
+          <label data-reiter-inhalt="li" hidden><span class="sr">Caption LinkedIn</span><textarea name="caption_li" rows="12" data-max="3000">{{ p.caption_li }}</textarea><span class="hint zaehler"></span></label>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card kanaele-post">
+      <div class="row wrapless"><h2 class="grow">Wo erscheint der Post?</h2>
+        {% if buffer_da %}<a class="small" href="/connectors">Kanäle verwalten</a>{% endif %}</div>
+      {% if kanaele %}
+      <input type="hidden" name="kanaele_form" value="1">
+      <div class="kanal-wahl">
+        {% for k in kanaele %}
+        <div class="kanal-zeile">
+          {% if k.avatar %}<img src="{{ k.avatar }}" alt="" referrerpolicy="no-referrer">{% else %}<span class="kanal-initial">{{ (k.name or k.dienst_name)[:1]|upper }}</span>{% endif %}
+          <span class="kanal-text"><strong class="ellipsis">{{ k.name or k.handle }}</strong><span class="small muted">{{ k.dienst_name }}</span></span>
+          <span class="platz">
+            {% for key, label in k.moeglich %}<label class="platz-knopf"><input type="checkbox" name="kanal" value="{{ k.id }}|{{ key }}" {{ 'checked' if key in k.an }}> {{ label }}</label>{% endfor %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      <span class="hint">{% if video %}Reel und Story gleichzeitig: einfach beides anhaken – es ist dasselbe 9:16-Video.{% else %}Story nimmt die erste Slide.{% endif %} Wird mit „Speichern“ gesichert; das Senden an Buffer kommt als Nächstes.</span>
+      {% elif buffer_da %}
+      <p class="muted small">Für das Format {{ p.format }} passt keiner deiner ausgewählten Kanäle. Unter <a href="/connectors">Connectors</a> kannst du weitere auswählen.</p>
+      {% else %}
+      <p class="muted small">Verbinde unter <a href="/connectors">Connectors</a> dein Buffer-Konto, dann wählst du hier je Post die Kanäle – auch Reel und Story gleichzeitig.</p>
+      {% endif %}
+    </div>
+
+    <div class="row sticky-actions" id="abnehmen">
+      <button name="aktion" value="speichern">Speichern</button>
+      {% if p.status == 'Idee' %}<button class="primary" name="aktion" value="freigeben">{{ 'Freigeben' if video else 'Freigeben und Visuals erstellen' }}</button>{% endif %}
+      {% if p.status in ['Freigegeben', 'In Arbeit', 'Zur Abnahme', 'Geplant'] and not video %}<button name="aktion" value="neu_gestalten"
+        {% if manuell %}data-warnen="Slide {{ manuell|join(', ') }} {{ 'ist' if manuell|length == 1 else 'sind' }} von Hand angepasst. Neu gestalten ersetzt das ganze Layout. Trotzdem neu gestalten?"{% endif %}>Neu gestalten</button>{% endif %}
+      {% if p.status in ['Zur Abnahme', 'Freigegeben', 'In Arbeit'] and (p.rendered_at or p.video) %}<button class="primary" name="aktion" value="abnehmen">Abnehmen und einplanen</button>{% endif %}
+      {% if p.status == 'Geplant' %}<button name="aktion" value="gepostet">Als gepostet markieren</button>{% endif %}
+    </div>
+  </form>
+
+  {% if not video %}
+  <section class="card stack reel-fotos" id="post-fotos" {% if laeuft == 'Erzeugt Fotos' %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
+    <div class="row"><h2 class="grow">Fotos für die Slides{% if reel_fotos %} <span class="anzahl-klein">{{ reel_fotos|length }}</span>{% endif %}</h2></div>
+    {% include "_post_fotos.html" %}
+  </section>
+  <details class="card foto-block" {{ 'open' if not p.photo and not b.ref_photo }}>
+    <summary>
+      {% if p.photo %}<img class="mini" src="/media/{{ p.photo }}" alt="">{% elif b.ref_photo %}<img class="mini faded" src="/media/{{ b.ref_photo }}" alt="">{% endif %}
+      <span class="grow"><strong>Hauptfoto</strong> <span class="muted small">tauschen, hochladen oder neu erzeugen · für Slides ohne eigenes Foto · jetzt: {{ 'eigenes Foto' if p.photo else ('Referenzfoto der Marke' if b.ref_photo else 'kein Foto') }}{% if p.bildidee %} · Bildidee vorhanden{% endif %}</span></span>
+    </summary>
+    <div class="row top">
+      {% if p.photo %}<img class="thumb" src="/media/{{ p.photo }}" alt="Foto des Posts">{% elif b.ref_photo %}<img class="thumb faded" src="/media/{{ b.ref_photo }}" alt="Referenzfoto" title="Ohne eigenes Foto wird dein Referenzfoto genutzt">{% endif %}
+      <div class="stack grow">
+        <form method="post" action="/planen/{{ p.id }}/foto" enctype="multipart/form-data" class="row">
+          <input type="file" name="foto" accept="image/*" required><button>Foto hochladen</button>
+        </form>
+        <form method="post" action="/planen/{{ p.id }}/foto-ki" class="stack">
+          <label>Foto mit KI erzeugen {% if not ki_bild %}<span class="hint">(kein Bildgenerator in .env)</span>{% endif %}
+            <textarea name="beschreibung" rows="2" data-erwaehnen placeholder="Szene, Licht, Hintergrund, Pose … Personen mit @Name">{{ p.bildidee }}</textarea></label>
+          <ul class="erwaehnen-personen" hidden>{% for pp in personen %}<li data-name="{{ pp.name }}" data-bild="{{ '/media/' ~ (pp.sheet.datei if pp.sheet else (pp.fotos[0].datei if pp.fotos else '')) }}"></li>{% endfor %}</ul>
+          <div class="row">
+            <label class="grow">Person <select name="person_id"><option value="">Referenzfoto der Marke</option>{% for pe in personen %}<option value="{{ pe.id }}">{{ pe.name }}</option>{% endfor %}</select></label>
+            <label>Generator <select name="generator"><option value="">Automatisch</option>{% for k, n in generatoren.items() %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
+            <button {{ 'disabled' if not ki_bild }}>Foto erzeugen</button>
+          </div>
+        </form>
+        {% if medien_auswahl %}
+        <details {{ 'open' if not p.photo }}><summary class="small">Aus der Mediathek wählen</summary>
+          <form method="post" action="/planen/{{ p.id }}/foto-medien" class="pick">
+            {% for m in medien_auswahl %}<button name="medien_id" value="{{ m.id }}" class="pick-item {{ 'on' if m.datei == p.photo }}" title="{{ m.titel }}"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy"></button>{% endfor %}
+          </form>
+          <a class="small" href="/mediathek">Zur Mediathek</a>
+        </details>
+        {% endif %}
+        <label>Bildidee <span class="hint">für ein KI-Foto, wenn der Post eins braucht · wird mit „Speichern“ gesichert</span><textarea name="bildidee" rows="2" form="postform">{{ p.bildidee }}</textarea></label>
+        <label>Vorher prüfen <span class="hint">Aussagen, die du bestätigen musst</span><input name="vorher_pruefen" value="{{ p.vorher_pruefen }}" form="postform"></label>
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
+  {% if inputs %}
+  <div class="card stack">
+    <h2>Aufnahmen</h2>
+    {% for i in inputs %}<p>{{ i.art }} · <strong>{{ i.status }}</strong>{% if i.datei %} · <a href="/media/{{ i.datei }}" target="_blank">ansehen</a>{% endif %} · <a href="/input">zu Input</a></p>{% endfor %}
   </div>
+  {% endif %}
+
+  <form method="post" action="/planen/{{ p.id }}/verwerfen" onsubmit="return confirm('Post wirklich löschen?')">
+    <button class="link danger">Post löschen</button>
+  </form>
+
 </section>
 <template id="slidetpl">
   <div class="slide-edit" data-i="__i__">
-    <div class="row"><span class="nr">+</span>
-      <select name="art___i__" class="art">{% for k, n in arten.items() %}<option value="{{ k }}" {{ 'selected' if k == 'text' }}>{{ n }}</option>{% endfor %}</select>
+    <div class="slide-kopf"><span class="nr">{{ 'Neue Szene' if video else 'Neue Slide' }}</span>
+      <select name="art___i__" class="art" aria-label="Art der Slide">{% for k, n in arten.items() %}<option value="{{ k }}" {{ 'selected' if k == 'text' }}>{{ n }}</option>{% endfor %}</select>
       <span class="grow"></span></div>
     <label data-f="a"><span></span><input name="a___i__"></label>
-    <label data-f="b"><span></span><textarea name="b___i__" rows="2"></textarea></label>
+    <label data-f="b"><span></span><textarea name="b___i__" rows="3"></textarea></label>
     <label data-f="c"><span></span><input name="c___i__"></label>
-    <label data-f="liste"><span></span><textarea name="liste___i__" rows="3"></textarea></label>
+    <label data-f="liste"><span></span><textarea name="liste___i__" rows="4"></textarea></label>
   </div>
 </template>
-<script>window.FELDER = {{ felder|tojson }};</script>
+<script>window.FELDER = {{ felder|tojson }}; window.POST_ID = {{ p.id }};
+window.BILDER = {{ bilder|tojson }}; window.POST_BILD = {{ {'datei': p.photo or b.ref_photo or '', 'idee': p.bildidee}|tojson }};
+window.GENERATOREN = {{ generatoren|tojson }};</script>
 {% endblock %}

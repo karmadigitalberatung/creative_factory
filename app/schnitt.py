@@ -227,7 +227,7 @@ def overlay_titel(r, titel, p):
 
 # ---------------------------------------------------------------- Rendern
 
-def render(brand, src, words, schnitt, dauer, out_mp4, out_cover):
+def render(brand, src, words, schnitt, dauer, out_mp4, out_cover, post_titel=""):
     """Schneiden (ffmpeg) -> Motion-Seite (Kamera-Lagen, Szenen, Karaoke-Untertitel) -> Chrome rendert jedes Bild -> MP4 mit Ton."""
     import html as _html
     from .motion import regie
@@ -283,7 +283,7 @@ def render(brand, src, words, schnitt, dauer, out_mp4, out_cover):
         ut = [] if not schnitt.get("untertitel", True) else [
             {"s": z["s"], "e": z["e"], "w": [[_html.escape(w), s0, e0] for w, s0, e0 in z["w"]]} for z in zeilen]
         seite, kamera = regie.seite(tmp, a, p, lambda d: marke.font_path(brand["id"], d), {"w": qw, "h": qh}, nframes,
-                                    szenen, pos, laenge, ut, titel, zooms, bilder)
+                                    szenen, pos, laenge, ut, titel, zooms, bilder, post_titel=post_titel)
 
         # 3. Chrome rendert jedes Bild, dann Ton dazu
         bild = os.path.join(tmp, "bild.mp4")
@@ -331,7 +331,9 @@ def schneiden(brand_id, post_id, neu_transkribieren=False, schnitt=None):
     if not words:
         raise ValueError("In der Aufnahme wurde keine Sprache erkannt")
     if schnitt is None:
-        schnitt = None
+        from .jobs import video_stil_sicherstellen
+        video_stil_sicherstellen(brand_id)
+        b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
         if config.ANTHROPIC_API_KEY:
             try:
                 schnitt = ai.schnitt(b, p, words)
@@ -342,8 +344,170 @@ def schneiden(brand_id, post_id, neu_transkribieren=False, schnitt=None):
             inhalt = json.loads(p["inhalt"])
             c = (inhalt.get("slides") or [{}])[0]
             schnitt = auto_schnitt(words, " ".join(x for x in (c.get("zeile1"), c.get("zeile2")) if x))
-    info = render(b, src, words, schnitt, t["dauer"], os.path.join(d, "reel.mp4"), os.path.join(d, "reel-cover.jpg"))
+    info = render(b, src, words, schnitt, t["dauer"], os.path.join(d, "reel.mp4"), os.path.join(d, "reel-cover.jpg"), (p["titel"] or "").upper())
     schnitt["info"] = info
     db.run("UPDATE posts SET schnitt=?, video='posts/' || ? || '/reel.mp4', rendered_at=?, status=CASE WHEN status IN ('In Arbeit','Wartet auf Input') "
+           "THEN 'Zur Abnahme' ELSE status END, updated=? WHERE id=?",
+           json.dumps(schnitt, ensure_ascii=False), str(post_id), db.now(), db.now(), post_id)
+
+
+# ---------------------------------------------------------------- Reel ohne Aufnahme (reine Animation)
+
+def woerter_aus_text(text, start=0.5):
+    """Skript -> Wörter mit geschätzten Lesezeiten (wie ein Transkript, damit Szenen, Untertitel und Aufbau im Takt laufen)."""
+    out, t = [], start
+    for w in text.split():
+        dauer = 0.30 + 0.028 * len(w)
+        out.append({"w": w, "s": round(t, 3), "e": round(t + dauer, 3)})
+        t += dauer + (0.55 if re.search(r"[.!?…]$", w) else 0.22 if re.search(r"[,;:–—]$", w) else 0.06)
+    return out, round(t + 1.0, 3)
+
+
+def text_fuer_animation(inhalt):
+    """Skript des Reels; fehlt es, die Texte der Szenen in Reihenfolge."""
+    if (inhalt.get("skript") or "").strip():
+        return inhalt["skript"].strip()
+    teile = []
+    for s in inhalt.get("slides") or []:
+        for k, v in s.items():
+            if k == "art" or k == "farben":
+                continue
+            if isinstance(v, str) and v.strip():
+                teile.append(v.replace("|", " ").strip())
+            elif isinstance(v, list):
+                teile += [str(x) for x in v if str(x).strip()]
+    return " ".join(t if re.search(r"[.!?…:]$", t) else t + "." for t in teile)
+
+
+def _szene_html(s):
+    """Einfache Motion-Szene aus einer Slide (ohne Claude)."""
+    import html as h
+    e = lambda k: h.escape(str(s.get(k) or "").replace("|", " ").strip())
+    art = s.get("art")
+    if art == "cover":
+        return f'<h1>{e("zeile1")}</h1><h2><em class="akzent" data-anim="auf">{e("zeile2")}</em></h2>' + (f'<p data-anim="auf">{e("subline")}</p>' if s.get("subline") else "")
+    if art == "liste":
+        punkte = "".join(f'<li data-anim="links">{h.escape(str(x))}</li>' for x in s.get("punkte") or [])
+        return f'<h3>{e("titel")}</h3><ol class="liste">{punkte}</ol>'
+    if art == "zitat":
+        return f'<div class="karte"><h3>„{e("text")}“</h3>' + (f'<p class="klein">{e("quelle")}</p>' if s.get("quelle") else "") + "</div>"
+    if art == "zahl":
+        return f'<div class="zahl" data-anim="zaehlen">{e("zahl")}</div><p data-anim="auf">{e("text")}</p>'
+    if art == "text":
+        return f'<h2>{e("lead")}</h2><p data-anim="auf">{e("body")}</p>'
+    if art == "schluss":
+        return f'<h1>{e("text")}</h1>' + (f'<span class="pill" data-anim="pop">{e("nachsatz")}</span>' if s.get("nachsatz") else "")
+    txt = next((str(v) for k, v in s.items() if k != "art" and isinstance(v, str) and v.strip()), "")
+    return f'<h1>{h.escape(txt)}</h1>'
+
+
+def auto_animation(slides, words, titel="", ohne_akzent=False):
+    """Ohne Claude: je Slide eine Szene, über die Wörter verteilt, Gründe im Wechsel.
+    ohne_akzent: Akzentfarbe nicht als Fläche (Video-Stil „Akzent sparsam“). Die Szenen zeigen den Text, deshalb keine Untertitel."""
+    slides = [s for s in slides if any(isinstance(v, (str, list)) and v for k, v in s.items() if k != "art")] or [{"art": "leere", "text": titel}]
+    n, k = len(words), len(slides)
+    gruende = ["grund", "dunkel", "flaeche"] if ohne_akzent else ["akzent", "grund", "dunkel", "flaeche"]
+    szenen = []
+    for j, s in enumerate(slides):
+        von, bis = round(n * j / k), round(n * (j + 1) / k) - 1
+        if von > bis:
+            continue
+        grund = "dunkel" if j == k - 1 and k > 1 else gruende[j % len(gruende)]
+        szenen.append({"von": von, "bis": bis, "lage": "frei", "grund": grund, "html": _szene_html(s)})
+    return {"teile": [{"von": 0, "bis": n - 1, "zoom": False}], "titel": "", "untertitel": False, "szenen": szenen,
+            "begruendung": "Automatisch: je Szene eine Aussage, ohne Claude."}
+
+
+def _lueckenlos(szenen, laenge):
+    """Ohne Kamera darf nie Leere zu sehen sein: jede Szene läuft bis zur nächsten, die erste ab 0, die letzte bis zum Ende."""
+    if not szenen:
+        return szenen
+    szenen[0]["s"] = 0.0
+    for a, b in zip(szenen, szenen[1:]):
+        a["e"] = round(b["s"] - 0.02, 3)
+    szenen[-1]["e"] = round(laenge, 3)
+    return szenen
+
+
+def render_animation(brand, words, schnitt, laenge, out_mp4, out_cover, post_titel="", story=False, extra_bilder=None):
+    """Reel ohne Aufnahme: Motion-Seite ohne Kamera -> Chrome rendert jedes Bild -> MP4 mit stummer Tonspur."""
+    import html as _html, math
+    from .motion import regie
+    segs = [{"s": 0.0, "e": laenge, "von": 0, "bis": len(words) - 1, "zoom": False}]
+    zeilen, _ = untertitel(words, segs, schnitt.get("zeilen"))
+    a, p, v = _stil(brand)
+    pos = wortzeiten(words, segs)
+    nframes = max(1, math.ceil(laenge * regie.FPS))
+    tmp = tempfile.mkdtemp(prefix="animation-")
+    try:
+        bilder = {}
+        if brand["logo"]:
+            bilder["logo"] = storage.abs_path(brand["id"], brand["logo"])
+        if brand["ref_photo"]:
+            bilder["foto"] = storage.abs_path(brand["id"], brand["ref_photo"])
+        bilder.update(extra_bilder or {})   # Fotos für diesen Post: foto1, foto2, …
+        szenen = _lueckenlos(regie.szenen_zeiten([dict(sz, lage="frei") for sz in schnitt.get("szenen") or []], pos, laenge), laenge)
+        if not szenen:
+            raise ValueError("Für die Animation gibt es keine Szenen")
+        titel_text = (schnitt.get("titel") or "").strip()
+        titel = {"text": titel_text, "s": 0.0, "e": min(v["titel_sekunden"], laenge)} if titel_text else None
+        ut = [] if not schnitt.get("untertitel", True) else [
+            {"s": z["s"], "e": z["e"], "w": [[_html.escape(w), s0, e0] for w, s0, e0 in z["w"]]} for z in zeilen]
+        seite, _ = regie.seite(tmp, a, p, lambda d: marke.font_path(brand["id"], d), {"w": W, "h": H}, nframes,
+                               szenen, pos, laenge, ut, titel, [], bilder, ohne_kamera=True, post_titel=post_titel, story=story)
+        bild = os.path.join(tmp, "bild.mp4")
+        regie.video(ffmpeg(), seite, nframes, bild)
+        subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-i", bild, "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+                        "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "96k", "-shortest",
+                        "-movflags", "+faststart", out_mp4], check=True)
+        vorschau_dir = os.path.dirname(out_mp4)
+        for f in os.listdir(vorschau_dir):
+            if f.startswith("einblendung-"):
+                os.remove(os.path.join(vorschau_dir, f))
+        def still(t, ziel, gross=False):
+            subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-ss", f"{t:.2f}", "-i", out_mp4, "-frames:v", "1",
+                            *([] if gross else ["-vf", "scale=360:640"]), "-q:v", "3", ziel], check=True)
+        still(min(laenge - 0.1, max(1.2, szenen[0]["s"] + 1.2)), out_cover, gross=True)
+        for k, sz in enumerate(szenen):
+            still(min(sz["e"] - 0.3, sz["s"] + 0.75 * (sz["e"] - sz["s"])), os.path.join(vorschau_dir, f"einblendung-{k + 1:02d}.jpg"))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return {"laenge": round(laenge, 1), "teile": 0, "zeilen": len(zeilen), "einblendungen": len(szenen), "lagen": ["frei"], "animation": True}
+
+
+def animieren(brand_id, post_id, schnitt=None, mit_claude=True):
+    """Job: Reel ohne Aufnahme aus Skript und Szenen als Animation rendern."""
+    from . import ai
+    b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
+    p = db.one("SELECT * FROM posts WHERE id=?", post_id)
+    from .jobs import video_stil_sicherstellen
+    video_stil_sicherstellen(brand_id)
+    b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
+    inhalt = json.loads(p["inhalt"])
+    text = text_fuer_animation(inhalt)
+    if not text:
+        raise ValueError("Für die Animation fehlt ein Skript oder Text in den Szenen")
+    words, laenge = woerter_aus_text(text)
+    d = storage.post_dir(brand_id, post_id)
+    json.dump({"woerter": words, "dauer": laenge, "animation": True}, open(os.path.join(d, "animation.json"), "w"), ensure_ascii=False)
+    from . import medien
+    pf = medien.post_fotos(brand_id, p)
+    extra = {n: storage.abs_path(brand_id, m["datei"]) for n, m in pf}
+    if schnitt is None and mit_claude and config.ANTHROPIC_API_KEY:
+        try:
+            schnitt = ai.animation(b, p, words, laenge, [(n, m["titel"]) for n, m in pf])
+        except Exception as e:
+            from .jobs import hinweis
+            hinweis("Die Regie durch Claude hat nicht geklappt (" + ai.fehlertext(e) + "). Ich habe die Szenen automatisch gebaut.", b, post_id)
+    if not schnitt or not schnitt.get("szenen"):
+        c = (inhalt.get("slides") or [{}])[0]
+        from .motion import stil as vstil
+        schnitt = auto_animation(inhalt.get("slides") or [], words, " ".join(x for x in (c.get("zeile1"), c.get("zeile2")) if x),
+                                 ohne_akzent=vstil.von_marke(json.loads(b["auftreten"]))["akzent_sparsam"])
+    info = render_animation(b, words, schnitt, laenge, os.path.join(d, "reel.mp4"), os.path.join(d, "reel-cover.jpg"), (p["titel"] or "").upper(),
+                            story=p["format"] == "Story", extra_bilder=extra)
+    schnitt["info"] = info
+    schnitt["animation"] = True
+    db.run("UPDATE posts SET schnitt=?, video='posts/' || ? || '/reel.mp4', rendered_at=?, status=CASE WHEN status IN ('In Arbeit','Freigegeben','Wartet auf Input') "
            "THEN 'Zur Abnahme' ELSE status END, updated=? WHERE id=?",
            json.dumps(schnitt, ensure_ascii=False), str(post_id), db.now(), db.now(), post_id)

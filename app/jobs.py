@@ -7,8 +7,8 @@ from .engine import layouts, render
 
 _pool = ThreadPoolExecutor(max_workers=2)
 
-LABELS = {"gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
-          "schnitt": "Schneidet Video",
+LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
+          "schnitt": "Schneidet Video", "animation": "Animiert Reel",
           "muster": "Musterseiten", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
 
 
@@ -84,8 +84,18 @@ def gestalten(brand_id, post_id, neu=True):
     if p["format"] == "Talking Head":
         _input_anlegen(b, p)
         return
+    if p["format"] in ("Reel", "Story"):   # Video: mit Aufnahme schneiden, ohne Aufnahme als reine Animation
+        if p["video_roh"]:
+            from . import schnitt
+            schnitt.schneiden(brand_id, post_id, not os.path.exists(os.path.join(storage.post_dir(brand_id, post_id), "transkript.json")))
+        else:
+            from . import schnitt
+            db.run("UPDATE jobs SET kind='animation' WHERE post_id=? AND status='läuft'", post_id)
+            schnitt.animieren(brand_id, post_id)
+        return
 
-    if not p["photo"] and p["bildidee"] and config.generatoren():
+    from . import medien
+    if not p["photo"] and not medien.post_fotos(brand_id, p) and p["bildidee"] and config.generatoren():
         db.run("UPDATE jobs SET kind='foto' WHERE post_id=? AND status='läuft'", post_id)
         try:
             rel = ai.foto(b, p["bildidee"], f"post-{post_id}-ki-{int(db.now())}")
@@ -99,7 +109,8 @@ def gestalten(brand_id, post_id, neu=True):
     design = None
     if config.ANTHROPIC_API_KEY:
         letzte = db.q("SELECT design FROM posts WHERE brand_id=? AND id!=? AND design!='[]' ORDER BY updated DESC LIMIT 3", brand_id, post_id)
-        design = ai.gestalten(b, p, [json.loads(r["design"])[0] for r in letzte if json.loads(r["design"])])
+        design = ai.gestalten(b, p, [{k: v for k, v in json.loads(r["design"])[0].items() if k not in ("entwurf", "manuell")}
+                                    for r in letzte if json.loads(r["design"])])
     if not design:
         variante = p["id"] + (int(db.now()) % 7 if neu and p["design"] != "[]" else 0)
         a = json.loads(b["auftreten"])
@@ -177,6 +188,7 @@ def musterseiten(brand_id):
             if len(szenen) >= 4:
                 _muster_speichern(d, [r.render(sz, 1 if i <= 3 else i - 2, len(szenen) - 2)[0] for i, sz in enumerate(szenen, start=1)])
                 db.run("UPDATE brands SET muster_at=?, muster_design=? WHERE id=?", db.now(), json.dumps(szenen, ensure_ascii=False), brand_id)
+                video_stil_ableiten(brand_id, still=True)
                 return
         except Exception:
             traceback.print_exc()   # dann wie bisher mit den Rezepten
@@ -187,3 +199,39 @@ def musterseiten(brand_id):
     imgs += [r.render(s, i + 1, len(specs))[0] for i, s in enumerate(specs)][1:]
     _muster_speichern(d, imgs)
     db.run("UPDATE brands SET muster_at=?, muster_design=NULL WHERE id=?", db.now(), brand_id)
+    video_stil_ableiten(brand_id, still=True)
+
+
+# ---------------------------------------------------------------- Video-Stil (Motion Graphics im Look der Marke)
+
+def video_stil_ableiten(brand_id, still=False):
+    """Video-Stil aus Brand Guide und Musterseiten ableiten (Claude) und im Auftreten speichern.
+    still=True: Fehler nur protokollieren (läuft nebenbei nach den Musterseiten oder vor dem ersten Reel)."""
+    from .motion import stil as vstil
+    if not config.ANTHROPIC_API_KEY:
+        return None
+    b = _brand(brand_id)
+    if still and (json.loads(b["auftreten"]).get("video_stil") or {}).get("quelle") == "hand":
+        return None   # von Hand angepasst: nur auf ausdrücklichen Wunsch neu ableiten
+    try:
+        roh = ai.video_stil(b)
+    except Exception:
+        if still:
+            traceback.print_exc()
+            return None
+        raise
+    b = _brand(brand_id)   # frisch lesen, falls sich das Auftreten in der Zwischenzeit geändert hat
+    a = json.loads(b["auftreten"])
+    s = vstil.normalisieren(roh, a)
+    s["quelle"] = "claude"
+    s["abgeleitet"] = db.now()
+    a["video_stil"] = s
+    db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), brand_id)
+    return s
+
+
+def video_stil_sicherstellen(brand_id):
+    """Vor dem ersten Reel einmal ableiten, danach den gespeicherten Stil verwenden."""
+    b = _brand(brand_id)
+    if not json.loads(b["auftreten"]).get("video_stil"):
+        video_stil_ableiten(brand_id, still=True)

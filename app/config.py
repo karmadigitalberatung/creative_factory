@@ -33,6 +33,11 @@ _SD = {"dola-seedream-5-5": "Seedream 5.5", "dola-seedream-5-0-pro": "Seedream 5
 GENERATOREN = {"gemini": "Gemini (Nano Banana 2)",
                "seedream": next((n for k, n in _SD.items() if SEEDREAM_MODEL.startswith(k)), "Seedream")}
 
+# Buffer: OAuth-App-Client (publish.buffer.com/settings/api → App Clients). Ohne Client-ID geht es mit persönlichem API-Schlüssel.
+BUFFER_CLIENT_ID = os.environ.get("BUFFER_CLIENT_ID", "")
+BUFFER_CLIENT_SECRET = os.environ.get("BUFFER_CLIENT_SECRET", "")
+BUFFER_REDIRECT_URI = os.environ.get("BUFFER_REDIRECT_URI", "")   # leer = <Adresse der App>/connectors/buffer/callback
+
 
 def generatoren():
     """Bildgeneratoren mit Schlüssel, in der Reihenfolge, in der „Automatisch“ sie versucht."""

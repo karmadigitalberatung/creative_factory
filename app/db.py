@@ -55,7 +55,10 @@ def conn():
 
 
 MIGRATION = [("posts", "video_roh", "TEXT"), ("posts", "video", "TEXT"), ("posts", "schnitt", "TEXT"),
-             ("chats", "bilder", "TEXT"), ("brands", "muster_design", "TEXT")]
+             ("chats", "bilder", "TEXT"), ("brands", "muster_design", "TEXT"),
+             ("posts", "kanaele", "TEXT"),
+             ("users", "rolle", "TEXT NOT NULL DEFAULT 'nutzer'"),   # nutzer | admin
+             ("users", "aktiv", "INTEGER NOT NULL DEFAULT 1"), ("users", "letzter_login", "REAL")]   # {Buffer-Kanal-ID: ["post" | "reel" | "story", …]}
 
 
 def init():
@@ -64,6 +67,8 @@ def init():
         cols = [r[1] for r in conn().execute(f"PRAGMA table_info({table})")]
         if col not in cols:
             conn().execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+    if not conn().execute("SELECT id FROM users WHERE rolle='admin'").fetchone():   # das erste Konto wird Admin
+        conn().execute("UPDATE users SET rolle='admin' WHERE id=(SELECT MIN(id) FROM users)")
     conn().commit()
 
 

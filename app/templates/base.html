@@ -11,16 +11,27 @@
 </head>
 <body>
 {% set path = request.url.path %}
+{% if als_admin %}
+<div class="admin-leiste" role="status">
+  <span>Du siehst das Konto von <strong>{{ ich.email if ich else '' }}</strong>, so wie die Person es sieht. Änderungen wirken in diesem Konto.</span>
+  <form method="post" action="/admin/zurueck"><button class="small">Zurück zum Admin-Account</button></form>
+</div>
+<script>(() => { const l = document.querySelector('.admin-leiste'); const s = () => document.documentElement.style.setProperty('--admin-h', l.offsetHeight + 'px'); s(); addEventListener('resize', s); })();</script>
+{% endif %}
 {% if b is defined and b and b.onboarded %}
 <div class="app">
   <nav class="side" aria-label="Hauptmenü">
     <a class="marke" href="/">Creative Factory</a>
     <div class="side-gruppe">
       <a href="/" class="{{ 'on' if path == '/' }}" {% if path == '/' %}aria-current="page"{% endif %}>Dashboard</a>
-      <a href="/planen" class="{{ 'on' if path.startswith('/planen') }}" {% if path.startswith('/planen') %}aria-current="page"{% endif %}>Planen{% if nav_ideen %}<span class="zahl">{{ nav_ideen }}</span>{% endif %}</a>
+      <a href="/planen?ansicht=kalender" class="unterpunkt-kopf {{ 'on' if path.startswith('/ideen') or path.startswith('/planen') or path.startswith('/radar') or path.startswith('/leitlinien') }}">Planen</a>
+      <a href="/planen?ansicht=kalender" class="unterpunkt {{ 'on' if path.startswith('/planen') }}" {% if path.startswith('/planen') %}aria-current="page"{% endif %}>Redaktionsplan{% if nav_entwuerfe %}<span class="zahl">{{ nav_entwuerfe }}</span>{% endif %}</a>
+      <a href="/ideen" class="unterpunkt {{ 'on' if path.startswith('/ideen') or path.startswith('/radar') }}" {% if path.startswith('/ideen') %}aria-current="page"{% endif %}>Ideen{% if nav_ideen %}<span class="zahl alarm">{{ nav_ideen }}</span>{% endif %}</a>
+      <a href="/leitlinien" class="unterpunkt {{ 'on' if path.startswith('/leitlinien') }}" {% if path.startswith('/leitlinien') %}aria-current="page"{% endif %}>Leitlinien</a>
       <a href="/input" class="{{ 'on' if path.startswith('/input') }}" {% if path.startswith('/input') %}aria-current="page"{% endif %}>Input{% if offene_inputs %}<span class="zahl alarm">{{ offene_inputs }}</span>{% endif %}</a>
       <a href="/mediathek" class="{{ 'on' if path.startswith('/mediathek') }}" {% if path.startswith('/mediathek') %}aria-current="page"{% endif %}>Mediathek</a>
       <a href="/auftreten" class="{{ 'on' if path.startswith('/auftreten') }}" {% if path.startswith('/auftreten') %}aria-current="page"{% endif %}>Auftreten</a>
+      <a href="/connectors" class="{{ 'on' if path.startswith('/connectors') }}" {% if path.startswith('/connectors') %}aria-current="page"{% endif %}>Connectors</a>
     </div>
     <div class="side-fuss">
       {% if naechster %}
@@ -32,6 +43,7 @@
       {% endif %}
       <div class="profil">
         <span>{{ auf.label or auf.name }}</span>
+        <a class="profil-link {{ 'on' if path.startswith('/einstellungen') }}" href="/einstellungen">Einstellungen</a>
         <form method="post" action="/logout"><button class="link">Abmelden</button></form>
       </div>
     </div>
@@ -41,6 +53,17 @@
     <main>{% block main %}{% endblock %}</main>
   </div>
 </div>
+{% if chatbox %}
+<button type="button" class="chat-fab" data-chat-auf aria-label="Chat öffnen: {{ chatbox.titel }}" title="{{ chatbox.titel }}">
+  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4h0A1.5 1.5 0 0 1 4 14.5z"/></svg>
+</button>
+<aside class="chat-schublade" hidden aria-label="{{ chatbox.titel }}">
+  <button type="button" class="schliessen" data-chat-zu aria-label="Chat schließen">×</button>
+  <span class="chat-wo">{{ chatbox.seite }}</span>
+  {% with chat_title=chatbox.titel, chat_hint=chatbox.hint, chat_bereich=chatbox.bereich, post_id=chatbox.post_id, chat=chatbox.verlauf,
+          chat_seite=chatbox.seite, schnellfragen=chatbox.schnellfragen %}{% include "_chat.html" %}{% endwith %}
+</aside>
+{% endif %}
 {% else %}
 <div class="einstieg">
   <a class="marke dunkel" href="/">Creative Factory</a>

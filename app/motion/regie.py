@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from PIL import Image
 
+from . import stil as vstil
 from .chrome import Chrome
 from .sauber import saeubern
 
@@ -17,9 +18,10 @@ LAGEN = {
     "voll": dict(x=0, y=0, w=1080, h=1920, r=0, sh=0),
     "oben": dict(x=0, y=0, w=1080, h=1000, r=0, sh=0),
     "bild": dict(x=724, y=230, w=296, h=384, r=30, sh=1),
+    "frei": dict(x=0, y=0, w=1080, h=1920, r=0, sh=0),   # ohne Kamera: Szene füllt das ganze Bild
 }
-UT_Y = {"voll": 1400, "oben": 1000, "bild": 1590}
-KREIS = {"oben": ("50%", "52%"), "bild": ("82%", "22%"), "voll": ("50%", "50%")}
+UT_Y = {"voll": 1400, "oben": 1000, "bild": 1590, "frei": 1560}
+KREIS = {"oben": ("50%", "52%"), "bild": ("82%", "22%"), "voll": ("50%", "50%"), "frei": ("50%", "45%")}
 GRUENDE = ("hell", "dunkel", "akzent", "flaeche", "grund")
 
 REGIE_DOKU = """
@@ -42,6 +44,12 @@ html: Inhalt der Szene, nur HTML mit diesen Klassen (CSS ist fertig, Farben und 
   vergleich: drei Kinder (karte, <div class='pfeil'>→</div>, karte) für Vorher/Nachher; weg = durchgestrichen.
   balken-reihe > span + div.balken (style="--w: 70%", + dunkel | flaeche) mit data-anim="wachsen": Balkendiagramm.
   reihe (nebeneinander), spalte, mitte. Bilder: <img class="logo" src="logo"> und <img class="foto" src="foto"> nur wenn vorhanden.
+  Editorial-Bausteine (für ruhige, magazinartige Marken, passend zum Video-Stil):
+  titelwort: ein bis zwei Wörter riesig über die volle Breite („<div class='titelwort'>Endspurt</div>“), Größe passt sich automatisch an.
+  label: kleines Versal-Label, z. B. über dem Titel („<span class='label'>Q4 · Next Chapter</span>“).
+  haarlinie (+ senkrecht): 1-px-Linie, mit data-anim="wachsen" zieht sie sich auf.
+  zweispalter: zwei kurze Versal-Zeilen links und rechts („<div class='zweispalter'><span>…</span><span>…</span></div>“).
+  vollfoto: <img class="vollfoto" src="foto"> füllt die ganze Szene hinter dem Inhalt (abgedunkelt, Schrift wird hell); nur wenn ein Foto vorhanden ist.
   Inline-style nur für Größe, Abstände, Farben über var(--akzent) usw. Keine Skripte, keine Links, keine Bild-URLs.
 Aufbau im Takt der Sprache: data-wort="Index" an einem Element lässt es erscheinen, wenn dieses Wort gesprochen wird
   (Punkte einer Liste, Chat-Antwort, Etikett „Erledigt“). Dazu data-anim: auf (Standard), pop, links, rechts, tippen, zaehlen, wachsen, strich, blende.
@@ -94,7 +102,7 @@ def marker_farbe(p):
 
 # ---------------------------------------------------------------- Seite
 
-def _fonts(auf, font_path):
+def _fonts(auf, font_path, titel_gewicht=None):
     css, fam, vars_ = [], {}, {}
     for rolle in ("titel", "text", "akzent"):
         s = (auf.get("schriften") or {}).get(rolle) or {}
@@ -108,7 +116,9 @@ def _fonts(auf, font_path):
                        "font-weight:100 900;font-style:normal;}")
         vars_[f"--f-{rolle}"] = f"'{fam[pfad]}', 'Helvetica Neue', Arial, sans-serif"
         w = int(s.get("gewicht") or (600 if rolle == "titel" else 400))
-        vars_[f"--w-{rolle}"] = str(max(w, 600) if rolle == "titel" else w)   # im Video kräftiger, sonst zu dünn
+        if rolle == "titel" and titel_gewicht:
+            w = int(titel_gewicht)
+        vars_[f"--w-{rolle}"] = str(w)   # wie im Brand Guide (früher im Video erzwungen kräftig)
     return "".join(css), vars_
 
 
@@ -152,8 +162,9 @@ def szenen_zeiten(eintraege, pos, laenge):
     return [x for x in out if x["e"] - x["s"] > 1.2]
 
 
-def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, zooms, bilder):
-    """Schreibt ordner/seite.html. szenen mit s/e (Sekunden), lage, grund, html (roh). bilder: {Name: Dateipfad}."""
+def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, zooms, bilder, ohne_kamera=False, post_titel="", story=False):
+    """Schreibt ordner/seite.html. szenen mit s/e (Sekunden), lage, grund, html (roh). bilder: {Name: Dateipfad}.
+    ohne_kamera: reine Animation, keine Aufnahme; jede Szene hat lage „frei“ und einen eigenen Hintergrund."""
     os.makedirs(os.path.join(ordner, "bilder"), exist_ok=True)
     namen = {}
     for name, pfad in (bilder or {}).items():
@@ -162,17 +173,18 @@ def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, 
             shutil.copy(pfad, os.path.join(ordner, ziel))
             namen[name] = ziel
     marker = marker_farbe(p)
-    fonts, fvars = _fonts(auf, font_path)
+    st = vstil.von_marke(auf)
+    fonts, fvars = _fonts(auf, font_path, st["titel_gewicht"])
     farben = {"--grund": p["grund"], "--text": p["text"], "--akzent": p["akzent"], "--flaeche": p["flaeche"],
               "--dunkel": p["dunkel"], "--hell": p["hell"], "--marker": marker,
               "--auf-akzent": max((p["hell"], p["dunkel"], p["text"]), key=lambda c: kontrast(c, p["akzent"])),
               "--akzent-text": p["akzent"] if kontrast(p["akzent"], p["hell"]) >= 3 else p["dunkel"],
               "--dunkel-ut": _rgba(p["dunkel"], .86), "--dunkel-a": _rgba(p["dunkel"], .78)}
-    root = ":root{" + ";".join(f"{k}:{v}" for k, v in {**farben, **fvars}.items()) + "}"
+    root = ":root{" + ";".join(f"{k}:{v}" for k, v in {**farben, **fvars, **vstil.css_variablen(st)}.items()) + "}"
 
-    kamera, teile, vorige = [{"t": 0, "lage": "voll"}], [], None
+    kamera, teile, vorige = [{"t": 0, "lage": "frei" if ohne_kamera else "voll"}], [], None
     for k, sz in enumerate(szenen):
-        lage = sz.get("lage") if sz.get("lage") in LAGEN else "oben"
+        lage = "frei" if ohne_kamera else sz.get("lage") if sz.get("lage") in LAGEN and sz.get("lage") != "frei" else "oben"
         grund = sz.get("grund") if sz.get("grund") in GRUENDE else ("dunkel" if lage == "bild" else "grund")
         farbe = p[grund]
         if sz["s"] < 0.3 and k == 0:
@@ -180,7 +192,7 @@ def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, 
         elif lage != kamera[-1]["lage"]:
             kamera.append({"t": round(sz["s"] - 0.15, 3), "lage": lage})
         nxt = szenen[k + 1]["s"] if k + 1 < len(szenen) else None
-        if lage != "voll" and (nxt is None or nxt - sz["e"] > 0.8) and sz["e"] < laenge - 0.3:
+        if lage not in ("voll", "frei") and (nxt is None or nxt - sz["e"] > 0.8) and sz["e"] < laenge - 0.3:
             kamera.append({"t": round(sz["e"] - 0.2, 3), "lage": "voll"})
         direkt = vorige is not None and vorige["lage"] == lage and vorige["farbe"] == farbe and sz["s"] - vorige["e"] < 0.8
         cx, cy = KREIS[lage]
@@ -200,7 +212,12 @@ def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, 
                     i = start + t.end()
                     break
             kopf, inhalt = inhalt[start:i], inhalt[:start] + inhalt[i:]
-        bg = "" if lage == "voll" else f'<div class="bg" style="background:{farbe};--cx:{cx};--cy:{cy}"></div>'
+        voll = ""
+        m = re.search(r'<img\b[^>]*class="[^"]*\bvollfoto\b[^"]*"[^>]*>', inhalt)
+        if m:
+            voll, inhalt = m.group(0), inhalt[:m.start()] + inhalt[m.end():]
+            dunkel = True   # Foto über die ganze Szene ist abgedunkelt: Schrift hell
+        bg = "" if lage == "voll" else f'<div class="bg" style="background:{farbe};--cx:{cx};--cy:{cy}">{voll}</div>'
         teile.append(f'<section class="sz {lage}{" auf-dunkel" if dunkel else ""}" data-s="{sz["s"]}" data-e="{sz["e"]}"'
                      f' data-direkt="{1 if direkt else 0}">{bg}<div class="zone">{inhalt}</div>{kopf}</section>')
         vorige = {"lage": lage, "farbe": farbe, "e": sz["e"]}
@@ -214,15 +231,23 @@ def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, 
 
     modus = "farbe" if marker.lower() == p["akzent"].lower() else "pille"
     daten = {"fps": FPS, "n": n, "dauer": round(n / FPS, 3), "frames": "frames/#.jpg", "quelle": quelle,
-             "fokus": {"x": 0.5, "y": 0.42}, "zooms": zooms, "kamera": kamera, "lagen": LAGEN, "ut_y": UT_Y,
-             "ut": ut, "titel": titel or {"s": 0, "e": 0}}
+             "fokus": {"x": 0.5, "y": 0.42}, "zooms": zooms, "kamera": kamera, "lagen": LAGEN, "ut_y": dict(UT_Y, frei=1330) if story else UT_Y,
+             "ut": ut, "titel": titel or {"s": 0, "e": 0}, "ohne_kamera": bool(ohne_kamera),
+             "uebergang": st["uebergang"], "seitenzahl": bool(st["ecken"].get("seitenzahl")), "grund_dunkel": _lum(p["grund"]) < 0.25}
     css = open(os.path.join(HIER, "motion.css"), encoding="utf-8").read()
     js = open(os.path.join(HIER, "motion.js"), encoding="utf-8").read()
     daten_js = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")
     csp = "default-src 'none'; img-src 'self' file: data:; style-src 'unsafe-inline'; font-src data:; script-src 'unsafe-inline'"
+    stage_klasse = f' class="{"ohne-kamera " if ohne_kamera else ""}{"story " if story else ""}{vstil.klassen(st)}"'
+    e_ = st["ecken"]
+    ecken = ""
+    if any(e_.get(k) for k in ("oben_links", "oben_rechts", "unten_links")) or e_.get("seitenzahl"):
+        ecken = ('<div class="ecken">' + "".join(f'<span class="ecke {k.replace("_", "-")}">{html.escape((e_.get(k) or "").replace("{titel}", post_titel))}</span>'
+                                                 for k in ("oben_links", "oben_rechts", "unten_links"))
+                 + ('<span class="ecke unten-rechts seitenzahl"></span>' if e_.get("seitenzahl") else "") + "</div>")
     seite_html = (f'<!doctype html><html lang="de"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="{csp}">'
-                  f"<style>{fonts}{root}{css}</style></head><body><div id=\"stage\">"
-                  f'<div id="cam"><img id="camimg" alt=""></div>{"".join(teile)}{intro}<div class="ut {modus}"><p></p></div></div>'
+                  f"<style>{fonts}{root}{css}</style></head><body><div id=\"stage\"{stage_klasse}>"
+                  f'<div id="cam"><img id="camimg" alt=""></div>{"".join(teile)}{intro}{ecken}<div class="ut {modus}"><p></p></div></div>'
                   f"<script>window.REGIE={daten_js};</script><script>{js}</script></body></html>")
     pfad = os.path.join(ordner, "seite.html")
     open(pfad, "w", encoding="utf-8").write(seite_html)

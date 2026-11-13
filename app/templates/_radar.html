@@ -1,0 +1,104 @@
+{# Trends und Swipe-Datei, eingebunden in ideen.html (tab = trends | swipe) #}
+  {% if tab == 'trends' %}
+  <div class="card ideen-werkzeug">
+    {% if ki_text %}
+    <form method="post" action="/radar/scannen" class="stack" data-busy="Der Radar sucht im Web …">
+      <div class="small">Der Radar beobachtet deine Themen-Säulen:
+        {% for s in saeulen %}<span class="chip">{{ s.name }}</span> {% else %}<span class="muted">noch keine, dann leitet Claude die Themen aus deinem Auftreten ab.</span>{% endfor %}
+        <a href="/leitlinien">in den Leitlinien ändern</a></div>
+      <div class="row">
+        <button class="primary" {{ 'disabled' if 'radar' in radar_laeuft }}>{{ 'Radar sucht …' if 'radar' in radar_laeuft else 'Radar jetzt laufen lassen' }}</button>
+        <span class="hint">{% if red.aktiv %}Läuft automatisch einmal pro Woche.{% else %}Mit eingeschalteter Redaktion läuft er automatisch einmal pro Woche.{% endif %}</span>
+      </div>
+    </form>
+    {% else %}
+    <p class="muted">Für den Radar braucht es den Claude-Schlüssel in der Datei <code>.env</code> (ANTHROPIC_API_KEY).</p>
+    {% endif %}
+  </div>
+
+  <div {% if radar_laeuft %}data-arbeitet="{{ 'Der Radar sucht im Web' if 'radar' in radar_laeuft else 'Claude macht eine Idee daraus' }}" data-poll="/jobs"{% endif %}>
+    {% if trends %}
+    <div class="ideen-raster">
+      {% for t in trends %}
+      <article class="idee-karte {{ 'genutzt' if t.status == 'genutzt' }}">
+        <div class="idee-kopf">
+          <span class="chip dunkel">{{ t.d.art }}</span>
+          <span class="chip">{{ t.d.plattform }}</span>
+          <span class="chip">{{ t.d.format }}</span>
+          {% if t.d.gueltig_bis %}<span class="chip {{ 'hinweis' if not t.abgelaufen }}">{{ 'vorbei' if t.abgelaufen else 'bis ' ~ t.d.gueltig_bis[8:10] ~ '.' ~ t.d.gueltig_bis[5:7] ~ '.' }}</span>{% endif %}
+        </div>
+        <h3 class="idee-titel">{{ t.titel }}</h3>
+        <p class="small">{{ t.d.zusammenfassung }}</p>
+        {% if t.d.winkel %}<p class="idee-hook"><strong>Dein Winkel:</strong> {{ t.d.winkel }}</p>{% endif %}
+        {% if t.d.warum_du %}<p class="small muted">{{ t.d.warum_du }}</p>{% endif %}
+        <p class="small quellen">{% for q in t.d.quellen[:3] %}<a href="{{ q.url }}" target="_blank" rel="noopener noreferrer">{{ q.titel or q.url }}</a>{% endfor %}</p>
+        <form method="post" action="/radar/{{ t.id }}/aktion" class="idee-aktionen">
+          <input type="hidden" name="tab" value="trends">
+          {% if t.status == 'genutzt' %}
+          <a class="button small" href="/ideen">In der Werkstatt</a>
+          {% else %}
+          <button class="small primary" name="aktion" value="idee" {{ 'disabled' if not ki_text }}>Idee daraus machen</button>
+          {% endif %}
+          <button class="small link" name="aktion" value="ausblenden">Ausblenden</button>
+        </form>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="leer-hinweis">Noch keine Trends. Lass den Radar oben einmal laufen; das dauert etwa ein bis zwei Minuten.</p>
+    {% endif %}
+  </div>
+  <p class="hint">Quelle ist die Websuche: Nachrichten, Studien, Debatten und Anlässe. Reichweiten-Zahlen von Instagram oder LinkedIn sind darin nicht enthalten, dafür gibt es keine offene Schnittstelle.</p>
+
+  {% else %}
+  <div class="card ideen-werkzeug">
+    {% if ki_text %}
+    <form method="post" action="/radar/swipe" enctype="multipart/form-data" class="stack" data-busy="Claude analysiert den Post …">
+      <strong>Post ablegen</strong>
+      <label>Text des Posts <textarea name="text" rows="4" placeholder="Text von LinkedIn oder die Caption von Instagram hier einfügen"></textarea></label>
+      <div class="row">
+        <label class="grow">Link (optional) <input name="url" type="url" placeholder="https://www.linkedin.com/posts/…"></label>
+        <label>Screenshot (optional) <input name="bild" type="file" accept="image/png,image/jpeg,image/webp"></label>
+      </div>
+      <div class="row"><button class="primary" {{ 'disabled' if 'swipe' in radar_laeuft }}>{{ 'Analysiert …' if 'swipe' in radar_laeuft else 'Analysieren und ablegen' }}</button>
+        <span class="hint">Am besten Text oder Screenshot: Instagram und LinkedIn lassen Links meist nicht ohne Anmeldung lesen.</span></div>
+    </form>
+    {% else %}
+    <p class="muted">Für die Analyse braucht es den Claude-Schlüssel in der Datei <code>.env</code> (ANTHROPIC_API_KEY).</p>
+    {% endif %}
+  </div>
+
+  <div {% if radar_laeuft %}data-arbeitet="{{ 'Claude analysiert den Post' if 'swipe' in radar_laeuft else 'Claude macht eine Idee daraus' }}" data-poll="/jobs"{% endif %}>
+    {% if swipes %}
+    <div class="ideen-raster">
+      {% for s in swipes %}
+      <article class="idee-karte {{ 'genutzt' if s.status == 'genutzt' }}">
+        <div class="idee-kopf">
+          <span class="chip dunkel">{{ s.d.hook_typ }}</span>
+          <span class="chip">{{ s.d.plattform }}</span>
+          {% if s.d.autor %}<span class="chip">{{ s.d.autor }}</span>{% endif %}
+        </div>
+        {% if s.bild %}<img class="swipe-bild" src="/media/{{ s.bild }}" alt="Screenshot von „{{ s.titel }}“" loading="lazy">{% endif %}
+        <h3 class="idee-titel">{{ s.titel }}</h3>
+        {% if s.d.hook %}<p class="idee-hook">„{{ s.d.hook }}“</p>{% endif %}
+        <p class="small">{{ s.d.warum }}</p>
+        <details class="entwurf">
+          <summary class="small">Aufbau und Muster</summary>
+          <ol class="small entwurf-slides">{% for x in s.d.aufbau %}<li>{{ x }}</li>{% endfor %}</ol>
+          <p class="small"><strong>Muster:</strong> {{ s.d.muster }}</p>
+          {% if s.d.url %}<p class="small"><a href="{{ s.d.url }}" target="_blank" rel="noopener noreferrer">Original ansehen</a></p>{% endif %}
+        </details>
+        {% if s.d.winkel %}<p class="small muted"><strong>Für dich:</strong> {{ s.d.winkel }}</p>{% endif %}
+        <form method="post" action="/radar/{{ s.id }}/aktion" class="idee-aktionen">
+          <input type="hidden" name="tab" value="swipe">
+          <button class="small {{ 'primary' if s.status != 'genutzt' }}" name="aktion" value="idee" {{ 'disabled' if not ki_text }}>{{ 'Noch eine Idee' if s.status == 'genutzt' else 'Idee daraus machen' }}</button>
+          <button class="small link danger" name="aktion" value="loeschen" data-warnen="„{{ s.titel }}“ aus der Swipe-Datei löschen?">Löschen</button>
+        </form>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="leer-hinweis">Noch nichts abgelegt. Wenn dir ein Post auffällt, füg Text oder Screenshot oben ein. Claude merkt sich das Muster dahinter und nutzt es für deine Vorschläge.</p>
+    {% endif %}
+  </div>
+  {% endif %}

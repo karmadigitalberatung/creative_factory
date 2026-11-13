@@ -22,7 +22,7 @@ body { font-family: var(--f-text); font-weight: var(--w-text); color: var(--text
 .vorn { z-index: 7 !important; }
 
 /* Typografie */
-h1, h2, h3, h4, .gross, .titel { font-family: var(--f-titel); font-weight: var(--w-titel); letter-spacing: -.035em; line-height: 1.03; }
+h1, h2, h3, h4, .gross, .titel { font-family: var(--f-titel); font-weight: var(--w-titel); letter-spacing: var(--v-lw-titel, -.035em); line-height: var(--v-zh-titel, 1.03); }
 h1, .gross { font-size: 124px; }
 h2 { font-size: 88px; }
 h3 { font-size: 66px; letter-spacing: -.03em; }
@@ -37,7 +37,7 @@ em, .akzent-schrift { font-family: var(--f-akzent); font-style: normal; font-wei
 .marker { background: linear-gradient(var(--marker), var(--marker)) no-repeat 0 88% / var(--m, 100%) 40%; padding: 0 .08em; }
 
 /* Karten */
-.karte { position: relative; background: var(--hell); color: var(--text); border-radius: 38px; padding: 52px 56px; box-shadow: 0 34px 80px rgba(0, 0, 0, .28), 0 4px 14px rgba(0, 0, 0, .1); }
+.karte { position: relative; background: var(--hell); color: var(--text); border-radius: var(--v-radius, 38px); padding: 52px 56px; box-shadow: var(--v-schatten); }
 .karte.dunkel { background: var(--dunkel); color: var(--hell); }
 .karte.akzent { background: var(--akzent); color: var(--auf-akzent); }
 .karte.flaeche { background: var(--flaeche); color: var(--text); }
@@ -46,7 +46,7 @@ em, .akzent-schrift { font-family: var(--f-akzent); font-style: normal; font-wei
 .karte .trenn { margin-top: 26px; padding-top: 22px; border-top: 2px solid currentColor; border-top-color: color-mix(in srgb, currentColor 16%, transparent); }
 
 /* Pillen und Etiketten */
-.pill { display: inline-flex; align-self: flex-start; align-items: center; gap: .45em; padding: .4em .9em; font-family: var(--f-titel); font-weight: var(--w-titel); font-size: 50px; letter-spacing: -.02em; line-height: 1.1; border-radius: 999px; white-space: nowrap; background: var(--akzent); color: var(--auf-akzent); box-shadow: 0 16px 40px rgba(0, 0, 0, .22); }
+.pill { display: inline-flex; align-self: flex-start; align-items: center; gap: .45em; padding: .4em .9em; font-family: var(--f-titel); font-weight: var(--w-titel); font-size: 50px; letter-spacing: -.02em; line-height: 1.1; border-radius: 999px; white-space: nowrap; background: var(--akzent); color: var(--auf-akzent); box-shadow: var(--v-schatten-klein); }
 .pill.dunkel { background: var(--dunkel); color: var(--hell); }
 .pill.hell { background: var(--hell); color: var(--text); }
 .pill.flaeche { background: var(--flaeche); color: var(--text); }
@@ -68,14 +68,14 @@ em, .akzent-schrift { font-family: var(--f-akzent); font-style: normal; font-wei
 
 /* Chat */
 .chat { display: flex; flex-direction: column; gap: 18px; }
-.blase { max-width: 86%; padding: 28px 34px; border-radius: 38px; font-size: 44px; line-height: 1.28; box-shadow: 0 14px 34px rgba(0, 0, 0, .14); }
+.blase { max-width: 86%; padding: 28px 34px; border-radius: var(--v-radius, 38px); font-size: 44px; line-height: 1.28; box-shadow: var(--v-schatten-klein); }
 .blase.ich { align-self: flex-end; background: var(--akzent); color: var(--auf-akzent); border-bottom-right-radius: 10px; }
 .blase.du { align-self: flex-start; background: var(--hell); color: var(--text); border-bottom-left-radius: 10px; }
 .karte .blase.du { background: var(--flaeche); }
 .caret { display: inline-block; width: 3px; height: 1em; margin-left: 3px; background: currentColor; vertical-align: -.12em; }
 
 /* Browser-Fenster */
-.browser { position: relative; background: var(--hell); color: var(--text); border-radius: 30px; overflow: hidden; box-shadow: 0 34px 80px rgba(0, 0, 0, .3); }
+.browser { position: relative; background: var(--hell); color: var(--text); border-radius: var(--v-radius-klein, 30px); overflow: hidden; box-shadow: var(--v-schatten); }
 .browser .leiste { display: flex; align-items: center; gap: 18px; height: 64px; padding: 0 24px; background: color-mix(in srgb, var(--flaeche) 60%, #fff); }
 .browser .leiste::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: #ff5f57; box-shadow: 24px 0 #febc2e, 48px 0 #28c840; margin-right: 52px; }
 .browser .url { padding: 8px 22px; font-size: 28px; border-radius: 999px; background: var(--hell); color: color-mix(in srgb, var(--text) 70%, transparent); }
@@ -96,7 +96,7 @@ em, .akzent-schrift { font-family: var(--f-akzent); font-style: normal; font-wei
 
 /* Logo, Fotos */
 .logo { max-width: 360px; max-height: 140px; object-fit: contain; }
-.foto { width: 100%; border-radius: 26px; object-fit: cover; }
+.foto { width: 100%; border-radius: var(--v-radius-klein, 26px); object-fit: cover; filter: var(--v-foto-filter); }
 .vollflaeche { position: absolute; inset: 0; width: 1080px; height: 1920px; }
 
 /* Tipp-Kreis */
@@ -111,7 +111,7 @@ em, .akzent-schrift { font-family: var(--f-akzent); font-style: normal; font-wei
 
 /* Untertitel (Karaoke: aktives Wort hervorgehoben) */
 .ut { left: 50px; right: 50px; top: 0; z-index: 9; display: flex; justify-content: center; text-align: center; translate: 0 -50%; }
-.ut p { font-family: var(--f-titel); font-weight: 650; font-size: 56px; letter-spacing: -.015em; line-height: 1.34; color: var(--hell); text-wrap: balance; }
+.ut p { font-family: var(--f-titel); font-weight: var(--v-ut-gewicht, 650); font-size: var(--v-ut-groesse, 56px); letter-spacing: -.015em; line-height: 1.34; color: var(--hell); text-wrap: balance; }
 .ut span.l { padding: .06em .34em .12em; background: var(--dunkel-ut); border-radius: .24em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .ut b { font-weight: inherit; }
 .ut.farbe b.on { color: var(--marker); }
@@ -119,3 +119,71 @@ em, .akzent-schrift { font-family: var(--f-akzent); font-style: normal; font-wei
 /* Akzent auf dunklem Grund: lesbare Hervorhebungsfarbe */
 .auf-dunkel .akzent, .karte.dunkel .akzent, .browser.dunkel .akzent { color: var(--marker); }
 .karte.hell .akzent, .karte.flaeche .akzent, .karte.grund .akzent, .auf-dunkel .karte:not(.dunkel) .akzent { color: var(--akzent-text); }
+
+/* Reine Animation ohne Aufnahme: Markenfarbe als Grund, Szene über die ganze Fläche (Untertitel unten frei) */
+#stage.ohne-kamera { background: var(--grund); }
+.sz.frei .zone { top: 200px; bottom: 470px; left: 70px; right: 70px; }
+.sz.frei .kopf { top: 200px; }
+/* Ohne Kamera ist die Zone hoch: Inhalt senkrecht mittig, Vergleiche über die ganze Breite */
+.sz.frei .zone > .spalte, .sz.frei .zone > .mitte { justify-content: center; }
+.sz.frei .vergleich { width: 100%; }
+.sz.frei .vergleich > .karte { padding: 52px 44px; }
+.sz.frei .vergleich h2 { font-size: 96px; }
+
+/* ---------- Video-Stil der Marke (Klassen am #stage, Werte aus app/motion/stil.py) */
+/* Karten: Kontur oder ganz ohne Box */
+.karten-kontur .karte, .karten-kontur .karte.dunkel, .karten-kontur .karte.akzent, .karten-kontur .karte.flaeche, .karten-kontur .karte.grund,
+.karten-kontur .browser { background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); box-shadow: none; }
+.karten-keine .karte, .karten-keine .karte.dunkel, .karten-keine .karte.akzent, .karten-keine .karte.flaeche, .karten-keine .karte.grund { background: transparent; color: inherit; box-shadow: none; padding: 0; border: 0; }
+.karten-kontur .vergleich > .karte, .karten-keine .vergleich > .karte { color: inherit; }
+/* Pille mit 1-px-Kontur statt gefüllt */
+.pille-kontur .pill, .pille-kontur .pill.dunkel, .pille-kontur .pill.hell, .pille-kontur .pill.flaeche { background: transparent; color: inherit; border: 1.5px solid currentColor; box-shadow: none;
+  font-family: var(--f-text); font-weight: var(--w-text); font-size: 34px; letter-spacing: .01em; padding: .5em 1.2em; }
+.pille-kontur .pill .ck { background: none; color: inherit; }
+/* Listenmarker */
+.liste-zahl .liste li::before { width: auto; height: auto; background: none; border-radius: 0; color: var(--akzent-text); font-family: var(--f-text); font-weight: var(--w-text); font-size: 34px; justify-content: flex-start; }
+.liste-zahl .liste li { grid-template-columns: 50px 1fr; font-weight: var(--w-titel); }
+.liste-strich .liste li::before { content: "–"; width: auto; height: auto; background: none; color: inherit; font-size: 48px; }
+/* Ausrichtung */
+.ausr-mitte .sz .zone { align-items: center; text-align: center; }
+/* Akzent sparsam: keine Akzent-Headlines, Zahlen und Hervorhebungen in Textfarbe, Betonung über die Akzentschrift */
+.akzent-sparsam .akzent, .akzent-sparsam .zahl, .akzent-sparsam .intro h1 em, .akzent-sparsam .intro h1 .hl { color: inherit; }
+.akzent-sparsam .marker { background: none; }
+.akzent-sparsam .balken { background: currentColor; color: transparent; }
+/* Untertitel: frei statt Box */
+.ut-klar .ut span.l, .ut-schatten .ut span.l { background: none; padding: 0; }
+.ut-klar .ut p { color: var(--text); }
+.ut-klar .ut.auf-dunkel p { color: var(--hell); }
+.ut-schatten .ut p { text-shadow: 0 2px 18px rgba(0, 0, 0, .55); }
+.ut-klar .ut.pille b.on, .ut-schatten .ut.pille b.on { background: none; color: inherit; text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: .18em; }
+.ut-klar .ut.farbe b.on { color: var(--akzent-text); }
+.ut-versal .ut p { text-transform: uppercase; letter-spacing: .02em; }
+
+/* ---------- Editorial-Bausteine */
+/* Riesiges Titelwort über die ganze Breite (motion.js passt die Größe an) */
+.titelwort { font-family: var(--f-titel); font-weight: var(--w-titel); line-height: .9; letter-spacing: var(--v-lw-titel, -.03em); white-space: nowrap; font-size: 200px; }
+.titel-versal .titelwort { text-transform: uppercase; }
+/* Kleines Versal-Label, z. B. über dem Titel */
+.label { font-family: var(--f-text); font-weight: var(--w-text); font-size: 26px; letter-spacing: .14em; text-transform: uppercase; opacity: .85; }
+/* Haarlinien */
+.haarlinie { height: 1px; width: 100%; background: currentColor; opacity: .5; transform-origin: left center; }
+.haarlinie.senkrecht { width: 1px; height: 260px; align-self: center; transform-origin: center top; }
+/* Zweispalter mit kleinen Versal-Zeilen links und rechts */
+.zweispalter { display: flex; justify-content: space-between; gap: 40px; font-size: 24px; letter-spacing: .12em; text-transform: uppercase; }
+/* Foto über die ganze Szene (wird hinter den Inhalt gehoben) */
+.bg .vollfoto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 25%; filter: var(--v-foto-filter) brightness(.72); }
+/* Helle Fotos: Verlauf in der dunklen Markenfarbe, damit helle Schrift überall lesbar bleibt */
+.bg:has(.vollfoto)::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to top, var(--dunkel-a) 0%, color-mix(in srgb, var(--dunkel) 55%, transparent) 55%, color-mix(in srgb, var(--dunkel) 25%, transparent) 100%); }
+/* Mikrotexte in den Ecken jeder Szene */
+.ecken { inset: 0; z-index: 8; pointer-events: none; color: var(--text); font-family: var(--f-text); font-weight: var(--w-text); font-size: 22px; line-height: 1.35; letter-spacing: .08em; text-transform: uppercase; }
+.ecken.auf-dunkel { color: var(--hell); }
+.ecke { position: absolute; max-width: 360px; white-space: pre-line; }
+.ecke.oben-links { left: 64px; top: 70px; }
+.ecke.oben-rechts { right: 64px; top: 70px; text-align: right; }
+.ecke.unten-links { left: 64px; bottom: 70px; }
+.ecke.unten-rechts { right: 64px; bottom: 70px; text-align: right; }
+/* Story: oben Profilleiste, unten Antwortfeld der App freihalten, keine Ecken-Mikrotexte */
+#stage.story .ecken { display: none; }
+#stage.story .sz.frei .zone { top: 280px; bottom: 520px; }
+#stage.story .sz.frei .kopf { top: 280px; }

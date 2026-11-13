@@ -5,7 +5,7 @@
   <div class="head">
     <div class="kopf-text">
       <span class="label">{{ anzahl }} Post{{ 's' if anzahl != 1 }} · {{ mit_termin }} mit Termin</span>
-      <h1>Planen</h1>
+      <h1>Redaktionsplan</h1>
     </div>
     <div class="kopf-aktionen">
       <form method="post" action="/planen/neu" class="row wrapless">
@@ -15,41 +15,142 @@
     </div>
   </div>
 
-  <div class="split">
+  <div class="voll">
     <div class="col-main">
-      <div class="werkzeuge" data-filter>
-        <button type="button" class="filter-knopf on" data-format="">Alle</button>
-        {% for f in formate %}<button type="button" class="filter-knopf" data-format="{{ f }}">{{ f }}</button>{% endfor %}
-        <label class="suche"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-          <span class="label" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Posts suchen</span>
-          <input type="search" placeholder="Posts suchen" data-suche></label>
+      {% if offen %}
+      <div class="offen-leiste">
+        {% for o in offen %}
+        <a class="offen-kachel s-{{ o.status|lower|replace(' ', '-') }}" href="{{ o.link }}">
+          <span class="offen-punkt" aria-hidden="true"></span>
+          <span class="offen-zahl">{{ o.n }}</span>
+          <span class="offen-text"><strong>{{ o.text }}</strong>{% if o.titel %}<span class="small muted">{{ o.titel }}</span>{% endif %}</span>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="ansicht-leiste">
+        <nav class="ansicht-tabs" aria-label="Ansicht">
+          {% for k, n in ansichten.items() %}<a href="/planen?ansicht={{ k }}" class="{{ 'on' if ansicht == k }}" {% if ansicht == k %}aria-current="page"{% endif %}>{{ n }}</a>{% endfor %}
+        </nav>
+        <div class="leisten-knoepfe">
+          <details class="aufklapp" data-filter data-status-start="{{ status_filter }}">
+            <summary class="button small" aria-label="Filter"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filter<span class="filter-zahl" hidden></span></summary>
+            <div class="aufklapp-panel filter-panel">
+              <label class="suche"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <span class="sr">Posts suchen</span><input type="search" placeholder="Posts suchen" data-suche></label>
+              <span class="label">Format</span>
+              <div class="filter-reihe">
+                <button type="button" class="filter-knopf on" data-format="">Alle</button>
+                {% for f in formate %}<button type="button" class="filter-knopf" data-format="{{ f }}">{{ f }}</button>{% endfor %}
+              </div>
+              <span class="label">Status</span>
+              <div class="filter-reihe">
+                <button type="button" class="filter-knopf on" data-status="">Alle</button>
+                {% for st in ['Idee', 'Freigegeben', 'In Arbeit', 'Wartet auf Input', 'Zur Abnahme', 'Geplant'] %}<button type="button" class="filter-knopf" data-status="{{ st }}">{{ st|status }}</button>{% endfor %}
+              </div>
+              <button type="button" class="small link" data-filter-weg>Filter zurücksetzen</button>
+            </div>
+          </details>
+          <details class="aufklapp redaktion" id="redaktion" {% if red_laeuft %}data-arbeitet="Die Redaktion plant gerade" {% endif %}>
+            <summary class="button small quadrat-text" title="Redaktion: {{ 'plant mit' if red.aktiv else 'aus' }}" aria-label="Redaktion einstellen">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+              <span class="status-punkt {{ 'an' if red.aktiv }}"></span><span class="nur-breit">Redaktion</span></summary>
+            <div class="aufklapp-panel redaktion-panel">
+              <strong>{{ 'Redaktion plant mit' if red.aktiv else 'Redaktion plant nicht von selbst' }}</strong>
+              <span class="muted small">{% if red.aktiv %}{{ red.tage|map('extract', red_tage)|join(', ') }} um {{ red.uhrzeit }} · {{ red.vorlauf }} Tage voraus · {{ red_frei|length }} freie Termine{% if red.letzter_lauf %} · zuletzt {{ red.letzter_lauf|zeit }}{% endif %}{% else %}Einschalten, dann füllt sie freie Termine täglich mit Ideen.{% endif %}</span>
+              <form method="post" action="/planen/redaktion" class="stack">
+                <p class="muted small">Einmal am Tag schaut die Redaktion auf deinen Rhythmus, legt für freie Termine passende Ideen in die Ideenwerkstatt und meldet im Chat, was bald fällig ist. Sie gibt nichts frei und verschiebt nichts von selbst.</p>
+                <label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if red.aktiv }}> Redaktion plant von selbst mit</label>
+                <div class="row wrapless">
+                  <span class="label" style="margin:0">Rhythmus</span>
+                  {% for t in red_tage %}<label class="check small"><input type="checkbox" name="tage" value="{{ loop.index0 }}" {{ 'checked' if loop.index0 in red.tage }}> {{ t }}</label>{% endfor %}
+                </div>
+                <div class="row">
+                  <label>Uhrzeit <input type="time" name="uhrzeit" value="{{ red.uhrzeit }}"></label>
+                  <label>Tage voraus <input type="number" name="vorlauf" min="3" max="42" value="{{ red.vorlauf }}"></label>
+                  <label>Höchstens offene Ideen <input type="number" name="max_offen" min="1" max="20" value="{{ red.max_offen }}"></label>
+                </div>
+                <div class="row"><button class="primary">Speichern</button>
+                  <button formaction="/planen/redaktion/jetzt" {{ 'disabled' if not ki_text or red_laeuft }}>Jetzt vorschlagen</button></div>
+              </form>
+            </div>
+          </details>
+        </div>
       </div>
 
-      <details class="card ideas" {{ 'open' if not anzahl }}>
-        <summary>Mehrere Ideen auf einmal generieren</summary>
-        {% if ki_text %}
-        <form method="post" action="/planen/ideen" class="stack" data-busy="Claude liest deine Website und dein Auftreten und plant Posts. Das dauert etwa eine Minute …">
-          <div class="row">
-            <label>Anzahl <input type="number" name="anzahl" value="4" min="1" max="8"></label>
-            <label class="grow">Thema oder Anlass (optional) <input name="thema" placeholder="z. B. Herbstfarben, Kundenfrage der Woche, neues Angebot"></label>
-          </div>
-          <div class="row wrapless">
-            {% for f in formate %}<label class="check"><input type="checkbox" name="formate" value="{{ f }}" {{ 'checked' if f in auf.formate }}> {{ f }}</label>{% endfor %}
-            <button class="primary">Ideen generieren</button>
-          </div>
-        </form>
-        {% else %}
-        <p class="muted">Dafür fehlt der Claude-Schlüssel in der Datei <code>.env</code> (ANTHROPIC_API_KEY). Eigene Posts gehen auch ohne.</p>
-        {% endif %}
-      </details>
       {% if laeuft %}<span data-poll="/jobs" hidden></span>{% endif %}
 
+
+      {% if ansicht == 'kalender' %}
+      <div class="card kalender">
+        <div class="cal-head">
+          <h2>{{ monat }}</h2>
+          <a class="button quadrat" href="/planen?ansicht=kalender&m={{ vor }}" aria-label="Vorheriger Monat"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
+          <a class="button quadrat" href="/planen?ansicht=kalender&m={{ nach }}" aria-label="Nächster Monat"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
+        </div>
+        <div class="cal">
+          {% for t in ['Mo','Di','Mi','Do','Fr','Sa','So'] %}<div class="dow">{{ t }}</div>{% endfor %}
+          {% for woche in wochen %}{% for tag in woche %}
+          {% set key = tag.isoformat() %}{% set posts = tage.get(key, []) %}
+          <div class="day {{ 'other' if tag.month != erster.month }} {{ 'today' if tag == heute }} {{ 'rhythmus' if tag.weekday() in rhythmus and tag > heute and not posts }}">
+            <span class="dn">{{ tag.day }}</span>
+            {% for p in posts %}
+            <a class="cal-post s-{{ p.status|lower|replace(' ', '-') }}" href="/planen/{{ p.id }}" title="{{ p.kurz }} · {{ p.status|status }}" data-format="{{ p.format }}" data-status="{{ p.status }}" data-titel="{{ p.kurz|lower }}">
+              {% if p.thumb and loop.first %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="">{% endif %}
+              <span class="zeit">{{ p.uhrzeit }} · {{ p.format }}</span>
+              <span class="titel">{{ p.kurz }}</span>
+            </a>
+            {% endfor %}
+          </div>
+          {% endfor %}{% endfor %}
+        </div>
+        <div class="legende">
+          <span><i class="geplant"></i>Geplant</span>
+          <span><i class="abnahme"></i>Zur Abnahme</span>
+          <span><i class="arbeit"></i>In Arbeit</span>
+          <span><i></i>Idee</span>
+          {% if rhythmus %}<span><i class="frei"></i>freier Rhythmus-Tag</span>{% endif %}
+        </div>
+      </div>
+
+      {% elif ansicht == 'tabelle' %}
+      <div class="card tabelle-karte">
+        <table class="tabelle">
+          <thead><tr>
+            <th data-sort="datum">Datum</th><th data-sort="titel">Titel</th><th data-sort="format">Format</th>
+            <th data-sort="status">Status</th><th>Kanäle</th><th></th>
+          </tr></thead>
+          <tbody>
+            {% for p in tabelle %}
+            <tr data-format="{{ p.format }}" data-titel="{{ p.kurz|lower }}" data-datum="{{ p.datum or '9999' }}{{ p.uhrzeit }}" data-status="{{ p.status }}">
+              <td class="nowrap">{% if p.datum %}{{ p.wt }} {{ p.datum[8:10] }}.{{ p.datum[5:7] }}. <span class="muted">{{ p.uhrzeit }}</span>{% else %}<span class="muted">ohne Termin</span>{% endif %}</td>
+              <td><a href="/planen/{{ p.id }}">{{ p.kurz }}</a>{% if p.laeuft %} <span class="muted small">· {{ p.laeuft }}</span>{% endif %}</td>
+              <td>{{ p.format }}</td>
+              <td><span class="status-chip s-{{ p.status|lower|replace(' ', '-') }}">{{ p.status|status }}</span></td>
+              <td class="small muted">{{ p.kanaele_kurz or '–' }}</td>
+              <td class="aktionen">
+                {% if p.status == 'Idee' %}<form method="post" action="/planen/{{ p.id }}/freigeben"><button class="small">Freigeben</button></form>
+                {% elif p.status == 'Zur Abnahme' %}<a class="button small" href="/planen/{{ p.id }}#abnehmen">Abnehmen</a>
+                {% elif p.status == 'Wartet auf Input' %}<a class="button small" href="/input">Aufnahme</a>{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="muted">Noch keine Posts.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <a class="small" href="/planen?ansicht=tabelle&gepostet={{ 0 if gepostet else 1 }}">{{ 'Gepostete ausblenden' if gepostet else 'Gepostete mit anzeigen' }}</a>
+      </div>
+
+      {% else %}
       <div class="board">
         {% for klasse, titel, posts in spalten %}
         <div class="col {{ klasse }}">
           <h3>{{ titel }}<span class="anzahl">{{ posts|length }}</span></h3>
           {% for p in posts %}
-          <article class="ticket" data-format="{{ p.format }}" data-titel="{{ p.kurz|lower }}" {% if p.laeuft %}data-arbeitet="{{ p.laeuft }}"{% endif %}>
+          <article class="ticket" data-format="{{ p.format }}" data-status="{{ p.status }}" data-titel="{{ p.kurz|lower }}" {% if p.laeuft %}data-arbeitet="{{ p.laeuft }}"{% endif %}>
             {% if p.thumb %}
             <a class="ticket-bild" href="/planen/{{ p.id }}"><img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy"></a>
             {% else %}
@@ -76,19 +177,13 @@
             </div>
           </article>
           {% else %}
-          <p class="leer-hinweis">{% if klasse == 's-idee' %}Keine offenen Ideen. Frag die Redaktion rechts oder generiere welche.{% elif klasse == 's-arbeit' %}Gerade wird nichts gestaltet. Gib eine Idee frei, dann entstehen hier die Visuals.{% elif klasse == 's-abnahme' %}Nichts wartet auf deine Abnahme.{% else %}Noch nichts eingeplant.{% endif %}</p>
+          <p class="leer-hinweis">{% if klasse == 's-idee' %}Keine Entwürfe. Bereite in der <a href="/ideen">Ideenwerkstatt</a> Ideen vor.{% elif klasse == 's-arbeit' %}Gerade wird nichts gestaltet. Gib eine Idee frei, dann entstehen hier die Visuals.{% elif klasse == 's-abnahme' %}Nichts wartet auf deine Abnahme.{% else %}Noch nichts eingeplant.{% endif %}</p>
           {% endfor %}
         </div>
         {% endfor %}
       </div>
+      {% endif %}
     </div>
-    <aside class="col-side">
-      {% set chat_title = 'Redaktion' %}
-      {% set chat_hint = 'Frag oder sag einfach, z. B. „Was steht nächste Woche an?“, „Schieb den Post über Schwarz auf Freitag 9 Uhr“, „Gib mir drei Ideen für November“ oder „Was fehlt noch, damit alles rausgehen kann?“' %}
-      {% set chat_bereich = 'planen' %}
-      {% set post_id = None %}
-      {% include "_chat.html" %}
-    </aside>
   </div>
 </section>
 {% endblock %}

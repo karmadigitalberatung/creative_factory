@@ -4,7 +4,7 @@ Szene (JSON, Koordinaten in Pixel auf 1080 x 1350, Ursprung oben links):
 {
   "hintergrund": {"farbe": "#F4EFE8"}
                | {"foto": "post", "fokus": 0.4, "abdunkeln": 0.2, "unschaerfe": 0}
-               | {"verlauf": ["#F4EFE8", "#E8D9C8"], "richtung": "vertikal"},
+               | {"verlauf": ["#F4EFE8", "#E8D9C8"], "richtung": "vertikal"}   (oder "winkel": 135 statt richtung: zweite Farbe in diese Richtung),
   "elemente": [ ... in Zeichenreihenfolge ... ]
 }
 
@@ -18,7 +18,10 @@ Elemente (gemeinsam: x, y, breite, hoehe, deckkraft):
   form       form (rechteck|kreis|linie), farbe, radius, kontur, konturbreite
   farbfelder farben [hex], namen [text], form (kreis|quadrat), spalten, abstand, textfarbe
   liste      punkte [text], nummeriert, rolle, groesse, farbe, abstand, markerfarbe
-  verlauf    von (unten|oben|links|rechts), anteil (0..1), farbe, deckkraft
+  verlauf    stufenloser Farbverlauf: farbe, von (unten|oben|links|rechts: dort deckt farbe voll), anteil (0..1, Länge des Verlaufs),
+             voll (0..1, Teil davon, der ganz deckt), deckkraft, optional farbe_bis (Farbe A -> Farbe B statt ins Transparente)
+             und x/y/breite/hoehe (Bereich, Standard ganze Fläche); statt von geht auch winkel (Grad, Richtung der vollen Farbe:
+             0 oben, 90 rechts, 180 unten, 270 links, z. B. 135 = schräg nach rechts unten). Verläufe immer so, nie aus vielen Rechtecken zusammensetzen.
   logo       (das Logo der Marke, in breite eingepasst; ausrichtung links|mitte|rechts)
 Platzhalter in Texten: {nr} und {gesamt} = Slide-Nummer und Anzahl.
 """
@@ -129,6 +132,32 @@ def typ_von(e):
 
 # ---------------------------------------------------------------- Renderer
 
+VON_WINKEL = {"oben": 0, "rechts": 90, "unten": 180, "links": 270}
+
+
+def verlaufsmaske(w, h, winkel, anteil=1.0, voll=0.0, kurve=1.6):
+    """Graustufen-Maske w x h: 255 dort, wohin der Winkel zeigt (0 = oben, 90 = rechts, im Uhrzeigersinn), 0 auf der Gegenseite.
+    anteil: Länge des Übergangs ab der vollen Seite (Anteil der Verlaufslinie), dahinter 0; voll: Teil davon, der ganz deckt."""
+    import math
+    rad = math.radians(winkel % 360)
+    g = max(1, int(round(abs(w * math.sin(rad)) + abs(h * math.cos(rad)))))   # Länge der Verlaufslinie wie bei CSS
+    L = int(math.ceil(math.hypot(w, h))) + 4
+    span = max(1, int(g * anteil))
+    rampe = Image.linear_gradient("L").resize((1, span), Image.BILINEAR)
+    rampe = rampe.point([int(255 * (min(1.0, (v / 255) / (1 - voll)) ** kurve)) for v in range(256)])
+    streifen = Image.new("L", (1, L), 0)   # oben 0 … unten 255: volle Farbe „unten“ (= 180 Grad)
+    ende = (L + g) // 2
+    streifen.paste(rampe, (0, ende - span))
+    if L - ende > 0:
+        streifen.paste(255, (0, ende, 1, L))
+    quadrat = streifen.resize((L, L), Image.BILINEAR)
+    if (180 - winkel) % 360:
+        quadrat = quadrat.rotate(180 - winkel, resample=Image.BILINEAR)   # PIL dreht gegen den Uhrzeigersinn
+    lx, ly = (L - w) // 2, (L - h) // 2
+    return quadrat.crop((lx, ly, lx + w, ly + h))
+
+
+
 class Szene:
     def __init__(self, fonts, fotos=None, logo=None, size=(1080, 1350)):
         """fonts: {"titel": (pfad, gewicht), "text": ..., "akzent": ...}
@@ -150,6 +179,10 @@ class Szene:
             if hg.get("abdunkeln"):
                 img = Image.blend(img, Image.new("RGB", (W, H), (0, 0, 0)), float(hg["abdunkeln"]))
             return img.convert("RGBA")
+        if "verlauf" in hg and hg.get("winkel") not in (None, ""):
+            a, b = (hex2rgb(c) for c in hg["verlauf"][:2])
+            m = verlaufsmaske(W, H, float(hg["winkel"]), 1.0, 0.0, kurve=1.0)
+            return Image.composite(Image.new("RGB", (W, H), b), Image.new("RGB", (W, H), a), m).convert("RGBA")
         if "verlauf" in hg:
             a, b = (hex2rgb(c) for c in hg["verlauf"][:2])
             g = Image.new("RGB", (2, 2))
@@ -341,20 +374,29 @@ class Szene:
         ctx["boxen"].append(("liste", (x, y, x + bw, cy)))
 
     def verlauf(self, img, e, ctx):
+        """Stufenloser Verlauf. Bereich x/y/breite/hoehe (Standard: ganze Fläche). von = Seite, an der farbe voll deckt,
+        oder winkel in Grad (Richtung, in der die Farbe voll wird: 0 oben, 90 rechts, 180 unten, 270 links, 135 rechts unten).
+        anteil: Teil des Bereichs (ab dieser Seite), über den der Verlauf läuft, dahinter transparent bzw. farbe_bis.
+        voll: Teil dieser Strecke (ab der vollen Seite), der ganz deckt, bevor es weich ausläuft.
+        farbe_bis: statt ins Transparente in eine zweite Farbe übergehen (Farbe A -> Farbe B)."""
         W, H = self.W, self.H
-        von = e.get("von", "unten"); anteil = float(e.get("anteil", 0.5))
-        a = int(255 * float(e.get("deckkraft", 0.8)))
-        horiz = von in ("links", "rechts")
-        n = W if horiz else H
-        g = Image.new("L", (n, 1) if horiz else (1, n), 0)
-        span = max(1, int(n * anteil))
-        for i in range(n):
-            d = (i - (n - span)) if von in ("unten", "rechts") else (span - i)
-            t = max(0.0, min(1.0, d / span))
-            g.putpixel((i, 0) if horiz else (0, i), int(a * t ** 1.6))
-        g = g.resize((W, H))
-        img.alpha_composite(Image.composite(Image.new("RGBA", (W, H), self._rgba(e.get("farbe", "#000000"))),
-                                            Image.new("RGBA", (W, H), (0, 0, 0, 0)), g))
+        x, y = int(e.get("x", 0)), int(e.get("y", 0))
+        w, h = int(e.get("breite", W - x)), int(e.get("hoehe", H - y))
+        if w <= 0 or h <= 0:
+            return
+        anteil = max(0.01, min(1.0, float(e.get("anteil", 0.5))))
+        voll = max(0.0, min(0.99, float(e.get("voll", 0))))
+        deck = max(0.0, min(1.0, float(e.get("deckkraft", 0.8))))
+        winkel = float(e["winkel"]) if e.get("winkel") not in (None, "") else VON_WINKEL.get(e.get("von", "unten"), 180)
+        maske = verlaufsmaske(w, h, winkel, anteil, voll)
+        farbe = Image.new("RGBA", (w, h), self._rgba(e.get("farbe", "#000000"), deck))
+        if e.get("farbe_bis"):
+            unten = Image.new("RGBA", (w, h), self._rgba(e["farbe_bis"], deck))
+            schicht = Image.composite(farbe, unten, maske)
+        else:
+            leer = Image.new("RGBA", (w, h), hex2rgb(e.get("farbe", "#000000")) + (0,))   # gleiche Farbe, nur durchsichtig: kein Grauschleier
+            schicht = Image.composite(farbe, leer, maske)
+        img.alpha_composite(schicht, (x, y))
 
     def logo_el(self, img, e, ctx):
         if self.logo is None:
@@ -369,13 +411,66 @@ class Szene:
             lg.putalpha(lg.getchannel("A").point(lambda v: int(v * float(e["deckkraft"]))))
         img.alpha_composite(lg, (int(x), int(y)))
 
-    def render(self, szene, nr=1, gesamt=1):
+    def _logo_box(self, e):
+        if self.logo is None:
+            return None
+        bw = int(e.get("breite", 180))
+        lg = self.logo.copy()
+        lg.thumbnail((bw, int(e.get("hoehe", bw))), Image.LANCZOS)
+        x, y = float(e.get("x", 96)), float(e.get("y", 96))
+        al = e.get("ausrichtung", "links")
+        x = x if al == "links" else x + bw - lg.width if al == "rechts" else x + (bw - lg.width) / 2
+        return (x, y, x + lg.width, y + lg.height)
+
+    def render(self, szene, nr=1, gesamt=1, elemente=None):
+        """elemente: optionale Liste, in die je Element {i, typ, box} geschrieben wird (für den Layout-Editor)."""
         img = self.hintergrund(szene.get("hintergrund") or {})
         ctx = {"nr": nr, "gesamt": gesamt, "boxen": []}
         fn = {"text": self.text, "stapel": self.stapel, "foto": self.foto, "form": self.form, "farbfelder": self.farbfelder,
               "liste": self.liste, "verlauf": self.verlauf, "logo": self.logo_el}
-        for e in szene.get("elemente") or []:
-            f = fn.get(typ_von(e))
-            if f:
-                f(img, e, ctx)
+        for i, e in enumerate(szene.get("elemente") or []):
+            typ = typ_von(e)
+            f = fn.get(typ)
+            if not f:
+                continue
+            vorher = len(ctx["boxen"])
+            f(img, e, ctx)
+            if elemente is None:
+                continue
+            neu = [b for _, b in ctx["boxen"][vorher:]]
+            if typ == "form":
+                x, y = float(e.get("x", 0)), float(e.get("y", 0))
+                neu = [(x, y, x + float(e.get("breite", 100)), y + float(e.get("hoehe", 100)))]
+            elif typ == "logo":
+                neu = [b for b in [self._logo_box(e)] if b]
+            elif typ == "verlauf":   # nur Verläufe mit eigenem Bereich sind im Editor greifbar (ganzflächige liegen sonst über allem)
+                if any(k in e for k in ("y", "hoehe", "x", "breite")):
+                    x, y = float(e.get("x", 0)), float(e.get("y", 0))
+                    neu = [(x, y, x + float(e.get("breite", self.W - x)), y + float(e.get("hoehe", self.H - y)))]
+                else:
+                    neu = []
+            if neu:
+                elemente.append({"i": i, "typ": typ, "box": [round(min(b[0] for b in neu)), round(min(b[1] for b in neu)),
+                                                             round(max(b[2] for b in neu)), round(max(b[3] for b in neu))]})
         return img.convert("RGB"), ctx["boxen"]
+
+
+# Standardwerte der Renderer-Funktionen, damit der Editor mit festen Zahlen rechnen kann.
+_STANDARD_XY = {"text": (96, 96), "stapel": (96, 96), "liste": (96, 300), "farbfelder": (96, 96), "logo": (96, 96),
+                "foto": (0, 0), "form": (0, 0)}
+
+
+def normalisieren(szene, W=1080, H=1350):
+    """x, y, breite (und hoehe bei Foto/Form) und typ in jedes bewegliche Element schreiben. Ändert das Bild nicht."""
+    for e in szene.get("elemente") or []:
+        typ = typ_von(e)
+        if typ not in _STANDARD_XY:
+            continue
+        e["typ"] = typ
+        dx, dy = _STANDARD_XY[typ]
+        e["x"], e["y"] = float(e.get("x", dx)), float(e.get("y", dy))
+        if "breite" not in e:
+            e["breite"] = {"foto": W, "form": 100, "logo": 180}.get(typ, W - 2 * e["x"])
+        if typ in ("foto", "form") and "hoehe" not in e:
+            e["hoehe"] = H if typ == "foto" else 100
+    return szene
