@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Start · Creative Factory{% endblock %}
+{% block main %}
+<section class="auth wide">
+  <h1>Schön, dass du <em>da bist.</em></h1>
+  <p class="lead">Drei Angaben, dann legen wir gemeinsam dein Auftreten fest: Farben, Schriften, Logo und wie du schreibst.</p>
+  <form method="post" action="/start" enctype="multipart/form-data" class="card stack">
+    <div class="row">
+      <label class="grow">Dein Name oder Markenname <input name="name" required value="{{ auf.name }}" placeholder="z. B. Kristina Muster"></label>
+      <label class="grow">Name auf den Posts <input name="label" value="{{ auf.label }}" placeholder="z. B. byKristina"></label>
+    </div>
+    <label>Website <span class="hint">Daraus leiten wir Stil, Themen und Ideen ab.</span><input name="website" type="url" value="{{ auf.website }}" placeholder="https://"></label>
+    <label>Ein Foto von dir <span class="hint">optional · wird für Layouts und KI-Fotos genutzt</span><input type="file" name="foto" accept="image/*"></label>
+    <label class="check"><input type="checkbox" name="einwilligung" value="1">
+      Ich bin die Person auf dem Foto und willige ein, dass daraus Grafiken und KI-Bilder von mir erzeugt werden.</label>
+    <button class="primary">Weiter zum Auftreten</button>
+  </form>
+</section>
+{% endblock %}

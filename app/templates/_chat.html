@@ -1,0 +1,25 @@
+<div class="card chat" data-post="{{ post_id or '' }}" data-bereich="{{ chat_bereich }}">
+  <h2>{{ chat_title }}</h2>
+  <div class="messages">
+    {% for m in chat %}<div class="msg {{ m.role }}">{% if m.bilder %}<span class="msg-bilder">{% for x in m.bilder|jsonliste %}<img src="/media/{{ x }}" alt="">{% endfor %}</span>{% endif %}{{ m.text }}</div>{% endfor %}
+    {% if not chat %}<p class="muted small">{{ chat_hint }}</p>{% endif %}
+  </div>
+  {% if ki_text %}
+  <form class="chatform">
+    <textarea name="nachricht" rows="3" placeholder="{{ 'Was soll sich ändern? Du kannst auch Bilder anhängen.' if chat_bereich == 'auftreten' else 'Was soll sich ändern?' }}"></textarea>
+    {% if chat_bereich == 'auftreten' %}
+    <div class="anhang"></div>
+    <div class="row">
+      <label class="button small attach">Bilder anhängen<input type="file" name="bilder" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
+      <span class="grow"></span>
+      <button class="primary">Senden</button>
+    </div>
+    <span class="hint">Posts, die dir gefallen, Pinterest-Screenshots, eigene Layouts. Daraus entstehen deine Musterseiten.</span>
+    {% else %}
+    <button class="primary">Senden</button>
+    {% endif %}
+  </form>
+  {% else %}
+  <p class="muted small">Der Chat braucht den Claude-Schlüssel in der Datei <code>.env</code> (ANTHROPIC_API_KEY).</p>
+  {% endif %}
+</div>

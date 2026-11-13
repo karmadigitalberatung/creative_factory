@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Auftreten · Creative Factory{% endblock %}
+{% block main %}
+<section>
+  <div class="head">
+    <h1>Dein <em>Auftreten.</em></h1>
+    <form method="post" action="/auftreten/zurueck"><button class="link">Letzte Änderung zurücknehmen</button></form>
+  </div>
+  <p class="lead">Schreibstil, Farben, Schriften, Logo und Layout-Prinzipien. Das ist der Rahmen, in dem jeder Post individuell gestaltet wird. Am einfachsten legst du alles im Chat rechts fest.</p>
+
+  <div class="split">
+    <div class="col-main stack">
+      <div class="card muster-karte" {% if laeuft %}data-arbeitet="Claude gestaltet deine Musterseiten" data-poll="/jobs"{% endif %}>
+        <div class="row"><h2 class="grow">Musterseiten</h2>
+          <form method="post" action="/auftreten/muster"><button class="link small">neu erstellen</button></form></div>
+        <p class="muted small">So sehen Posts in deinem Auftreten aus. Jeder echte Post wird individuell gestaltet; das hier zeigt nur den Rahmen.</p>
+        <div class="muster">
+          {% for m in muster %}<img src="/media/muster/{{ m }}?v={{ b.muster_at|int }}" alt="Musterseite {{ loop.index }}">{% endfor %}
+        </div>
+        {% if b.muster_design %}<p class="hint">Gestaltet im Stil deiner Vorbilder. Neue Posts orientieren sich an diesen Musterseiten.</p>{% endif %}
+      </div>
+
+      <div class="card">
+        <div class="row"><h2 class="grow">Vorbilder</h2><a class="small" href="/mediathek?art=vorbild">in der Mediathek</a></div>
+        {% if vorbilder %}
+        <div class="vorbilder">
+          {% for m in vorbilder %}
+          <figure><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy">
+            <form method="post" action="/mediathek/{{ m.id }}/loeschen"><input type="hidden" name="zurueck" value="/auftreten"><button class="link danger small" title="Vorbild entfernen">entfernen</button></form></figure>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted small">Noch keine Vorbilder. Häng im Chat rechts Bilder an: Posts, die dir gefallen, Pinterest-Screenshots oder eigene Layouts. Claude leitet daraus deine Layout-Prinzipien und Musterseiten ab.</p>
+        {% endif %}
+      </div>
+
+      <form method="post" action="/auftreten" class="stack">
+        <div class="card stack">
+          <h2>Marke</h2>
+          <div class="row">
+            <label class="grow">Name <input name="name" value="{{ auf.name }}"></label>
+            <label class="grow">Name auf den Posts <input name="label" value="{{ auf.label }}"></label>
+          </div>
+          <label>Website <input name="website" type="url" value="{{ auf.website }}"></label>
+          <div class="row wrapless">
+            <span class="muted small">Formate:</span>
+            {% for f in formate %}<label class="check"><input type="checkbox" name="format_{{ f }}" value="1" {{ 'checked' if f in auf.formate }}> {{ f }}</label>{% endfor %}
+          </div>
+        </div>
+
+        <div class="card stack">
+          <h2>Farben</h2>
+          <div class="colors">
+            {% for f in auf.farben %}
+            <div class="color-row">
+              <input type="color" name="farbe_hex_{{ loop.index0 }}" value="{{ f.hex }}">
+              <input name="farbe_name_{{ loop.index0 }}" value="{{ f.name }}" placeholder="Name">
+              <select name="farbe_rolle_{{ loop.index0 }}">{% for r in rollen %}<option {{ 'selected' if r == f.rolle }}>{{ r }}</option>{% endfor %}</select>
+              <label class="check small"><input type="checkbox" name="farbe_weg_{{ loop.index0 }}" value="1"> weg</label>
+            </div>
+            {% endfor %}
+            <div class="color-row new">
+              <input type="color" name="farbe_neu_hex" value="#888888" data-unset="1">
+              <input name="farbe_neu_name" placeholder="Neue Farbe (Name)">
+            </div>
+          </div>
+          <p class="hint">Rollen: hintergrund, text, akzent, flaeche (zweite Fläche), dunkel, hell, weitere.</p>
+        </div>
+
+        <div class="card stack">
+          <h2>Schriften</h2>
+          {% for r, label in [('titel', 'Titel'), ('text', 'Fließtext'), ('akzent', 'Akzent')] %}
+          <div class="row">
+            <label class="grow">{{ label }} <select name="schrift_{{ r }}">{% for d, n in schriften %}<option value="{{ d }}" {{ 'selected' if d == auf.schriften[r].datei }}>{{ n }}</option>{% endfor %}</select></label>
+            <label>Stärke <input type="number" name="gewicht_{{ r }}" value="{{ auf.schriften[r].gewicht or '' }}" min="100" max="900" step="100" placeholder="–"></label>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="card stack">
+          <h2>Stil</h2>
+          <label>Schreibstil <span class="hint">Tonalität, Anrede, Tabus</span><textarea name="schreibstil" rows="5">{{ auf.schreibstil }}</textarea></label>
+          <label>Layout-Prinzipien <span class="hint">wie Posts aufgebaut sind</span><textarea name="layout_prinzipien" rows="5">{{ auf.layout_prinzipien }}</textarea></label>
+          <label>Bildstil <span class="hint">für Fotos und KI-Bilder</span><textarea name="bildstil" rows="4">{{ auf.bildstil }}</textarea></label>
+        </div>
+        <button class="primary">Auftreten speichern</button>
+      </form>
+
+      <div class="card stack">
+        <h2>Dateien</h2>
+        <div class="files">
+          <form method="post" action="/auftreten/datei" enctype="multipart/form-data" class="stack">
+            <input type="hidden" name="art" value="logo">
+            <strong>Logo</strong>
+            {% if b.logo %}<img class="logo-prev" src="/media/{{ b.logo }}" alt="Logo">{% endif %}
+            <span class="hint">PNG mit transparentem Hintergrund</span>
+            <input type="file" name="datei" accept="image/png,image/webp" required><button class="small">Logo hochladen</button>
+          </form>
+          <form method="post" action="/auftreten/datei" enctype="multipart/form-data" class="stack">
+            <input type="hidden" name="art" value="foto">
+            <strong>Referenzfoto</strong>
+            {% if b.ref_photo %}<img class="thumb" src="/media/{{ b.ref_photo }}" alt="Referenzfoto">{% endif %}
+            <input type="file" name="datei" accept="image/*" required>
+            <label class="check small"><input type="checkbox" name="einwilligung" value="1" required> Ich bin die Person auf dem Foto und willige ein.</label>
+            <button class="small">Foto hochladen</button>
+          </form>
+          <form method="post" action="/auftreten/datei" enctype="multipart/form-data" class="stack">
+            <input type="hidden" name="art" value="schrift">
+            <strong>Eigene Schrift</strong>
+            <span class="hint">.ttf oder .otf, nur wenn deine Lizenz die Nutzung erlaubt</span>
+            <input type="file" name="datei" accept=".ttf,.otf" required><button class="small">Schrift hochladen</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <aside class="col-side">
+      {% set chat_title = 'Social Corporate Design anlegen' %}
+      {% set chat_hint = 'z. B. „Lies meine Website und schlag mir ein Auftreten vor“, „Ich bin Farbberaterin, warm und elegant, viel Weißraum“, „Akzent eher Salbeigrün“' %}
+      {% set chat_bereich = 'auftreten' %}
+      {% set post_id = None %}
+      {% include "_chat.html" %}
+    </aside>
+  </div>
+</section>
+{% endblock %}

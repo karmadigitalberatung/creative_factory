@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Mediathek · Creative Factory{% endblock %}
+{% block main %}
+<section class="mediathek">
+  <aside class="m-side">
+    <h1 class="m-title">Mediathek</h1>
+    <nav class="m-nav">
+      <a href="/mediathek" class="{{ 'on' if ansicht == 'alle' and not art }}">Alle Assets <span>{{ gesamt }}</span></a>
+      {% if ansicht == 'alle' %}
+      <div class="m-sub">
+        {% for k, n in arten.items() %}{% if k != 'person' and anzahl.get(k) %}<a href="/mediathek?art={{ k }}" class="{{ 'on' if art == k }}">{{ n }} <span>{{ anzahl[k] }}</span></a>{% endif %}{% endfor %}
+      </div>
+      {% endif %}
+      <a href="/mediathek/personen" class="{{ 'on' if ansicht == 'personen' }}">Personen <span>{{ personen|length }}</span></a>
+      <a href="/mediathek/neu" class="{{ 'on' if ansicht == 'neu' }}">Neues Bild</a>
+    </nav>
+  </aside>
+
+  <div class="m-main">
+    {% if laeuft %}<span data-poll="/jobs" hidden></span>{% endif %}
+    {% if fehler and not laeuft %}<p class="error">Zuletzt fehlgeschlagen: {{ fehler }}</p>{% endif %}
+
+    {% if ansicht == 'alle' %}
+    <form method="post" action="/mediathek/upload" enctype="multipart/form-data" class="drop" data-drop="upload">
+      <input type="file" name="dateien" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <div class="drop-text">
+        <strong>Bilder hierher ziehen</strong>
+        <span class="muted">oder <button type="button" class="link" data-waehlen>Dateien auswählen</button> · JPG, PNG, WebP</span>
+      </div>
+      <div class="drop-art">
+        <label class="check small"><input type="radio" name="art" value="foto" {{ 'checked' if art != 'vorbild' }}> als Foto</label>
+        <label class="check small"><input type="radio" name="art" value="vorbild" {{ 'checked' if art == 'vorbild' }}> als Vorbild für das Auftreten</label>
+      </div>
+    </form>
+
+    <div class="media-grid">
+      {% if 'Erzeugt Bild' in laeuft and not art %}<figure class="medium platzhalter" data-arbeitet="Gemini erzeugt dein Bild"><div class="leer"></div></figure>{% endif %}
+      {% for m in medien %}
+      <figure class="medium {{ m.art }}">
+        <a href="/media/{{ m.datei }}" target="_blank"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy"></a>
+        <figcaption>
+          <span class="badge">{{ arten[m.art] }}</span>
+          <span class="small grow ellipsis" title="{{ m.beschreibung or m.titel }}">{{ m.titel }}</span>
+        </figcaption>
+        <div class="medium-actions">
+          <a class="link small" href="/media/{{ m.datei }}" download>laden</a>
+          {% if m.art in ('foto', 'generiert') %}<form method="post" action="/mediathek/{{ m.id }}/referenzfoto"><button class="link small">als Referenzfoto</button></form>{% endif %}
+          <form method="post" action="/mediathek/{{ m.id }}/loeschen" onsubmit="return confirm('Bild löschen?')"><input type="hidden" name="zurueck" value="/mediathek{{ '?art=' ~ art if art }}"><button class="link danger small">löschen</button></form>
+        </div>
+      </figure>
+      {% else %}
+      <p class="muted">Noch keine Bilder{{ ' in dieser Kategorie' if art }}.</p>
+      {% endfor %}
+    </div>
+
+    {% elif ansicht == 'personen' %}
+    <div class="m-head"><h2>Personen</h2><span class="muted small">Jede Person hat ein Referenz-Sheet, damit sie auf KI-Bildern gleich aussieht.</span></div>
+    <div class="personen">
+      {% for p in personen %}
+      <div class="card person">
+        {% if p.sheet %}<a href="/media/{{ p.sheet.datei }}" target="_blank"><img class="sheet" src="/media/{{ p.sheet.datei }}" alt="Referenz-Sheet {{ p.name }}"></a>
+        {% else %}<div class="sheet sheet-wartet" data-arbeitet="Referenz-Sheet wird erstellt"></div>{% endif %}
+        <div class="row">
+          <strong class="grow">{{ p.name }}</strong>
+          <form method="post" action="/mediathek/person/{{ p.id }}/sheet"><button class="link small">neu erstellen</button></form>
+          <form method="post" action="/mediathek/person/{{ p.id }}/loeschen" onsubmit="return confirm('Person mit allen Fotos löschen?')"><button class="link danger small">löschen</button></form>
+        </div>
+      </div>
+      {% endfor %}
+
+      <form method="post" action="/mediathek/person" enctype="multipart/form-data" class="card person neu stack" data-drop="person">
+        <strong>Person merken</strong>
+        <input name="name" placeholder="Name, z. B. Philipp" required>
+        <input type="file" name="fotos" accept="image/jpeg,image/png,image/webp" multiple hidden>
+        <div class="drop klein">
+          <div class="drop-vorschau"></div>
+          <div class="drop-text"><strong>3 Fotos hierher ziehen</strong>
+            <span class="muted small">oder <button type="button" class="link" data-waehlen>auswählen</button> · Gesicht frontal, seitlich, Oberkörper</span></div>
+        </div>
+        <label class="check small"><input type="checkbox" name="einwilligung" value="1" required> Die Person ist einverstanden, dass ihre Fotos für KI-Bilder genutzt werden.</label>
+        <button class="primary">Referenz-Sheet erstellen</button>
+      </form>
+    </div>
+
+    {% else %}
+    <div class="m-head"><h2>Neues Bild</h2></div>
+    <form method="post" action="/mediathek/erzeugen" class="card stack neu-bild" {% if 'Erzeugt Bild' in laeuft %}data-arbeitet="Gemini erzeugt dein Bild"{% endif %}>
+      <textarea name="beschreibung" rows="4" placeholder="Szene, Ort, Licht, Pose … z. B. „am Schreibtisch im Atelier, Morgenlicht, lacht in die Kamera“" required></textarea>
+      <div class="row">
+        <label class="grow">Person
+          <select name="person_id"><option value="">ohne Person</option>{% for p in personen %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></label>
+        <label>Format <select name="format">{% for k, n in formate.items() %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
+        <button class="primary" {{ 'disabled' if not ki_bild }}>Erzeugen</button>
+      </div>
+      <span class="hint">{% if ki_bild %}Nano Banana 2 · im Bildstil deines Auftretens · ohne Text im Bild · landet in „Alle Assets“{% else %}Braucht den Gemini-Schlüssel in .env.{% endif %}</span>
+    </form>
+    {% if medien %}
+    <h3 class="section-title">Zuletzt erzeugt</h3>
+    <div class="media-grid">{% for m in medien %}<figure class="medium"><a href="/media/{{ m.datei }}" target="_blank"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy"></a><figcaption><span class="small ellipsis">{{ m.titel }}</span></figcaption></figure>{% endfor %}</div>
+    {% endif %}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Werkstatt · Creative Factory{% endblock %}
+{% block main %}
+<section>
+  <div class="head">
+    <h1>Post-<em>Werkstatt.</em></h1>
+    <form method="post" action="/werkstatt/neu" class="row">
+      <select name="format">{% for f in formate %}<option>{{ f }}</option>{% endfor %}</select>
+      <button>Eigener Post</button>
+    </form>
+  </div>
+
+  <details class="card ideas" {{ 'open' if not spalten[0][2] and not spalten[1][2] and not spalten[4][2] }}>
+    <summary>Neue Ideen generieren</summary>
+    {% if ki_text %}
+    <form method="post" action="/werkstatt/ideen" class="stack" data-busy="Claude liest deine Website und dein Auftreten und plant Posts. Das dauert etwa eine Minute …">
+      <div class="row">
+        <label>Anzahl <input type="number" name="anzahl" value="4" min="1" max="8"></label>
+        <label class="grow">Thema oder Anlass (optional) <input name="thema" placeholder="z. B. Herbstfarben, Kundenfrage der Woche, neues Angebot"></label>
+      </div>
+      <div class="row wrapless">
+        {% for f in formate %}<label class="check"><input type="checkbox" name="formate" value="{{ f }}" {{ 'checked' if f in auf.formate }}> {{ f }}</label>{% endfor %}
+        <button class="primary">Ideen generieren</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="muted">Dafür fehlt der Claude-Schlüssel in der Datei <code>.env</code> (ANTHROPIC_API_KEY). Eigene Posts gehen auch ohne.</p>
+    {% endif %}
+  </details>
+  {% if laeuft %}<p class="busy" data-poll="/jobs">Visuals werden gerade erstellt …</p>{% endif %}
+
+  <div class="board">
+    {% for status, titel, posts in spalten %}
+    <div class="col">
+      <h3>{{ titel }} <span class="muted">{{ posts|length }}</span></h3>
+      {% for p in posts %}
+      <div class="ticket s-{{ status|lower|replace(' ', '-') }}" {% if p.laeuft %}data-arbeitet="{{ p.laeuft }}"{% endif %}>
+        <a href="/werkstatt/{{ p.id }}" class="ticket-body">
+          {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy">{% endif %}
+          <strong>{{ p.kurz }}</strong>
+          <span class="muted small">{{ p.format }}{% if p.datum %} · {{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{% endif %}{% if p.slide_count > 1 %} · {{ p.slide_count }} Slides{% endif %}</span>
+          {% if p.vorher_pruefen and status in ['Idee', 'Zur Abnahme'] %}<span class="warn small">Prüfen: {{ p.vorher_pruefen[:80] }}{{ '…' if p.vorher_pruefen|length > 80 }}</span>{% endif %}
+        </a>
+        {% if status == 'Idee' %}
+        <div class="ticket-actions">
+          <form method="post" action="/werkstatt/{{ p.id }}/freigeben"><button class="primary small">Freigeben</button></form>
+          <form method="post" action="/werkstatt/{{ p.id }}/verwerfen" onsubmit="return confirm('Idee verwerfen?')"><button class="link small">Verwerfen</button></form>
+        </div>
+        {% elif status == 'Wartet auf Input' %}
+        <div class="ticket-actions"><a class="button small" href="/input">Aufnahme hochladen</a></div>
+        {% elif status == 'Zur Abnahme' %}
+        <div class="ticket-actions"><a class="button small primary" href="/werkstatt/{{ p.id }}">Ansehen und abnehmen</a></div>
+        {% endif %}
+      </div>
+      {% else %}<p class="muted small empty">–</p>{% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

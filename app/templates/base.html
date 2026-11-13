@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Creative Factory{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/">Creative <em>Factory</em></a>
+    {% if b is defined and b and b.onboarded %}
+    {% set path = request.url.path %}
+    <nav class="main">
+      <a href="/" class="{{ 'on' if path == '/' }}">Dashboard</a>
+      <a href="/werkstatt" class="{{ 'on' if path.startswith('/werkstatt') }}">Werkstatt</a>
+      <a href="/input" class="{{ 'on' if path.startswith('/input') }}">Input{% if offene_inputs %} <span class="count">{{ offene_inputs }}</span>{% endif %}</a>
+      <a href="/mediathek" class="{{ 'on' if path.startswith('/mediathek') }}">Mediathek</a>
+      <a href="/auftreten" class="{{ 'on' if path.startswith('/auftreten') }}">Auftreten</a>
+    </nav>
+    {% endif %}
+    {% if b is defined and b %}
+    <form method="post" action="/logout" class="out"><span class="muted small">{{ auf.name if auf is defined and auf else '' }}</span> <button class="link">Abmelden</button></form>
+    {% endif %}
+  </header>
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  <main>{% block main %}{% endblock %}</main>
+  <script src="/static/app.js?v={{ asset_v }}"></script>
+</body>
+</html>

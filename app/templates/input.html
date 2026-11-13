@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Input · Creative Factory{% endblock %}
+{% block main %}
+<section>
+  <div class="head"><h1>Wir brauchen <em>dich.</em></h1></div>
+  <p class="lead">Manche Posts leben von dir selbst: ein Talking-Head-Video, eine Sprachaufnahme, ein echtes Foto. Hier steht, was gerade gebraucht wird, mit Skript und Anleitung.</p>
+
+  {% for i in offen %}
+  <div class="card input-req">
+    <div class="row">
+      <span class="tag">{{ i.art }}</span>
+      <h2 class="grow">{{ i.titel }}</h2>
+      {% if i.faellig %}<span class="muted">für den {{ i.faellig[8:10] }}.{{ i.faellig[5:7] }}.</span>{% endif %}
+      {% if i.post_id %}<a class="button small" href="/werkstatt/{{ i.post_id }}">Zum Post</a>{% endif %}
+    </div>
+    <div class="split2">
+      <div>
+        <h3>Skript</h3>
+        <div class="teleprompter">{{ i.skript }}</div>
+      </div>
+      <div class="stack">
+        <h3>So nimmst du es auf</h3>
+        <p class="pre">{{ i.anleitung }}</p>
+        <form method="post" action="/input/{{ i.id }}/upload" enctype="multipart/form-data" class="stack" data-busy="Wird hochgeladen …">
+          <input type="file" name="datei" accept="video/*,audio/*,image/*" required>
+          <button class="primary">Aufnahme hochladen</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card"><p class="muted">Gerade wird nichts von dir gebraucht. Sobald ein Post eine Aufnahme braucht, erscheint sie hier und im Dashboard.</p></div>
+  {% endfor %}
+
+  {% if fertig %}
+  <h2 class="spaced">Erledigt</h2>
+  <div class="card">
+    {% for i in fertig %}
+    <div class="line"><span class="tag">{{ i.art }}</span><span class="grow">{{ i.titel }}</span>
+      {% if i.datei %}<a href="/media/{{ i.datei }}" target="_blank">ansehen</a>{% endif %}<span class="muted small">{{ i.status }}</span></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

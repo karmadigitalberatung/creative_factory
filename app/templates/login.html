@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="auth">
+  <h1>{% if modus == 'login' %}Willkommen <em>zurück.</em>{% else %}Deine Posts. <em>Dein Look.</em>{% endif %}</h1>
+  <p class="lead">{% if modus == 'login' %}Melde dich an, um deine Posts zu planen und zu gestalten.{% else %}Konto anlegen, Foto hochladen, Layout wählen. Den Rest machen wir zusammen.{% endif %}</p>
+  {% if fehler %}<p class="error">{{ fehler }}</p>{% endif %}
+  <form method="post" action="/{{ 'login' if modus == 'login' else 'registrieren' }}" class="card stack">
+    <label>E-Mail <input type="email" name="email" required autocomplete="email"></label>
+    <label>Passwort <input type="password" name="passwort" required minlength="{{ 1 if modus == 'login' else 10 }}" autocomplete="{{ 'current-password' if modus == 'login' else 'new-password' }}"></label>
+    <button class="primary">{{ 'Anmelden' if modus == 'login' else 'Konto anlegen' }}</button>
+  </form>
+  <p class="muted">{% if modus == 'login' %}Noch kein Konto? <a href="/registrieren">Registrieren</a>{% else %}Schon ein Konto? <a href="/login">Anmelden</a>{% endif %}</p>
+</section>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Creative Factory{% endblock %}
+{% block main %}
+<section>
+  <div class="head">
+    <h1>Guten Tag{{ ', ' ~ auf.name.split(' ')[0] if auf.name }}<em>.</em></h1>
+    <a class="button primary" href="/werkstatt">Zur Werkstatt</a>
+  </div>
+
+  <div class="stats">
+    <a href="/werkstatt" class="stat"><b>{{ zahlen['Idee'] }}</b><span>Ideen</span></a>
+    <a href="/werkstatt" class="stat"><b>{{ zahlen['In Arbeit'] + zahlen['Freigegeben'] }}</b><span>in Arbeit</span></a>
+    <a href="/input" class="stat {{ 'alert' if zahlen['Wartet auf Input'] }}"><b>{{ zahlen['Wartet auf Input'] }}</b><span>warten auf dich</span></a>
+    <a href="/werkstatt" class="stat {{ 'alert' if zahlen['Zur Abnahme'] }}"><b>{{ zahlen['Zur Abnahme'] }}</b><span>zur Abnahme</span></a>
+    <a href="/" class="stat"><b>{{ zahlen['Geplant'] }}</b><span>geplant</span></a>
+  </div>
+  {% if laufende %}<p class="busy" data-poll="/jobs">Im Hintergrund wird gerade gearbeitet …</p>{% endif %}
+
+  <div class="split">
+    <div class="card col-main calendar">
+      <div class="cal-head">
+        <a class="button small" href="/?m={{ vor }}">←</a>
+        <h2>{{ monat }}</h2>
+        <a class="button small" href="/?m={{ nach }}">→</a>
+      </div>
+      <div class="cal">
+        {% for t in ['Mo','Di','Mi','Do','Fr','Sa','So'] %}<div class="dow">{{ t }}</div>{% endfor %}
+        {% for woche in wochen %}{% for tag in woche %}
+        {% set key = tag.isoformat() %}
+        <div class="day {{ 'other' if tag.month != erster.month }} {{ 'today' if tag == heute }}">
+          <span class="dn">{{ tag.day }}</span>
+          {% for p in tage.get(key, []) %}
+          <a class="cal-post s-{{ p.status|lower|replace(' ', '-') }}" href="/werkstatt/{{ p.id }}" title="{{ p.kurz }} · {{ p.status }}">
+            {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="">{% endif %}
+            <span>{{ p.uhrzeit }} {{ p.kurz }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% endfor %}{% endfor %}
+      </div>
+    </div>
+
+    <aside class="col-side stack">
+      <div class="card">
+        <h2>Als Nächstes</h2>
+        {% for p in naechste %}
+        <a class="line" href="/werkstatt/{{ p.id }}">
+          <span class="date">{{ p.datum[8:10] }}.{{ p.datum[5:7] }}.</span>
+          <span class="grow">{{ p.kurz }}<br><span class="muted small">{{ p.format }} · {{ p.laeuft or p.status }}</span></span>
+        </a>
+        {% else %}<p class="muted small">Noch nichts eingeplant. Gib in der Werkstatt Ideen frei und setz ein Datum.</p>{% endfor %}
+      </div>
+      <div class="card">
+        <h2>Wartet auf dich</h2>
+        {% for i in inputs %}
+        <a class="line" href="/input"><span class="tag">{{ i.art }}</span><span class="grow">{{ i.titel }}{% if i.faellig %}<br><span class="muted small">bis {{ i.faellig[8:10] }}.{{ i.faellig[5:7] }}.</span>{% endif %}</span></a>
+        {% else %}<p class="muted small">Keine Aufnahmen offen.</p>{% endfor %}
+      </div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
