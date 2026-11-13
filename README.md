@@ -70,3 +70,9 @@ Offen:
 3. **Server:** VPS mit HTTPS, Postgres, eigener Worker, Backups.
 4. **Konto:** Passwort vergessen, E-Mail-Bestätigung, Löschen, AGB und Datenschutz, Abrechnung.
 5. Mehr Google Fonts mitliefern (heute Inter und Instrument Serif; eigene Schriften kann man hochladen).
+
+## Vorlage (Stufe 1)
+
+Im Ordner [`vorlage/`](vorlage/) liegt die teilbare Vorlage ohne Web-Oberfläche: Markenprofil in `marke/profil.json`,
+Posts in `posts.json`, Rendern mit `system/cover.py` und `system/carousel.py` (Einrichtung: `system/setup.sh`).
+Sie ist für Leute gedacht, die direkt mit Claude Code arbeiten wollen; Details stehen in `vorlage/README.md`.

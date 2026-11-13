@@ -1,0 +1,52 @@
+{
+  "_info": "Design-Profil dieser Marke. Alles, was am Aussehen der Posts einstellbar ist, steht hier. Claude ändert diese Datei, wenn du im Chat Änderungen wünschst (z. B. 'Subline größer', 'Grün statt Weiß'). Farben als Hex, Größen in Pixel bei 1080 × 1350.",
+
+  "marke": {
+    "name": "Vorname Nachname",
+    "label": "VORNAME NACHNAME",
+    "website": "https://www.example.com"
+  },
+
+  "schriften": {
+    "text": {"datei": "Inter-Variable.ttf", "achsen": {"Optical size": 32, "Weight": 500}},
+    "akzent": {"datei": "InstrumentSerif-Italic.ttf"},
+    "_hinweis": "text = normale Schrift (Zeile 1, Subline, Fließtext). akzent = Schrift für Zeile 2 und Leitsätze. 'datei' sucht in system/fonts/, ein absoluter Pfad geht auch. Für Adobe Fonts: {\"adobe\": \"IvyPresto Display/Italic\"}. 'ersatz' = Datei, falls die Schrift fehlt."
+  },
+
+  "farben": {
+    "text": "#FFFFFF",
+    "verlauf": "#000000",
+    "flaeche": "#0E0E0E",
+    "flaeche_text": "#FFFFFF",
+    "papier": "#F2EEE8",
+    "papier_text": "#121212"
+  },
+
+  "cover": {
+    "vorlage": "T01",
+    "zeile1": 112,
+    "zeile2": 134,
+    "subline": 38,
+    "abstand_1_2": 124,
+    "abstand_2_sub": 92,
+    "zeilenhoehe_sub": 50,
+    "rand_unten": 150,
+    "rand_oben": 130,
+    "verlauf_hoehe": 0.55,
+    "verlauf_deckkraft": 215,
+    "schatten": 0.55
+  },
+
+  "innenslides": {
+    "stil": "V1",
+    "rand": 96,
+    "leitsatz": 86,
+    "fliesstext": 44,
+    "fliesstext_deckkraft": 0.86,
+    "leere": 104,
+    "schluss": 98,
+    "nachsatz": 36,
+    "fusszeile": 22,
+    "pfeil": true
+  }
+}

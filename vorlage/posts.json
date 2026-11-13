@@ -1,0 +1,23 @@
+{
+  "_info": "Spiegel der Notion-Datenbank für die Skripte. Notion ist die Quelle für Texte und Termine. '|' in der Subline = Zeilenumbruch. position: unten oder oben (Text darf das Gesicht nie verdecken). slides = Slide 2 bis Ende, wörtlich aus Notion; typ text (lead = erster Satz, body = Rest), leere (ein Satz), schluss (Pointe, optional nachsatz). Optional pro Post: vorlage (z. B. T04), stil (V1 bis V4), cover {...} und innenslides {...} für Abweichungen nur bei diesem Post. Der Beispiel-Post kann gelöscht werden.",
+  "posts": [
+    {
+      "datum": "2026-12-01",
+      "kurzname": "beispiel",
+      "notion": "",
+      "reihe": "Karussell",
+      "bild": "BILD-ID",
+      "zeile1": "Erste Zeile?",
+      "zeile2": "Zweite Zeile.",
+      "subline": "Eine kurze Subline,|gern auf zwei Zeilen.",
+      "position": "unten",
+      "kicker": "",
+      "slides": [
+        {"typ": "text", "lead": "Der Leitsatz steht groß in der Akzent-Schrift.", "body": "Darunter der Fließtext. Zwei bis vier kurze Sätze reichen."},
+        {"typ": "leere", "text": "Ein Satz, der wirken darf."},
+        {"typ": "text", "lead": "Noch ein Gedanke.", "body": "Zahlen wie 17 Uhr oder 85 Millimeter werden nie getrennt."},
+        {"typ": "schluss", "text": "Die Pointe zum Schluss.", "nachsatz": "Teil 2 folgt."}
+      ]
+    }
+  ]
+}
