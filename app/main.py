@@ -1,6 +1,6 @@
 """Creative Factory · Web-App.
 
-Bereiche: Dashboard (Kalender), Werkstatt (Ideen -> Freigabe -> Visuals), Input (Aufnahmen),
+Bereiche: Dashboard (Kalender), Planen (Ideen -> Freigabe -> Visuals, mit Chat), Input (Aufnahmen),
 Auftreten (Social Corporate Design mit Chat).
 Start: ~/.venvs/creative-factory-app/bin/uvicorn app.main:app --port 8040
 """
@@ -30,6 +30,7 @@ def _verwaiste_jobs():
     db.run("UPDATE jobs SET status='fehler', error='Abgebrochen, weil der Server neu gestartet wurde. Bitte noch einmal starten.', finished=? "
            "WHERE status='läuft'", db.now())
 
+WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
 MEDIA_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mp3", ".m4a", ".wav", ".jpg", ".jpeg", ".png", ".heic"}
 MAX_MEDIA = 500 * 1024 * 1024
@@ -81,6 +82,11 @@ def page(request, name, **ctx):
     if ctx.get("b"):
         ctx["auf"] = json.loads(ctx["b"]["auftreten"])
         ctx["offene_inputs"] = db.one("SELECT COUNT(*) n FROM inputs WHERE brand_id=? AND status='offen'", ctx["b"]["id"])["n"]
+        ctx["nav_ideen"] = db.one("SELECT COUNT(*) n FROM posts WHERE brand_id=? AND status='Idee'", ctx["b"]["id"])["n"]
+        n = db.one("SELECT * FROM posts WHERE brand_id=? AND datum>=? AND status IN ('Geplant','Zur Abnahme','In Arbeit','Wartet auf Input','Freigegeben') "
+                   "ORDER BY datum, uhrzeit LIMIT 1", ctx["b"]["id"], datetime.date.today().isoformat())
+        if n:
+            ctx["naechster"] = dict(n, wt=WOCHENTAGE[datetime.date.fromisoformat(n["datum"]).weekday()])
     return tpl.TemplateResponse(request, name, ctx)
 
 
@@ -199,24 +205,56 @@ def dashboard(request: Request, m: str = ""):
     inputs = db.q("SELECT * FROM inputs WHERE brand_id=? AND status='offen' ORDER BY faellig, id LIMIT 4", b["id"])
     vor = (erster - datetime.timedelta(days=1)).replace(day=1)
     nach = (erster + datetime.timedelta(days=32)).replace(day=1)
+    for n in naechste:
+        n["wt"] = WOCHENTAGE[datetime.date.fromisoformat(n["datum"]).weekday()]
+    abnahme = db.one("SELECT * FROM posts WHERE brand_id=? AND status='Zur Abnahme' ORDER BY datum='' , datum, id LIMIT 1", b["id"])
+    chat = db.q("SELECT * FROM (SELECT * FROM chats WHERE brand_id=? AND bereich='planen' ORDER BY id DESC LIMIT 2) ORDER BY id", b["id"])
+    wochentag = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][heute.weekday()]
     return page(request, "dashboard.html", b=b, wochen=wochen, tage=tage, erster=erster, heute=heute,
                 monat=f"{MONATE[erster.month - 1]} {erster.year}", vor=vor.strftime("%Y-%m"), nach=nach.strftime("%Y-%m"),
-                zahlen=zahlen, naechste=naechste, inputs=inputs, laufende=len(laufende))
+                zahlen=zahlen, naechste=naechste, inputs=inputs, laufende=len(laufende),
+                abnahme=post_view(abnahme, laufende) if abnahme else None, chat=chat,
+                datum_text=f"{wochentag}, {heute.day}. {MONATE[heute.month - 1]}", hinweis=_hinweis(b, zahlen, abnahme))
 
 
-# ---------------------------------------------------------------- Werkstatt
+def _hinweis(b, zahlen, abnahme):
+    """Ein Satz oben im Dashboard: das Wichtigste, das gerade zu tun ist."""
+    letzter = db.one("SELECT MAX(datum) d FROM posts WHERE brand_id=? AND status IN ('Geplant','Zur Abnahme') AND datum!=''", b["id"])["d"]
+    bis = f" Geplant ist bis {letzter[8:10]}.{letzter[5:7]}." if letzter else ""
+    if zahlen["Zur Abnahme"]:
+        n = zahlen["Zur Abnahme"]
+        return {"text": f"{n} Post{'s warten' if n > 1 else ' wartet'} auf deine Abnahme.{bis}", "link": f"/planen/{abnahme['id']}", "aktion": "Jetzt ansehen"}
+    if zahlen["Wartet auf Input"]:
+        n = zahlen["Wartet auf Input"]
+        return {"text": f"{n} Aufnahme{'n' if n > 1 else ''} von dir {'fehlen' if n > 1 else 'fehlt'} noch.{bis}", "link": "/input", "aktion": "Zum Input"}
+    if zahlen["Idee"]:
+        n = zahlen["Idee"]
+        return {"text": f"{n} Idee{'n warten' if n > 1 else ' wartet'} auf deine Freigabe.{bis}", "link": "/planen", "aktion": "Ideen ansehen"}
+    return {"text": "Alles erledigt." + bis + " Frag die Redaktion nach neuen Ideen.", "link": "/planen", "aktion": "Zur Planung"}
 
-SPALTEN = [("Idee", "Ideen"), ("Freigegeben", "Freigegeben"), ("In Arbeit", "In Arbeit"),
-           ("Wartet auf Input", "Wartet auf Input"), ("Zur Abnahme", "Zur Abnahme"), ("Geplant", "Geplant")]
+
+# ---------------------------------------------------------------- Planen
+
+SPALTEN = [("s-idee", "Ideen", ("Idee",)), ("s-arbeit", "In Arbeit", ("Freigegeben", "In Arbeit", "Wartet auf Input")),
+           ("s-abnahme", "Zur Abnahme", ("Zur Abnahme",)), ("s-geplant", "Geplant", ("Geplant",))]
 
 
-@app.get("/werkstatt", response_class=HTMLResponse)
+@app.get("/planen", response_class=HTMLResponse)
 def werkstatt(request: Request):
     b = brand_of(request)
     laufende = jobs.running(b["id"])
     rows = db.q("SELECT * FROM posts WHERE brand_id=? AND status!='Gepostet' ORDER BY CASE WHEN datum='' THEN 1 ELSE 0 END, datum, id", b["id"])
-    spalten = [(s, t, [post_view(r, laufende) for r in rows if r["status"] == s]) for s, t in SPALTEN]
-    return page(request, "werkstatt.html", b=b, spalten=spalten, laeuft=bool(laufende), formate=marke.FORMATE)
+    spalten = [(k, t, [post_view(r, laufende) for r in rows if r["status"] in st]) for k, t, st in SPALTEN]
+    mit_termin = sum(1 for r in rows if r["datum"])
+    chat = db.q("SELECT * FROM chats WHERE brand_id=? AND bereich='planen' ORDER BY id", b["id"])
+    return page(request, "planen.html", b=b, spalten=spalten, laeuft=bool(laufende), formate=marke.FORMATE, chat=chat,
+                anzahl=len(rows), mit_termin=mit_termin)
+
+
+@app.get("/werkstatt{rest:path}")
+def werkstatt_alt(rest: str):
+    """Alte Adressen (vor der Umbenennung in „Planen“) weiterleiten."""
+    return go("/planen" + rest)
 
 
 def _neuer_post(b, inhalt, status="Idee", **kw):
@@ -225,14 +263,14 @@ def _neuer_post(b, inhalt, status="Idee", **kw):
     return db.run(f"INSERT INTO posts (brand_id,{keys}) VALUES (?{',?' * len(cols)})", b["id"], *cols.values())
 
 
-@app.post("/werkstatt/ideen")
+@app.post("/planen/ideen")
 def werkstatt_ideen(request: Request, anzahl: int = Form(4), thema: str = Form(""), formate: List[str] = Form([])):
     b = brand_of(request)
     try:
         res = ai.ideen(b, max(1, min(anzahl, 8)), thema.strip(), formate or None)
     except (ai.KeinSchluessel, ai.AIFehler) as e:
         flash(request, str(e))
-        return go("/werkstatt")
+        return go("/planen")
     for i in res:
         inhalt = {"slides": i["slides"]}
         if i["format"] == "Talking Head" and i["skript"]:
@@ -240,10 +278,10 @@ def werkstatt_ideen(request: Request, anzahl: int = Form(4), thema: str = Form("
         _neuer_post(b, inhalt, "Idee", titel=i["titel"], format=i["format"], caption_ig=i["caption_ig"],
                     caption_li=i["caption_li"], bildidee=i["bildidee"], vorher_pruefen=i["vorher_pruefen"])
     flash(request, f"{len(res)} neue Ideen. Gib frei, was dir gefällt, dann entstehen die Visuals.")
-    return go("/werkstatt")
+    return go("/planen")
 
 
-@app.post("/werkstatt/neu")
+@app.post("/planen/neu")
 def werkstatt_neu(request: Request, format: str = Form("Carousel")):
     b = brand_of(request)
     fmt = format if format in marke.FORMATE else "Carousel"
@@ -252,7 +290,7 @@ def werkstatt_neu(request: Request, format: str = Form("Carousel")):
         slides += [{"art": "text", "lead": "Ein Leitsatz.", "body": "Ein paar kurze Sätze dazu."},
                    {"art": "schluss", "text": "Die Pointe.", "nachsatz": ""}]
     pid = _neuer_post(b, {"slides": slides}, "Idee", titel="Neuer Post", format=fmt)
-    return go(f"/werkstatt/{pid}")
+    return go(f"/planen/{pid}")
 
 
 def _freigeben(b, pid):
@@ -260,15 +298,15 @@ def _freigeben(b, pid):
     jobs.start(b["id"], pid, "gestalten", jobs.gestalten, b["id"], pid)
 
 
-@app.post("/werkstatt/{pid}/freigeben")
+@app.post("/planen/{pid}/freigeben")
 def werkstatt_freigeben(request: Request, pid: int):
     b = brand_of(request)
     post_of(b, pid)
     _freigeben(b, pid)
-    return go(request.headers.get("referer") or "/werkstatt")
+    return go(request.headers.get("referer") or "/planen")
 
 
-@app.post("/werkstatt/{pid}/verwerfen")
+@app.post("/planen/{pid}/verwerfen")
 def werkstatt_verwerfen(request: Request, pid: int):
     b = brand_of(request)
     post_of(b, pid)
@@ -276,10 +314,10 @@ def werkstatt_verwerfen(request: Request, pid: int):
     db.run("DELETE FROM inputs WHERE post_id=? AND brand_id=?", pid, b["id"])
     db.run("DELETE FROM posts WHERE id=? AND brand_id=?", pid, b["id"])
     flash(request, "Post verworfen.")
-    return go("/werkstatt")
+    return go("/planen")
 
 
-@app.get("/werkstatt/{pid}", response_class=HTMLResponse)
+@app.get("/planen/{pid}", response_class=HTMLResponse)
 def post_edit(request: Request, pid: int):
     b = brand_of(request)
     p = post_of(b, pid)
@@ -307,7 +345,7 @@ def post_edit(request: Request, pid: int):
                 laeuft=jobs.LABELS.get(laufende[0]["kind"]) if laufende else None, fehler=jobs.last_error(b["id"], pid))
 
 
-@app.post("/werkstatt/{pid}")
+@app.post("/planen/{pid}")
 async def post_save(request: Request, pid: int):
     b = brand_of(request)
     p = post_of(b, pid)
@@ -351,10 +389,10 @@ async def post_save(request: Request, pid: int):
             jobs.start(b["id"], pid, "render", jobs.render_post, b["id"], pid, nachgezogen)
         else:
             jobs.start(b["id"], pid, "gestalten", jobs.gestalten, b["id"], pid, False)
-    return go(f"/werkstatt/{pid}")
+    return go(f"/planen/{pid}")
 
 
-@app.post("/werkstatt/{pid}/foto")
+@app.post("/planen/{pid}/foto")
 async def post_photo(request: Request, pid: int, foto: UploadFile = File(...)):
     b = brand_of(request)
     p = post_of(b, pid)
@@ -362,14 +400,14 @@ async def post_photo(request: Request, pid: int, foto: UploadFile = File(...)):
         rel = medien.speichern(b["id"], await foto.read(), "foto", f"Foto zu „{p['titel']}“")["datei"]
     except ValueError as e:
         flash(request, str(e))
-        return go(f"/werkstatt/{pid}")
+        return go(f"/planen/{pid}")
     db.run("UPDATE posts SET photo=?, updated=? WHERE id=?", rel, db.now(), pid)
     if p["design"] != "[]":
         jobs.start(b["id"], pid, "render", jobs.render_post, b["id"], pid)
-    return go(f"/werkstatt/{pid}")
+    return go(f"/planen/{pid}")
 
 
-@app.post("/werkstatt/{pid}/foto-ki")
+@app.post("/planen/{pid}/foto-ki")
 def post_photo_ai(request: Request, pid: int, beschreibung: str = Form(...), person_id: Optional[int] = Form(None),
                   generator: str = Form("")):
     b = brand_of(request)
@@ -386,10 +424,10 @@ def post_photo_ai(request: Request, pid: int, beschreibung: str = Form(...), per
         flash(request, "Kein Bildgenerator in .env (GEMINI_API_KEY oder SEEDREAM_API_KEY). Lade vorerst ein eigenes Foto hoch.")
     else:
         jobs.start(b["id"], pid, "foto", job)
-    return go(f"/werkstatt/{pid}")
+    return go(f"/planen/{pid}")
 
 
-@app.post("/werkstatt/{pid}/foto-medien")
+@app.post("/planen/{pid}/foto-medien")
 def post_photo_library(request: Request, pid: int, medien_id: int = Form(...)):
     b = brand_of(request)
     p = post_of(b, pid)
@@ -398,17 +436,17 @@ def post_photo_library(request: Request, pid: int, medien_id: int = Form(...)):
         db.run("UPDATE posts SET photo=?, updated=? WHERE id=?", m["datei"], db.now(), pid)
         if p["design"] != "[]":
             jobs.start(b["id"], pid, "render", jobs.render_post, b["id"], pid)
-    return go(f"/werkstatt/{pid}")
+    return go(f"/planen/{pid}")
 
 
-@app.get("/werkstatt/{pid}/status")
+@app.get("/planen/{pid}/status")
 def post_status(request: Request, pid: int):
     b = brand_of(request)
     post_of(b, pid)
     return {"laeuft": bool(jobs.running(b["id"], pid))}
 
 
-@app.get("/werkstatt/{pid}/download")
+@app.get("/planen/{pid}/download")
 def post_download(request: Request, pid: int):
     b = brand_of(request)
     p = post_of(b, pid)
@@ -418,7 +456,7 @@ def post_download(request: Request, pid: int):
     return FileResponse(storage.zip_post(b["id"], pid, name), filename=f"{name}.zip")
 
 
-@app.get("/werkstatt/{pid}/linkedin.pdf")
+@app.get("/planen/{pid}/linkedin.pdf")
 def post_pdf(request: Request, pid: int):
     b = brand_of(request)
     p = post_of(b, pid)
@@ -477,12 +515,12 @@ async def input_upload(request: Request, iid: int, datei: UploadFile = File(...)
             db.run("UPDATE posts SET video_roh=? WHERE id=?", rel, i["post_id"])
             jobs.start(b["id"], i["post_id"], "schnitt", schnitt.schneiden, b["id"], i["post_id"], True)
             flash(request, "Danke! Die Aufnahme ist da und wird jetzt geschnitten: Untertitel, Titel, Pausen und Versprecher raus. Das dauert ein bis drei Minuten.")
-            return go(f"/werkstatt/{i['post_id']}")
+            return go(f"/planen/{i['post_id']}")
     flash(request, "Danke! Die Aufnahme ist da und liegt beim Post.")
     return go("/input")
 
 
-@app.post("/werkstatt/{pid}/video")
+@app.post("/planen/{pid}/video")
 async def post_video(request: Request, pid: int, datei: UploadFile = File(...)):
     """Aufnahme direkt am Post hochladen (ohne Umweg über Input)."""
     b = brand_of(request)
@@ -490,7 +528,7 @@ async def post_video(request: Request, pid: int, datei: UploadFile = File(...)):
     ext = os.path.splitext(datei.filename or "")[1].lower()
     if ext not in schnitt.VIDEO_EXT:
         flash(request, "Bitte ein Video hochladen (MP4, MOV).")
-        return go(f"/werkstatt/{pid}")
+        return go(f"/planen/{pid}")
     rel = os.path.join("inputs", f"post-{pid}-{int(db.now())}{ext}")
     path = storage.brand_dir(b["id"], rel)
     size = 0
@@ -503,21 +541,21 @@ async def post_video(request: Request, pid: int, datei: UploadFile = File(...)):
             if size > MAX_MEDIA:
                 f.close(); os.remove(path)
                 flash(request, "Datei ist größer als 500 MB.")
-                return go(f"/werkstatt/{pid}")
+                return go(f"/planen/{pid}")
             f.write(chunk)
     db.run("UPDATE posts SET video_roh=?, status=CASE WHEN status IN ('Idee','Freigegeben','Wartet auf Input') THEN 'In Arbeit' ELSE status END WHERE id=?", rel, pid)
     db.run("UPDATE inputs SET status='hochgeladen', datei=? WHERE post_id=? AND status='offen'", rel, pid)
     jobs.start(b["id"], pid, "schnitt", schnitt.schneiden, b["id"], pid, True)
-    return go(f"/werkstatt/{pid}")
+    return go(f"/planen/{pid}")
 
 
-@app.post("/werkstatt/{pid}/schneiden")
+@app.post("/planen/{pid}/schneiden")
 def post_cut(request: Request, pid: int, art: str = Form("claude")):
     b = brand_of(request)
     p = post_of(b, pid)
     if not p["video_roh"]:
         flash(request, "Noch keine Aufnahme da.")
-        return go(f"/werkstatt/{pid}")
+        return go(f"/planen/{pid}")
     if art == "auto":
         tpath = os.path.join(storage.post_dir(b["id"], pid), "transkript.json")
         words = json.load(open(tpath))["woerter"] if os.path.exists(tpath) else None
@@ -527,10 +565,10 @@ def post_cut(request: Request, pid: int, art: str = Form("claude")):
         jobs.start(b["id"], pid, "schnitt", schnitt.schneiden, b["id"], pid, False, s)
     else:
         jobs.start(b["id"], pid, "schnitt", schnitt.schneiden, b["id"], pid)
-    return go(f"/werkstatt/{pid}")
+    return go(f"/planen/{pid}")
 
 
-@app.get("/werkstatt/{pid}/reel.mp4")
+@app.get("/planen/{pid}/reel.mp4")
 def post_reel(request: Request, pid: int):
     b = brand_of(request)
     p = post_of(b, pid)
@@ -763,6 +801,44 @@ def mediathek_ref(request: Request, mid: int):
 
 # ---------------------------------------------------------------- Chat
 
+def _chat_planen(b, nachricht, hist):
+    """Redaktions-Mitarbeiter: beantwortet Fragen zur Planung, plant um, gibt frei, legt neue Ideen an."""
+    posts = db.q("SELECT * FROM posts WHERE brand_id=? AND status!='Gepostet' ORDER BY CASE WHEN datum='' THEN 1 ELSE 0 END, datum, id", b["id"])
+    res = ai.chat_planen(b, nachricht, hist, posts, datetime.date.today())
+    eigene = {p["id"]: p for p in posts}
+    erledigt = []
+    for c in res["aenderungen"]:
+        p = eigene.get(c["post_id"])
+        if not p:
+            continue
+        sets = {}
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", c["datum"] or ""):
+            sets["datum"] = c["datum"]
+        if re.fullmatch(r"\d{2}:\d{2}", c["uhrzeit"] or ""):
+            sets["uhrzeit"] = c["uhrzeit"]
+        if (c["titel"] or "").strip():
+            sets["titel"] = c["titel"].strip()[:200]
+        if sets:
+            db.run("UPDATE posts SET " + ", ".join(f"{k}=?" for k in sets) + ", updated=? WHERE id=?", *sets.values(), db.now(), p["id"])
+            erledigt.append(p["id"])
+        if c["freigeben"] and p["status"] == "Idee":
+            _freigeben(b, p["id"])
+            erledigt.append(p["id"])
+    for i in res["neue_ideen"]:
+        inhalt = {"slides": i["slides"]}
+        if i["format"] == "Talking Head" and i["skript"]:
+            inhalt["skript"] = i["skript"]
+        extra = {}
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", i["datum"] or ""):
+            extra["datum"] = i["datum"]
+        if re.fullmatch(r"\d{2}:\d{2}", i["uhrzeit"] or ""):
+            extra["uhrzeit"] = i["uhrzeit"]
+        _neuer_post(b, inhalt, "Idee", titel=i["titel"], format=i["format"], caption_ig=i["caption_ig"], caption_li=i["caption_li"],
+                    bildidee=i["bildidee"], vorher_pruefen=i["vorher_pruefen"], **extra)
+    return res["antwort"], bool(erledigt or res["neue_ideen"])
+
+
+
 @app.post("/chat")
 def chat(request: Request, nachricht: str = Form(""), bereich: str = Form("post"), post_id: Optional[int] = Form(None),
          bilder: Optional[List[UploadFile]] = File(None)):
@@ -798,6 +874,8 @@ def chat(request: Request, nachricht: str = Form(""), bereich: str = Form("post"
             elif muster_neu or neue:
                 jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
                 geaendert = True
+        elif bereich == "planen":
+            antwort, geaendert = _chat_planen(b, nachricht, hist)
         elif p is not None:
             res = ai.chat_post(b, p, nachricht, hist)
             antwort = res["antwort"]

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Planen · Creative Factory{% endblock %}
+{% block main %}
+<section class="planen">
+  <div class="head">
+    <div class="kopf-text">
+      <span class="label">{{ anzahl }} Post{{ 's' if anzahl != 1 }} · {{ mit_termin }} mit Termin</span>
+      <h1>Planen</h1>
+    </div>
+    <div class="kopf-aktionen">
+      <form method="post" action="/planen/neu" class="row wrapless">
+        <select name="format" aria-label="Format für den eigenen Post" style="width:auto">{% for f in formate %}<option>{{ f }}</option>{% endfor %}</select>
+        <button>Eigener Post</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="col-main">
+      <div class="werkzeuge" data-filter>
+        <button type="button" class="filter-knopf on" data-format="">Alle</button>
+        {% for f in formate %}<button type="button" class="filter-knopf" data-format="{{ f }}">{{ f }}</button>{% endfor %}
+        <label class="suche"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <span class="label" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Posts suchen</span>
+          <input type="search" placeholder="Posts suchen" data-suche></label>
+      </div>
+
+      <details class="card ideas" {{ 'open' if not anzahl }}>
+        <summary>Mehrere Ideen auf einmal generieren</summary>
+        {% if ki_text %}
+        <form method="post" action="/planen/ideen" class="stack" data-busy="Claude liest deine Website und dein Auftreten und plant Posts. Das dauert etwa eine Minute …">
+          <div class="row">
+            <label>Anzahl <input type="number" name="anzahl" value="4" min="1" max="8"></label>
+            <label class="grow">Thema oder Anlass (optional) <input name="thema" placeholder="z. B. Herbstfarben, Kundenfrage der Woche, neues Angebot"></label>
+          </div>
+          <div class="row wrapless">
+            {% for f in formate %}<label class="check"><input type="checkbox" name="formate" value="{{ f }}" {{ 'checked' if f in auf.formate }}> {{ f }}</label>{% endfor %}
+            <button class="primary">Ideen generieren</button>
+          </div>
+        </form>
+        {% else %}
+        <p class="muted">Dafür fehlt der Claude-Schlüssel in der Datei <code>.env</code> (ANTHROPIC_API_KEY). Eigene Posts gehen auch ohne.</p>
+        {% endif %}
+      </details>
+      {% if laeuft %}<span data-poll="/jobs" hidden></span>{% endif %}
+
+      <div class="board">
+        {% for klasse, titel, posts in spalten %}
+        <div class="col {{ klasse }}">
+          <h3>{{ titel }}<span class="anzahl">{{ posts|length }}</span></h3>
+          {% for p in posts %}
+          <article class="ticket" data-format="{{ p.format }}" data-titel="{{ p.kurz|lower }}" {% if p.laeuft %}data-arbeitet="{{ p.laeuft }}"{% endif %}>
+            {% if p.thumb %}
+            <a class="ticket-bild" href="/planen/{{ p.id }}"><img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy"></a>
+            {% else %}
+            <a class="ticket-platzhalter" href="/planen/{{ p.id }}"><span class="label">{{ p.format }} · Entwurf</span><strong>{{ p.kurz }}</strong></a>
+            {% endif %}
+            <div class="ticket-body">
+              <a class="titel" href="/planen/{{ p.id }}">{{ p.kurz }}</a>
+              <span class="chips">
+                <span class="chip">{{ p.format }}{% if p.slide_count > 1 %} · {{ p.slide_count }}{% endif %}</span>
+                {% if p.datum %}<span class="chip dunkel">{{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{% if p.status in ['Geplant', 'Zur Abnahme'] %} · {{ p.uhrzeit }}{% endif %}</span>{% endif %}
+                {% if p.status in ['Freigegeben', 'Wartet auf Input'] %}<span class="chip">{{ p.status }}</span>{% endif %}
+              </span>
+              {% if p.vorher_pruefen and p.status in ['Idee', 'Zur Abnahme'] %}<span class="chip hinweis">Prüfen: {{ p.vorher_pruefen[:90] }}{{ '…' if p.vorher_pruefen|length > 90 }}</span>{% endif %}
+              {% if p.status == 'Idee' %}
+              <div class="ticket-actions">
+                <form method="post" action="/planen/{{ p.id }}/freigeben"><button class="primary small">Freigeben</button></form>
+                <form method="post" action="/planen/{{ p.id }}/verwerfen" onsubmit="return confirm('Idee verwerfen?')"><button class="small">Verwerfen</button></form>
+              </div>
+              {% elif p.status == 'Wartet auf Input' %}
+              <div class="ticket-actions"><a class="button small primary" href="/input">Aufnahme hochladen</a></div>
+              {% elif p.status == 'Zur Abnahme' %}
+              <div class="ticket-actions"><a class="button small primary" href="/planen/{{ p.id }}#abnehmen">Ansehen und abnehmen</a></div>
+              {% endif %}
+            </div>
+          </article>
+          {% else %}
+          <p class="leer-hinweis">{% if klasse == 's-idee' %}Keine offenen Ideen. Frag die Redaktion rechts oder generiere welche.{% elif klasse == 's-arbeit' %}Gerade wird nichts gestaltet. Gib eine Idee frei, dann entstehen hier die Visuals.{% elif klasse == 's-abnahme' %}Nichts wartet auf deine Abnahme.{% else %}Noch nichts eingeplant.{% endif %}</p>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <aside class="col-side">
+      {% set chat_title = 'Redaktion' %}
+      {% set chat_hint = 'Frag oder sag einfach, z. B. „Was steht nächste Woche an?“, „Schieb den Post über Schwarz auf Freitag 9 Uhr“, „Gib mir drei Ideen für November“ oder „Was fehlt noch, damit alles rausgehen kann?“' %}
+      {% set chat_bereich = 'planen' %}
+      {% set post_id = None %}
+      {% include "_chat.html" %}
+    </aside>
+  </div>
+</section>
+{% endblock %}

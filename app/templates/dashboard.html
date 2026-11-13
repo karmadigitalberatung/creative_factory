@@ -3,59 +3,92 @@
 {% block main %}
 <section>
   <div class="head">
-    <h1>Guten Tag{{ ', ' ~ auf.name.split(' ')[0] if auf.name }}<em>.</em></h1>
-    <a class="button primary" href="/werkstatt">Zur Werkstatt</a>
+    <div class="kopf-text">
+      <span class="label">{{ datum_text }}</span>
+      <h1>Guten Tag{{ ', ' ~ auf.name.split(' ')[0] if auf.name }}.</h1>
+    </div>
+    <div class="kopf-aktionen">
+      <a class="button" href="/mediathek">Mediathek</a>
+      <a class="button primary" href="/planen">Planen und Ideen</a>
+    </div>
   </div>
+
+  <a class="hinweis-leiste" href="{{ hinweis.link }}"><span>{{ hinweis.text }}</span><strong>{{ hinweis.aktion }}</strong></a>
 
   <div class="stats">
-    <a href="/werkstatt" class="stat"><b>{{ zahlen['Idee'] }}</b><span>Ideen</span></a>
-    <a href="/werkstatt" class="stat"><b>{{ zahlen['In Arbeit'] + zahlen['Freigegeben'] }}</b><span>in Arbeit</span></a>
-    <a href="/input" class="stat {{ 'alert' if zahlen['Wartet auf Input'] }}"><b>{{ zahlen['Wartet auf Input'] }}</b><span>warten auf dich</span></a>
-    <a href="/werkstatt" class="stat {{ 'alert' if zahlen['Zur Abnahme'] }}"><b>{{ zahlen['Zur Abnahme'] }}</b><span>zur Abnahme</span></a>
-    <a href="/" class="stat"><b>{{ zahlen['Geplant'] }}</b><span>geplant</span></a>
+    <a href="/planen" class="stat"><b>{{ zahlen['Idee'] }}</b><span>Ideen</span></a>
+    <a href="/planen" class="stat"><b>{{ zahlen['In Arbeit'] + zahlen['Freigegeben'] }}</b><span>In Arbeit</span></a>
+    <a href="/input" class="stat {{ 'alert' if zahlen['Wartet auf Input'] }}"><b>{{ zahlen['Wartet auf Input'] }}</b><span>Warten auf dich</span></a>
+    <a href="/planen" class="stat {{ 'alert' if zahlen['Zur Abnahme'] }}"><b>{{ zahlen['Zur Abnahme'] }}</b><span>Zur Abnahme</span></a>
+    <a href="/planen" class="stat"><b>{{ zahlen['Geplant'] }}</b><span>Geplant</span></a>
   </div>
-  {% if laufende %}<p class="busy" data-poll="/jobs">Im Hintergrund wird gerade gearbeitet …</p>{% endif %}
+  {% if laufende %}<span data-poll="/jobs" hidden></span>{% endif %}
 
-  <div class="split">
-    <div class="card col-main calendar">
+  <div class="dash">
+    <div class="card kalender">
       <div class="cal-head">
-        <a class="button small" href="/?m={{ vor }}">←</a>
         <h2>{{ monat }}</h2>
-        <a class="button small" href="/?m={{ nach }}">→</a>
+        <a class="button quadrat" href="/?m={{ vor }}" aria-label="Vorheriger Monat"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></a>
+        <a class="button quadrat" href="/?m={{ nach }}" aria-label="Nächster Monat"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
       </div>
       <div class="cal">
         {% for t in ['Mo','Di','Mi','Do','Fr','Sa','So'] %}<div class="dow">{{ t }}</div>{% endfor %}
         {% for woche in wochen %}{% for tag in woche %}
-        {% set key = tag.isoformat() %}
+        {% set key = tag.isoformat() %}{% set posts = tage.get(key, []) %}
         <div class="day {{ 'other' if tag.month != erster.month }} {{ 'today' if tag == heute }}">
           <span class="dn">{{ tag.day }}</span>
-          {% for p in tage.get(key, []) %}
-          <a class="cal-post s-{{ p.status|lower|replace(' ', '-') }}" href="/werkstatt/{{ p.id }}" title="{{ p.kurz }} · {{ p.status }}">
-            {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="">{% endif %}
-            <span>{{ p.uhrzeit }} {{ p.kurz }}</span>
+          {% for p in posts %}
+          <a class="cal-post s-{{ p.status|lower|replace(' ', '-') }}" href="/planen/{{ p.id }}" title="{{ p.kurz }} · {{ p.status }}">
+            {% if p.thumb and loop.first %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="">{% endif %}
+            <span class="zeit">{{ p.uhrzeit }} · {{ 'Video' if p.format == 'Talking Head' else p.status if p.status in ['Idee', 'Zur Abnahme'] else p.format }}</span>
+            <span class="titel">{{ p.kurz }}</span>
           </a>
           {% endfor %}
         </div>
         {% endfor %}{% endfor %}
       </div>
+      <div class="legende">
+        <span><i class="geplant"></i>Geplant</span>
+        <span><i class="abnahme"></i>Zur Abnahme</span>
+        <span><i class="arbeit"></i>In Arbeit</span>
+        <span><i></i>Idee</span>
+      </div>
     </div>
 
-    <aside class="col-side stack">
-      <div class="card">
-        <h2>Als Nächstes</h2>
-        {% for p in naechste %}
-        <a class="line" href="/werkstatt/{{ p.id }}">
-          <span class="date">{{ p.datum[8:10] }}.{{ p.datum[5:7] }}.</span>
-          <span class="grow">{{ p.kurz }}<br><span class="muted small">{{ p.format }} · {{ p.laeuft or p.status }}</span></span>
-        </a>
-        {% else %}<p class="muted small">Noch nichts eingeplant. Gib in der Werkstatt Ideen frei und setz ein Datum.</p>{% endfor %}
-      </div>
-      <div class="card">
-        <h2>Wartet auf dich</h2>
-        {% for i in inputs %}
-        <a class="line" href="/input"><span class="tag">{{ i.art }}</span><span class="grow">{{ i.titel }}{% if i.faellig %}<br><span class="muted small">bis {{ i.faellig[8:10] }}.{{ i.faellig[5:7] }}.</span>{% endif %}</span></a>
-        {% else %}<p class="muted small">Keine Aufnahmen offen.</p>{% endfor %}
-      </div>
+    <aside class="dash-seite">
+      {% if abnahme %}
+      <section class="abnahme-karte" aria-label="Zur Abnahme">
+        {% if abnahme.thumb %}<img src="/media/{{ abnahme.thumb }}?v={{ abnahme.rendered_at|int }}" alt="Vorschau von „{{ abnahme.kurz }}“">{% endif %}
+        <div class="abnahme-text">
+          <span class="label">Zur Abnahme{% if zahlen['Zur Abnahme'] > 1 %} · 1 von {{ zahlen['Zur Abnahme'] }}{% endif %}</span>
+          <strong>{{ abnahme.kurz }}</strong>
+          <span class="muted small">{{ abnahme.format }}{% if abnahme.slide_count > 1 %} · {{ abnahme.slide_count }} Slides{% endif %} · {% if abnahme.datum %}{{ abnahme.datum[8:10] }}.{{ abnahme.datum[5:7] }}.{% else %}noch kein Termin{% endif %}</span>
+          <div class="knoepfe">
+            <a class="button primary" href="/planen/{{ abnahme.id }}#abnehmen">Abnehmen und einplanen</a>
+            <a class="button" href="/planen/{{ abnahme.id }}">Ansehen</a>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+
+      <section aria-label="Als Nächstes">
+        <h3 class="liste-titel">Als Nächstes</h3>
+        <div class="kachel-liste">
+          {% for p in naechste %}
+          <a class="line" href="/planen/{{ p.id }}">
+            <span class="date">{{ p.datum[8:10] }}<span>{{ p.wt }}</span></span>
+            {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="">{% else %}<span class="ohne-bild"></span>{% endif %}
+            <span class="grow"><span>{{ p.kurz }}</span><span class="muted small">{{ p.format }} · {{ p.laeuft or p.status }} · {{ p.uhrzeit }}</span></span>
+          </a>
+          {% else %}<p class="leer-hinweis">Noch nichts eingeplant. Gib unter Planen Ideen frei und setz ein Datum, oder frag die Redaktion.</p>{% endfor %}
+        </div>
+      </section>
+
+      {% set chat_title = 'Redaktion' %}
+      {% set chat_hint = 'Frag, was ansteht, plan um oder bitte um neue Ideen.' %}
+      {% set chat_bereich = 'planen' %}
+      {% set post_id = None %}
+      <div class="mini-chat">{% include "_chat.html" %}</div>
     </aside>
   </div>
 </section>

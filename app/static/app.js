@@ -157,3 +157,19 @@ document.querySelectorAll("[data-drop]").forEach((form) => {
     if (input.files.length < 3) { e.preventDefault(); alert("Bitte genau 3 Fotos der Person hinzufügen."); }
   });
 });
+
+// Planen: nach Format filtern und nach Titel suchen (nur Anzeige, ohne Neuladen).
+document.querySelectorAll("[data-filter]").forEach((leiste) => {
+  let format = "", suche = "";
+  const anwenden = () => {
+    document.querySelectorAll(".board .ticket").forEach((t) => {
+      t.hidden = (format && t.dataset.format !== format) || (suche && !t.dataset.titel.includes(suche));
+    });
+  };
+  leiste.querySelectorAll("[data-format]").forEach((k) => k.addEventListener("click", () => {
+    leiste.querySelectorAll("[data-format]").forEach((x) => x.classList.toggle("on", x === k));
+    format = k.dataset.format; anwenden();
+  }));
+  const feld = leiste.querySelector("[data-suche]");
+  if (feld) feld.addEventListener("input", () => { suche = feld.value.trim().toLowerCase(); anwenden(); });
+});

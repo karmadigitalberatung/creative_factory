@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{{ p.titel or 'Post' }} · Werkstatt{% endblock %}
+{% block title %}{{ p.titel or 'Post' }} · Planen{% endblock %}
 {% block main %}
 <section>
-  <a class="back" href="/werkstatt">← Werkstatt</a>
+  <a class="back" href="/planen">← Planen</a>
   <div class="head">
     <h1>{{ p.titel or 'Ohne Titel' }} <em class="status-word">{{ p.status }}</em></h1>
     <span class="muted">{{ p.format }}{% if p.datum %} · {{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{{ p.datum[:4] }} {{ p.uhrzeit }}{% endif %}</span>
@@ -11,7 +11,7 @@
 
   <div class="split">
     <div class="col-main">
-      <div class="card preview" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/werkstatt/{{ p.id }}/status"{% endif %}>
+      <div class="card preview" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
         {% if fehler and not laeuft %}<p class="error">Fehler: {{ fehler }}</p>{% endif %}
         {% if p.format == 'Talking Head' %}
           {% if p.video %}
@@ -30,10 +30,10 @@
                 <p class="transcript">{% for w, drin in cut.woerter %}<span class="{{ '' if drin else 'cut' }}">{{ w }}</span> {% endfor %}</p></details>
               {% endif %}
               <div class="row">
-                <a class="button" href="/werkstatt/{{ p.id }}/reel.mp4">Video laden (MP4)</a>
+                <a class="button" href="/planen/{{ p.id }}/reel.mp4">Video laden (MP4)</a>
                 <a class="button" href="/media/posts/{{ p.id }}/reel-cover.jpg" download>Titelbild</a>
               </div>
-              <form method="post" action="/werkstatt/{{ p.id }}/schneiden" class="row">
+              <form method="post" action="/planen/{{ p.id }}/schneiden" class="row">
                 {% if ki_text %}<button name="art" value="claude" class="small">Neu schneiden (Claude)</button>{% endif %}
                 <button name="art" value="auto" class="small">Automatisch schneiden</button>
               </form>
@@ -42,7 +42,7 @@
           {% elif not laeuft %}
           <p class="muted">Für diesen Post brauchen wir eine Aufnahme von dir. Skript und Anleitung stehen unter <a href="/input">Input</a>, oder lade das Video direkt hier hoch.</p>
           {% endif %}
-          <form method="post" action="/werkstatt/{{ p.id }}/video" enctype="multipart/form-data" class="row" data-busy="Wird hochgeladen …">
+          <form method="post" action="/planen/{{ p.id }}/video" enctype="multipart/form-data" class="row" data-busy="Wird hochgeladen …">
             <input type="file" name="datei" accept="video/*" required><button>{{ 'Neue Aufnahme hochladen' if p.video_roh else 'Aufnahme hochladen' }}</button>
           </form>
         {% elif p.rendered_at %}
@@ -53,8 +53,8 @@
           {% endfor %}
         </div>
         <div class="row">
-          <a class="button" href="/werkstatt/{{ p.id }}/download">Alle Slides (ZIP)</a>
-          <a class="button" href="/werkstatt/{{ p.id }}/linkedin.pdf">LinkedIn-PDF</a>
+          <a class="button" href="/planen/{{ p.id }}/download">Alle Slides (ZIP)</a>
+          <a class="button" href="/planen/{{ p.id }}/linkedin.pdf">LinkedIn-PDF</a>
           <button class="button" disabled title="Kommt als Nächstes: Verbindung zu Buffer per OAuth">An Buffer senden</button>
         </div>
         {% elif not laeuft %}
@@ -62,7 +62,7 @@
         {% endif %}
       </div>
 
-      <form method="post" action="/werkstatt/{{ p.id }}" class="stack" id="postform">
+      <form method="post" action="/planen/{{ p.id }}" class="stack" id="postform">
         <div class="card stack">
           <div class="row">
             <label class="grow">Arbeitstitel <input name="titel" value="{{ p.titel }}"></label>
@@ -104,7 +104,7 @@
           <label>Caption LinkedIn <textarea name="caption_li" rows="5">{{ p.caption_li }}</textarea></label>
         </div>
 
-        <div class="row sticky-actions">
+        <div class="row sticky-actions" id="abnehmen">
           <button name="aktion" value="speichern">Speichern</button>
           {% if p.status == 'Idee' %}<button class="primary" name="aktion" value="freigeben">Freigeben und Visuals erstellen</button>{% endif %}
           {% if p.status in ['Freigegeben', 'In Arbeit', 'Zur Abnahme', 'Geplant'] and p.format != 'Talking Head' %}<button name="aktion" value="neu_gestalten">Neu gestalten</button>{% endif %}
@@ -118,10 +118,10 @@
         <div class="row top">
           {% if p.photo %}<img class="thumb" src="/media/{{ p.photo }}" alt="Foto des Posts">{% elif b.ref_photo %}<img class="thumb faded" src="/media/{{ b.ref_photo }}" alt="Referenzfoto" title="Ohne eigenes Foto wird dein Referenzfoto genutzt">{% endif %}
           <div class="stack grow">
-            <form method="post" action="/werkstatt/{{ p.id }}/foto" enctype="multipart/form-data" class="row">
+            <form method="post" action="/planen/{{ p.id }}/foto" enctype="multipart/form-data" class="row">
               <input type="file" name="foto" accept="image/*" required><button>Foto hochladen</button>
             </form>
-            <form method="post" action="/werkstatt/{{ p.id }}/foto-ki" class="stack">
+            <form method="post" action="/planen/{{ p.id }}/foto-ki" class="stack">
               <label>Foto mit KI erzeugen {% if not ki_bild %}<span class="hint">(kein Bildgenerator in .env)</span>{% endif %}
                 <textarea name="beschreibung" rows="2" placeholder="Szene, Licht, Hintergrund, Pose …">{{ p.bildidee }}</textarea></label>
               <div class="row">
@@ -132,7 +132,7 @@
             </form>
             {% if medien_auswahl %}
             <details {{ 'open' if not p.photo }}><summary class="small">Aus der Mediathek wählen</summary>
-              <form method="post" action="/werkstatt/{{ p.id }}/foto-medien" class="pick">
+              <form method="post" action="/planen/{{ p.id }}/foto-medien" class="pick">
                 {% for m in medien_auswahl %}<button name="medien_id" value="{{ m.id }}" class="pick-item {{ 'on' if m.datei == p.photo }}" title="{{ m.titel }}"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy"></button>{% endfor %}
               </form>
               <a class="small" href="/mediathek">Zur Mediathek</a>
@@ -149,7 +149,7 @@
       </div>
       {% endif %}
 
-      <form method="post" action="/werkstatt/{{ p.id }}/verwerfen" onsubmit="return confirm('Post wirklich löschen?')">
+      <form method="post" action="/planen/{{ p.id }}/verwerfen" onsubmit="return confirm('Post wirklich löschen?')">
         <button class="link danger">Post löschen</button>
       </form>
     </div>

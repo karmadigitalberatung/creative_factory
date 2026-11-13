@@ -127,6 +127,58 @@ def ideen(brand, anzahl=4, thema="", formate=None):
     return res
 
 
+# ---------------------------------------------------------------- Chat beim Planen (Redaktions-Mitarbeiter)
+
+PLAN_SCHEMA = _obj({
+    "antwort": S,
+    "neue_ideen": {"type": "array", "items": _obj({
+        "titel": S, "format": {"type": "string", "enum": marke.FORMATE}, "datum": S, "uhrzeit": S,
+        "slides": {"type": "array", "items": SLIDE},
+        "caption_ig": S, "caption_li": S, "bildidee": S, "vorher_pruefen": S, "skript": S})},
+    "aenderungen": {"type": "array", "items": _obj({
+        "post_id": {"type": "integer"}, "datum": S, "uhrzeit": S, "titel": S, "freigeben": {"type": "boolean"}})},
+})
+
+PLAN_SYSTEM = """Du bist der Redaktions-Mitarbeiter einer Personal Brand und kümmerst dich um die Social-Media-Planung. Die Person spricht mit dir
+wie mit einem Kollegen: Fragen zur Planung („Was steht nächste Woche an?“, „Was fehlt noch?“), Anweisungen („Schieb den Post auf Freitag“,
+„Gib die zwei ersten Ideen frei“) und Bitten um neue Ideen. Antworte kurz auf Deutsch (du-Form), ohne Markdown, konkret mit Titeln und Daten.
+
+Was du tun kannst:
+- Fragen beantworten anhand der Liste der Posts (Status, Datum, Format, Inhalt). Weise auf Lücken, offene Aufnahmen oder Prüfpunkte hin.
+- aenderungen: Datum (YYYY-MM-DD) und Uhrzeit (HH:MM) eines Posts setzen, Titel ändern, eine Idee freigeben (freigeben = true startet die
+  Gestaltung der Visuals). Nur Posts aus der Liste (post_id). Felder, die gleich bleiben, als leerer String bzw. false.
+- neue_ideen: neue Post-Ideen anlegen (landen als „Idee“ in der Planung), optional mit Datum, wenn die Person einen Zeitraum nennt oder es Lücken gibt.
+  Keine Dubletten zu vorhandenen Posts. Für Ideen gelten diese Regeln:
+""" + IDEEN_SYSTEM + """
+
+Was du nicht kannst: Posts löschen (dafür gibt es den Knopf „Verwerfen“), Visuals selbst gestalten (das passiert nach der Freigabe),
+posten. Behaupte nie, etwas getan zu haben, das nicht in aenderungen oder neue_ideen steht. Tu nur, worum die Person bittet;
+bei reinen Fragen bleiben aenderungen und neue_ideen leer."""
+
+
+def chat_planen(brand, message, history, posts, heute):
+    verlauf = "\n".join(f"{h['role']}: {h['text']}" for h in history[-10:])
+    a = json.loads(brand["auftreten"])
+    liste = []
+    for p in posts:
+        inhalt = json.loads(p["inhalt"])
+        c = (inhalt.get("slides") or [{}])[0]
+        liste.append({"post_id": p["id"], "status": p["status"], "format": p["format"], "datum": p["datum"], "uhrzeit": p["uhrzeit"],
+                      "titel": p["titel"], "cover": " ".join(str(c.get(k, "")) for k in ("zeile1", "zeile2", "text", "titel") if c.get(k)),
+                      "slides": len(inhalt.get("slides") or []), "vorher_pruefen": p["vorher_pruefen"],
+                      "visuals_fertig": bool(p["rendered_at"]), "aufnahme_hochgeladen": bool(p["video_roh"]),
+                      "video_geschnitten": bool(p["video"])})
+    text = (_marke_kontext(brand, mit_website=True) +
+            f"\nHeute ist {heute} ({['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'][heute.weekday()]})."
+            f"\nFormate der Marke: {', '.join(a.get('formate') or marke.FORMATE)}"
+            f"\n\nPosts in der Planung:\n{json.dumps(liste, ensure_ascii=False)}"
+            f"\n\nBisheriger Chat:\n{verlauf or '(leer)'}\n\nNeue Nachricht: {message}")
+    res = _claude(PLAN_SYSTEM, text, PLAN_SCHEMA, effort="medium", max_tokens=24000)
+    for i in res["neue_ideen"]:
+        i["slides"] = [slide_aus_ki(s) for s in i["slides"]]
+    return res
+
+
 # ---------------------------------------------------------------- Gestalten
 
 GESTALT_SCHEMA = _obj({"begruendung": S, "slides": {"type": "array", "items": _obj({"szene_json": S})}})

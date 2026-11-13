@@ -6,7 +6,7 @@
   </div>
   {% if ki_text %}
   <form class="chatform">
-    <textarea name="nachricht" rows="3" placeholder="{{ 'Was soll sich ändern? Du kannst auch Bilder anhängen.' if chat_bereich == 'auftreten' else 'Was soll sich ändern?' }}"></textarea>
+    <textarea name="nachricht" rows="3" placeholder="{{ 'Was soll sich ändern? Du kannst auch Bilder anhängen.' if chat_bereich == 'auftreten' else ('Frag etwas, plan um oder bitte um neue Ideen …' if chat_bereich == 'planen' else 'Was soll sich ändern?') }}"></textarea>
     {% if chat_bereich == 'auftreten' %}
     <div class="anhang"></div>
     <div class="row">
