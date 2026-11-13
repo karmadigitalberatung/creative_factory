@@ -24,6 +24,19 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # Nano Banana 2 (Gemini 3.1 Flash Image), geprüft am 13.11.2026
 GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+# Seedream über BytePlus ModelArk. Am 13.11.2026 im Konto aktiv: 5.0 Pro und 5.0 (5.5 und 5.0 Flash erst in der Ark-Konsole aktivieren)
+SEEDREAM_API_KEY = os.environ.get("SEEDREAM_API_KEY", "")
+SEEDREAM_MODEL = os.environ.get("SEEDREAM_MODEL", "dola-seedream-5-0-pro-260628")
+SEEDREAM_URL = os.environ.get("SEEDREAM_URL", "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations")
+_SD = {"dola-seedream-5-5": "Seedream 5.5", "dola-seedream-5-0-pro": "Seedream 5.0 Pro", "dola-seedream-5-0-flash": "Seedream 5.0 Flash",
+       "seedream-5-0": "Seedream 5.0", "seedream-4-5": "Seedream 4.5", "seedream-4-0": "Seedream 4.0"}
+GENERATOREN = {"gemini": "Gemini (Nano Banana 2)",
+               "seedream": next((n for k, n in _SD.items() if SEEDREAM_MODEL.startswith(k)), "Seedream")}
+
+
+def generatoren():
+    """Bildgeneratoren mit Schlüssel, in der Reihenfolge, in der „Automatisch“ sie versucht."""
+    return [g for g, k in (("gemini", GEMINI_API_KEY), ("seedream", SEEDREAM_API_KEY)) if k]
 
 
 def secret_key():

@@ -224,10 +224,10 @@ def referenz_sheet(brand_id, person_id):
             db.run("UPDATE personen SET beschreibung=? WHERE id=?", ai.person_beschreiben(bilder), person_id)
         except Exception:
             pass
-    raw, art, hinweis = None, "fotos", ""
-    if config.GEMINI_API_KEY:
+    raw, art, hinweis, gen = None, "fotos", "", ""
+    if config.generatoren():
         try:
-            raw = ai.bild_erzeugen(b, ai.SHEET_PROMPT, refs=bilder, format="16:9", stil=False)
+            raw, gen = ai.bild_erzeugen(b, ai.sheet_prompt(), refs=bilder, format="16:9", stil=False)
             art = "ki"
         except Exception as e:
             hinweis = ai.fehlertext(e)
@@ -235,7 +235,7 @@ def referenz_sheet(brand_id, person_id):
         raw = _sheet_lokal(brand_id, fotos)
     alt = p["sheet_id"]
     m = speichern(brand_id, raw, "sheet", f"Referenz-Sheet {p['name']}",
-                  "Erstellt aus drei Fotos" + (" mit Gemini" if art == "ki" else ", freigestellt (ohne Bild-KI: " + (hinweis or "kein Gemini-Schlüssel") + ")"),
+                  "Erstellt aus drei Fotos" + (f" mit {config.GENERATOREN[gen]}" if art == "ki" else ", freigestellt (ohne Bild-KI: " + (hinweis or "kein Gemini-Schlüssel") + ")"),
                   person_id=person_id)
     db.run("UPDATE personen SET sheet_id=?, sheet_art=? WHERE id=?", m["id"], art, person_id)
     if alt:
@@ -256,14 +256,14 @@ def person_refs(brand_id, person_id):
     return refs, p["beschreibung"]
 
 
-def erzeugen(brand_id, beschreibung, person_id=None, format="4:5", post_id=None):
+def erzeugen(brand_id, beschreibung, person_id=None, format="4:5", post_id=None, generator=None):
     """Job: Bild mit Gemini erzeugen und in die Mediathek legen (optional gleich als Foto eines Posts)."""
     b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
     refs, person_text = person_refs(brand_id, person_id) if person_id else ([], "")
     if not person_id and b["ref_photo"] and post_id:
         refs = [Image.open(storage.abs_path(brand_id, b["ref_photo"])).convert("RGB")]
-    raw = ai.bild_erzeugen(b, beschreibung, refs=refs, format=format, person=person_text)
-    m = speichern(brand_id, raw, "generiert", beschreibung[:80], beschreibung, person_id=person_id)
+    raw, gen = ai.bild_erzeugen(b, beschreibung, refs=refs, format=format, person=person_text, generator=generator)
+    m = speichern(brand_id, raw, "generiert", beschreibung[:80], f"{beschreibung} ({config.GENERATOREN[gen]})", person_id=person_id)
     if post_id:
         db.run("UPDATE posts SET photo=?, bildidee=?, updated=? WHERE id=? AND brand_id=?", m["datei"], beschreibung, db.now(), post_id, brand_id)
     return m

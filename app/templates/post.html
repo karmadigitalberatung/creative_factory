@@ -122,10 +122,11 @@
               <input type="file" name="foto" accept="image/*" required><button>Foto hochladen</button>
             </form>
             <form method="post" action="/werkstatt/{{ p.id }}/foto-ki" class="stack">
-              <label>Foto mit KI erzeugen {% if not ki_bild %}<span class="hint">(Gemini-Schlüssel fehlt in .env)</span>{% endif %}
+              <label>Foto mit KI erzeugen {% if not ki_bild %}<span class="hint">(kein Bildgenerator in .env)</span>{% endif %}
                 <textarea name="beschreibung" rows="2" placeholder="Szene, Licht, Hintergrund, Pose …">{{ p.bildidee }}</textarea></label>
               <div class="row">
                 <label class="grow">Person <select name="person_id"><option value="">Referenzfoto der Marke</option>{% for pe in personen %}<option value="{{ pe.id }}">{{ pe.name }}</option>{% endfor %}</select></label>
+                <label>Generator <select name="generator"><option value="">Automatisch</option>{% for k, n in generatoren.items() %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
                 <button {{ 'disabled' if not ki_bild }}>Foto erzeugen</button>
               </div>
             </form>

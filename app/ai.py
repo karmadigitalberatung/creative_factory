@@ -3,7 +3,7 @@
 Ohne API-Schlüssel in .env melden die Funktionen KeinSchluessel; die App läuft trotzdem
 (eigene Texte, eigene Fotos, Layout-Rezepte, Rendern).
 """
-import base64, html, io, json, re, urllib.request
+import base64, html, io, json, os, re, urllib.request
 from PIL import Image
 from . import config, db, marke, storage
 from .motion.regie import REGIE_DOKU
@@ -162,6 +162,11 @@ def _valid_scene(txt):
     return s
 
 
+def _foto_namen(brand, n=12):
+    return [(f"m{m['id']}", m["titel"]) for m in
+            db.q("SELECT id, titel FROM medien WHERE brand_id=? AND art IN ('foto','generiert') ORDER BY id DESC LIMIT ?", brand["id"], n)]
+
+
 def gestalten(brand, post, letzte_cover=None):
     a = json.loads(brand["auftreten"])
     inhalt = json.loads(post["inhalt"])
@@ -170,6 +175,8 @@ def gestalten(brand, post, letzte_cover=None):
     user = (_marke_kontext(brand) +
             f"\nFormat des Posts: {post['format']}\nFoto vorhanden: {'ja' if hat_foto else 'nein'}"
             f"\nLogo vorhanden: {'ja' if brand['logo'] else 'nein'}"
+            f"\nWeitere Fotos aus der Mediathek (als Quelle nutzbar, wenn sie zum Inhalt passen): "
+            f"{', '.join(f'{n} ({t})' for n, t in _foto_namen(brand)) or 'keine'}"
             f"\n\nInhalt (Slides):\n{json.dumps(inhalt.get('slides', []), ensure_ascii=False)}"
             f"\n\nBeispiel einer möglichen Umsetzung (nur als technische Vorlage, gestalte frei und passend):\n{json.dumps(beispiel, ensure_ascii=False)}"
             f"\n\nCover der letzten Posts (mach es bewusst anders):\n{json.dumps(letzte_cover or [], ensure_ascii=False)[:6000]}")
@@ -334,7 +341,11 @@ Lies die Website, wenn sie angegeben ist, und leite daraus ab, was zur Marke pas
 Vorbilder: Die Person kann Bilder schicken (eigene Posts, Layouts, die gefallen, Pinterest-Screenshots). Schau sie genau an und beschreib kurz,
 was sie ausmacht (Raster, Bildanteil, Typo-Hierarchie, Schriftgrößen, Weißraum, Formen, Farbeinsatz, wiederkehrende Elemente). Übernimm das in
 layout_prinzipien als konkrete Regeln (Stil übertragen, nicht kopieren; Farben und Schriften der Marke bleiben, außer die Person will das ändern).
-Setze muster_neu = true, wenn neue Vorbilder kamen oder sich Layout-Prinzipien geändert haben: dann werden die Musterseiten im neuen Stil gestaltet."""
+Setze muster_neu = true, wenn neue Vorbilder kamen oder sich Layout-Prinzipien geändert haben: dann werden die Musterseiten im neuen Stil gestaltet.
+Was du tatsächlich ändern kannst: nur das Auftreten (die Felder im JSON) und das Neugestalten der Musterseiten. Musterseiten und Posts nutzen
+automatisch die Fotos aus der Mediathek (Fotos und erzeugte Bilder); wie oft Fotos vorkommen, steuerst du über klare Regeln in layout_prinzipien.
+Behaupte nie, etwas an der App, an Regeln außerhalb des Auftretens oder an Dateien geändert zu haben. Wenn etwas nicht geht, sag das ehrlich
+und schlag vor, was die Person tun kann (z. B. Fotos in die Mediathek laden)."""
 
 
 def _bilder_bloecke(titel, bilder, w=700):
@@ -371,11 +382,35 @@ Renderer-Doku:
 """
 
 
+def _fotos_der_mediathek(brand, n=8):
+    """Fotos der Mediathek als Quellen für Szenen: [(Name „m<ID>“, Titel, PIL-Bild)]."""
+    from . import medien
+    out = []
+    for m in db.q("SELECT * FROM medien WHERE brand_id=? AND art IN ('foto','generiert') ORDER BY id DESC LIMIT ?", brand["id"], n):
+        try:
+            out.append((f"m{m['id']}", m["titel"], medien.bild_von(brand["id"], m).convert("RGB")))
+        except Exception:
+            pass
+    return out
+
+
+def _foto_bloecke(fotos):
+    out = []
+    for name, titel, im in fotos:
+        out.append({"type": "text", "text": f"Foto „{name}“ ({titel}):"})
+        out.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(im, 360)}})
+    return out
+
+
 def muster_gestalten(brand, slides, vorbilder):
-    hat_foto = bool(brand["ref_photo"])
-    text = (_marke_kontext(brand) + f"\nFoto vorhanden: {'ja' if hat_foto else 'nein'}\nLogo vorhanden: {'ja' if brand['logo'] else 'nein'}"
-            f"\n\nSlides (Cover dreimal in Varianten, dann die Innenseiten):\n{json.dumps(slides, ensure_ascii=False)}")
-    content = _bilder_bloecke("Vorbild", vorbilder[:6], 600) + [{"type": "text", "text": text}]
+    fotos = _fotos_der_mediathek(brand)
+    quellen = [n for n, _, _ in fotos] + (["referenz"] if brand["ref_photo"] else [])
+    text = (_marke_kontext(brand) + f"\nLogo vorhanden: {'ja' if brand['logo'] else 'nein'}"
+            f"\nFotos für die Szenen (als hintergrund.foto oder foto.quelle): {', '.join(quellen) or 'keine'}"
+            + ("\nWenn die Vorbilder mit Fotos arbeiten, nutze die Fotos auch: mindestens die Hälfte der Seiten mit Foto, passend ausgewählt, "
+               "Gesichter nicht mit Text verdecken." if quellen else "")
+            + f"\n\nSlides (Cover dreimal in Varianten, dann die Innenseiten):\n{json.dumps(slides, ensure_ascii=False)}")
+    content = _bilder_bloecke("Vorbild", vorbilder[:6], 600) + _foto_bloecke(fotos) + [{"type": "text", "text": text}]
     res = _claude(MUSTER_SYSTEM + scene_mod.__doc__, content, GESTALT_SCHEMA, effort="high", max_tokens=32000)
     return [x for x in (_valid_scene(s["szene_json"]) for s in res["slides"]) if x]
 
@@ -419,6 +454,14 @@ def aufnahme(brand, post):
 def fehlertext(e):
     """Technische Fehler der APIs in verständliche Sätze übersetzen."""
     s = str(e)
+    if s.startswith("Seedream"):
+        if " 401" in s or "Authentication" in s:
+            return "Der Seedream-Schlüssel wird nicht akzeptiert. Bitte SEEDREAM_API_KEY in .env prüfen."
+        if "Sensitive" in s or "sensitive" in s:
+            return "Seedream hat die Beschreibung oder ein Referenzbild abgelehnt. Bitte anders formulieren."
+        if "Quota" in s or "balance" in s.lower() or "402" in s:
+            return "Bei BytePlus ist kein Guthaben oder Kontingent mehr frei."
+        return s[:240]
     if "402" in s or "credits are depleted" in s or "RESOURCE_EXHAUSTED" in s and "prepay" in s:
         return "Das Guthaben bei Google (Gemini) ist aufgebraucht. Bitte in Google AI Studio unter Billing aufladen."
     if "429" in s or "RESOURCE_EXHAUSTED" in s:
@@ -432,32 +475,50 @@ def fehlertext(e):
 
 # ---------------------------------------------------------------- Gemini (Fotos)
 
-SHEET_PROMPT = ("Professional character reference sheet of exactly this person, based on the reference photos. Plain, seamless, neutral mid-grey "
-                "background, nothing else: no furniture, no props, no room, no frames, no text, no labels, no logos. Only the person. "
-                "Layout on one sheet: on the left a large head-and-shoulders portrait facing the camera; in the middle the head in three-quarter "
-                "view and in side profile; on the right the full body standing, facing the camera. Keep the identity exactly: face shape, eyes, "
-                "nose, hair, facial hair, glasses, skin tone, body type, and the same clothing as in the photos. Even, soft studio lighting, "
-                "neutral expression, photorealistic, sharp.")
+# Prompt für das Charakter-Referenz-Sheet (Gemini): in app/prompts/charakter-sheet.txt, dort direkt anpassbar.
+SHEET_PROMPT_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts", "charakter-sheet.txt")
+
+
+def sheet_prompt():
+    return open(SHEET_PROMPT_DATEI, encoding="utf-8").read().strip()
+
 
 ASPEKT = {"4:5": "Portrait format 4:5", "9:16": "Vertical format 9:16", "1:1": "Square format 1:1", "16:9": "Landscape format 16:9"}
 
 
-def bild_erzeugen(brand, beschreibung, refs=None, format="4:5", stil=True, person=""):
-    """Bild mit Gemini (Nano Banana 2). refs: PIL-Bilder (Person, Referenz-Sheet). Gibt PNG-Bytes zurück."""
-    if not config.GEMINI_API_KEY:
-        raise KeinSchluessel("Kein Gemini-Schlüssel in .env (GEMINI_API_KEY)")
+SEEDREAM_GROESSE = {"4:5": "1792x2240", "9:16": "1440x2560", "1:1": "2048x2048", "16:9": "2560x1440"}
+
+
+def _seedream(prompt, refs, format):
+    """Seedream über BytePlus ModelArk. refs als Base64-Data-URIs. Gibt PNG-Bytes zurück."""
+    import httpx
+    body = {"model": config.SEEDREAM_MODEL, "prompt": prompt, "size": SEEDREAM_GROESSE.get(format, "2048x2048"),
+            "response_format": "b64_json", "watermark": False}
+    if refs:
+        uris = []
+        for im in refs[:6]:
+            im = im.copy(); im.thumbnail((2048, 2048))
+            buf = io.BytesIO(); im.convert("RGB").save(buf, "JPEG", quality=90)
+            uris.append("data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode())
+        body["image"] = uris if len(uris) > 1 else uris[0]
+    r = httpx.post(config.SEEDREAM_URL, json=body, timeout=300,
+                   headers={"Authorization": f"Bearer {config.SEEDREAM_API_KEY}", "Content-Type": "application/json"})
+    d = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+    if r.status_code != 200 or d.get("error"):
+        e = d.get("error") or {}
+        raise AIFehler(f"Seedream {r.status_code}: {e.get('code', '')} {e.get('message', r.text[:200])}".strip())
+    b64 = (d.get("data") or [{}])[0].get("b64_json")
+    if not b64:
+        raise AIFehler("Seedream hat kein Bild geliefert")
+    buf = io.BytesIO()
+    Image.open(io.BytesIO(base64.b64decode(b64))).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _gemini(prompt, refs, format):
     from google import genai
     from google.genai import types
-    a = json.loads(brand["auftreten"])
     client = genai.Client(api_key=config.GEMINI_API_KEY)
-    if stil:
-        prompt = ("One single photograph, no collage, no grid, no split frame. " + ASPEKT.get(format, ASPEKT["4:5"]) + ". " +
-                  ("The person shown in the reference images (keep the identity exactly). " if refs else "") +
-                  (f"Person: {person}. " if person else "") + beschreibung +
-                  "\nImage style of the brand:\n" + (a.get("bildstil") or "") +
-                  "\nNo text, no letters, no logos in the image.")
-    else:
-        prompt = beschreibung
     contents = [prompt] + [im for im in (refs or [])[:4]]
     cfg = types.GenerateContentConfig(image_config=types.ImageConfig(aspect_ratio=format if format in ASPEKT else "4:5"))
     resp = client.models.generate_content(model=config.GEMINI_IMAGE_MODEL, contents=contents, config=cfg)
@@ -469,12 +530,37 @@ def bild_erzeugen(brand, beschreibung, refs=None, format="4:5", stil=True, perso
     raise AIFehler("Gemini hat kein Bild geliefert")
 
 
+def bild_erzeugen(brand, beschreibung, refs=None, format="4:5", stil=True, person="", generator=None):
+    """Bild erzeugen. generator: "gemini", "seedream" oder None (= automatisch: der erste, der klappt).
+    refs: PIL-Bilder (Person, Referenz-Sheet). Gibt (PNG-Bytes, Name des Generators) zurück."""
+    reihe = [generator] if generator in config.GENERATOREN else config.generatoren()
+    reihe = [g for g in reihe if g in config.generatoren()]
+    if not reihe:
+        raise KeinSchluessel("Kein Bildgenerator eingerichtet (GEMINI_API_KEY oder SEEDREAM_API_KEY in .env)")
+    a = json.loads(brand["auftreten"])
+    if stil:
+        prompt = ("One single photograph, no collage, no grid, no split frame. " + ASPEKT.get(format, ASPEKT["4:5"]) + ". " +
+                  ("The person shown in the reference images (keep the identity exactly). " if refs else "") +
+                  (f"Person: {person}. " if person else "") + beschreibung +
+                  "\nImage style of the brand:\n" + (a.get("bildstil") or "") +
+                  "\nNo text, no letters, no logos in the image.")
+    else:
+        prompt = beschreibung
+    fehler = []
+    for g in reihe:   # bei „Automatisch“: fällt einer aus (z. B. Guthaben leer), versucht der nächste
+        try:
+            return (_gemini if g == "gemini" else _seedream)(prompt, refs, format), g
+        except Exception as e:
+            fehler.append(f"{config.GENERATOREN[g]}: {fehlertext(e)}")
+    raise AIFehler(" · ".join(fehler))
+
+
 def foto(brand, beschreibung, name):
     """Foto für einen Post (mit Referenzfoto der Marke), landet auch in der Mediathek. Gibt den relativen Pfad zurück."""
     from . import medien
     refs = [Image.open(storage.abs_path(brand["id"], brand["ref_photo"])).convert("RGB")] if brand["ref_photo"] else []
-    raw = bild_erzeugen(brand, beschreibung, refs=refs)
-    return medien.speichern(brand["id"], raw, "generiert", beschreibung[:80], beschreibung)["datei"]
+    raw, g = bild_erzeugen(brand, beschreibung, refs=refs)
+    return medien.speichern(brand["id"], raw, "generiert", beschreibung[:80], f"{beschreibung} ({config.GENERATOREN[g]})")["datei"]
 
 
 PERSON_SCHEMA = _obj({"beschreibung": S})

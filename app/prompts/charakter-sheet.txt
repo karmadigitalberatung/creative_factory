@@ -1,0 +1,8 @@
+Create a photorealistic character reference sheet of the exact same person shown in the reference photos. Preserve their identity precisely: face shape, facial features, eye color, skin tone, hair color, hairstyle, facial hair, body type, proportions and any distinctive marks. Do not beautify, idealize, age or change the person in any way. Use the clothing visible in the reference photos.
+
+Layout: three equal panels side by side on a plain, seamless, neutral mid-grey studio background.
+Left panel: full body, front view, standing straight, arms relaxed, cropped at shoulder height so the whole head is out of frame, feet fully visible.
+Middle panel: full body, side profile view, standing straight, also cropped at shoulder height, whole head out of frame, feet fully visible.
+Right panel: large close-up portrait of the face, front view, neutral relaxed expression, filling the panel.
+
+The person and outfit must be identical in all three panels. Even, soft, diffused studio lighting, no harsh shadows, natural skin texture, sharp focus, realistic proportions. No props, no furniture, no text, no labels, no logos, no watermarks, no extra people.

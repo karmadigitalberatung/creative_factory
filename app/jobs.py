@@ -85,7 +85,7 @@ def gestalten(brand_id, post_id, neu=True):
         _input_anlegen(b, p)
         return
 
-    if not p["photo"] and p["bildidee"] and config.GEMINI_API_KEY:
+    if not p["photo"] and p["bildidee"] and config.generatoren():
         db.run("UPDATE jobs SET kind='foto' WHERE post_id=? AND status='läuft'", post_id)
         try:
             rel = ai.foto(b, p["bildidee"], f"post-{post_id}-ki-{int(db.now())}")

@@ -34,7 +34,7 @@
     </form>
 
     <div class="media-grid">
-      {% if 'Erzeugt Bild' in laeuft and not art %}<figure class="medium platzhalter" data-arbeitet="Gemini erzeugt dein Bild"><div class="leer"></div></figure>{% endif %}
+      {% if 'Erzeugt Bild' in laeuft and not art %}<figure class="medium platzhalter" data-arbeitet="Bild wird erzeugt"><div class="leer"></div></figure>{% endif %}
       {% for m in medien %}
       <figure class="medium {{ m.art }}">
         <a href="/media/{{ m.datei }}" target="_blank"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy"></a>
@@ -84,15 +84,16 @@
 
     {% else %}
     <div class="m-head"><h2>Neues Bild</h2></div>
-    <form method="post" action="/mediathek/erzeugen" class="card stack neu-bild" {% if 'Erzeugt Bild' in laeuft %}data-arbeitet="Gemini erzeugt dein Bild"{% endif %}>
+    <form method="post" action="/mediathek/erzeugen" class="card stack neu-bild" {% if 'Erzeugt Bild' in laeuft %}data-arbeitet="Bild wird erzeugt"{% endif %}>
       <textarea name="beschreibung" rows="4" placeholder="Szene, Ort, Licht, Pose … z. B. „am Schreibtisch im Atelier, Morgenlicht, lacht in die Kamera“" required></textarea>
       <div class="row">
         <label class="grow">Person
           <select name="person_id"><option value="">ohne Person</option>{% for p in personen %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></label>
         <label>Format <select name="format">{% for k, n in formate.items() %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
+        <label>Generator <select name="generator"><option value="">Automatisch</option>{% for k, n in generatoren.items() %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
         <button class="primary" {{ 'disabled' if not ki_bild }}>Erzeugen</button>
       </div>
-      <span class="hint">{% if ki_bild %}Nano Banana 2 · im Bildstil deines Auftretens · ohne Text im Bild · landet in „Alle Assets“{% else %}Braucht den Gemini-Schlüssel in .env.{% endif %}</span>
+      <span class="hint">{% if ki_bild %}Im Bildstil deines Auftretens · ohne Text im Bild · landet in „Alle Assets“ · „Automatisch“ nimmt den nächsten Generator, wenn einer ausfällt{% else %}Braucht GEMINI_API_KEY oder SEEDREAM_API_KEY in .env.{% endif %}</span>
     </form>
     {% if medien %}
     <h3 class="section-title">Zuletzt erzeugt</h3>

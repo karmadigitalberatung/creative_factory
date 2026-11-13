@@ -85,10 +85,27 @@ def save_font(brand_id, raw, filename):
     return "marke:" + name
 
 
+class _Fotos(dict):
+    """Fotos für Szenen: post, referenz und jedes Bild aus der Mediathek als „m<ID>“ (wird erst bei Bedarf geladen)."""
+    def __init__(self, brand_id):
+        super().__init__(); self.brand_id = brand_id
+
+    def get(self, key, default=None):
+        if key in self:
+            return self[key]
+        if isinstance(key, str) and key[:1] == "m" and key[1:].isdigit():
+            from . import db
+            m = db.one("SELECT datei FROM medien WHERE id=? AND brand_id=?", int(key[1:]), self.brand_id)
+            if m:
+                self[key] = Image.open(storage.abs_path(self.brand_id, m["datei"])).convert("RGB")
+                return self[key]
+        return default
+
+
 def renderer(brand, foto_rel=None):
     a = json.loads(brand["auftreten"])
     fonts = {r: (font_path(brand["id"], s.get("datei")), s.get("gewicht")) for r, s in a["schriften"].items()}
-    fotos = {}
+    fotos = _Fotos(brand["id"])
     if foto_rel:
         fotos["post"] = Image.open(storage.abs_path(brand["id"], foto_rel)).convert("RGB")
     if brand["ref_photo"]:

@@ -75,7 +75,8 @@ def page(request, name, **ctx):
     ctx.setdefault("flash", request.session.pop("flash", None))
     ctx["request"] = request
     ctx["ki_text"] = bool(config.ANTHROPIC_API_KEY)
-    ctx["ki_bild"] = bool(config.GEMINI_API_KEY)
+    ctx["ki_bild"] = bool(config.generatoren())
+    ctx["generatoren"] = {g: config.GENERATOREN[g] for g in config.generatoren()}
     ctx["asset_v"] = int(max(os.path.getmtime(os.path.join(HERE, "static", n)) for n in ("style.css", "app.js")))   # neu laden nach Änderungen
     if ctx.get("b"):
         ctx["auf"] = json.loads(ctx["b"]["auftreten"])
@@ -369,19 +370,20 @@ async def post_photo(request: Request, pid: int, foto: UploadFile = File(...)):
 
 
 @app.post("/werkstatt/{pid}/foto-ki")
-def post_photo_ai(request: Request, pid: int, beschreibung: str = Form(...), person_id: Optional[int] = Form(None)):
+def post_photo_ai(request: Request, pid: int, beschreibung: str = Form(...), person_id: Optional[int] = Form(None),
+                  generator: str = Form("")):
     b = brand_of(request)
     p = post_of(b, pid)
     if person_id and not db.one("SELECT id FROM personen WHERE id=? AND brand_id=?", person_id, b["id"]):
         person_id = None
 
     def job():
-        medien.erzeugen(b["id"], beschreibung.strip(), person_id, "4:5", post_id=pid)
+        medien.erzeugen(b["id"], beschreibung.strip(), person_id, "4:5", post_id=pid, generator=generator or None)
         if p["design"] != "[]":
             jobs.render_post(b["id"], pid)
 
-    if not config.GEMINI_API_KEY:
-        flash(request, "Kein Gemini-Schlüssel in .env. Lade vorerst ein eigenes Foto hoch.")
+    if not config.generatoren():
+        flash(request, "Kein Bildgenerator in .env (GEMINI_API_KEY oder SEEDREAM_API_KEY). Lade vorerst ein eigenes Foto hoch.")
     else:
         jobs.start(b["id"], pid, "foto", job)
     return go(f"/werkstatt/{pid}")
@@ -691,15 +693,16 @@ def mediathek_upload(request: Request, dateien: List[UploadFile] = File(...), ar
 
 
 @app.post("/mediathek/erzeugen")
-def mediathek_generate(request: Request, beschreibung: str = Form(...), person_id: Optional[int] = Form(None), format: str = Form("4:5")):
+def mediathek_generate(request: Request, beschreibung: str = Form(...), person_id: Optional[int] = Form(None), format: str = Form("4:5"),
+                       generator: str = Form("")):
     b = brand_of(request)
     if person_id and not db.one("SELECT id FROM personen WHERE id=? AND brand_id=?", person_id, b["id"]):
         person_id = None
-    if not config.GEMINI_API_KEY:
-        flash(request, "Zum Erzeugen braucht es den Gemini-Schlüssel in .env (GEMINI_API_KEY).")
+    if not config.generatoren():
+        flash(request, "Zum Erzeugen braucht es einen Bildgenerator in .env (GEMINI_API_KEY oder SEEDREAM_API_KEY).")
     else:
         jobs.start(b["id"], None, "bild", medien.erzeugen, b["id"], beschreibung.strip()[:2000], person_id,
-                   format if format in medien.FORMATE else "4:5")
+                   format if format in medien.FORMATE else "4:5", None, generator or None)
     return go("/mediathek/neu")
 
 

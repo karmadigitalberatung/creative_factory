@@ -133,7 +133,7 @@ class Szene:
     def __init__(self, fonts, fotos=None, logo=None, size=(1080, 1350)):
         """fonts: {"titel": (pfad, gewicht), "text": ..., "akzent": ...}
         fotos: {"post": PIL.Image, "referenz": PIL.Image}; logo: PIL.Image (RGBA)"""
-        self.fonts, self.fotos, self.logo = fonts, fotos or {}, logo
+        self.fonts, self.fotos, self.logo = fonts, (fotos if fotos is not None else {}), logo
         self.W, self.H = size
 
     def font(self, rolle, size, gewicht=None):
