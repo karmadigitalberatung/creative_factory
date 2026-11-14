@@ -8,12 +8,12 @@ import calendar, datetime, json, os, re, sys, urllib.parse
 sys.dont_write_bytecode = True
 from typing import List, Optional
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, buffer, config, db, ideen, jobs, layout_editor, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
+from . import ai, buffer, config, db, fertig, ideen, jobs, layout_editor, mcp, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI(title="Creative Factory")
@@ -22,6 +22,16 @@ app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="
 tpl = Jinja2Templates(directory=os.path.join(HERE, "templates"))
 tpl.env.filters["jsonliste"] = lambda s: json.loads(s) if s else []
 tpl.env.filters["status"] = lambda s: "Entwurf" if s == "Idee" else s   # Anzeige: Posts im Plan heißen Entwurf, Ideen leben in der Werkstatt
+def _ig_text(s):
+    """Caption wie auf Instagram: Zeilenumbrüche, #Hashtags und @Erwähnungen hervorgehoben (alles escaped)."""
+    import html as _h
+    from markupsafe import Markup
+    t = _h.escape(s or "")
+    t = re.sub(r"(?<![\w&])([#@][\wÄÖÜäöüß.]+)", r'<span class="ig-tag">\1</span>', t)
+    return Markup(t.replace("\n", "<br>"))
+
+
+tpl.env.filters["ig_text"] = _ig_text
 tpl.env.filters["zeit"] = lambda t: datetime.datetime.fromtimestamp(float(t)).strftime("%d.%m. %H:%M") if t else ""
 db.init()
 
@@ -228,7 +238,15 @@ def einstellungen(request: Request):
             a = json.loads(br["auftreten"]) if br else {}
             n = db.one("SELECT COUNT(*) n FROM posts WHERE brand_id=?", br["id"])["n"] if br else 0
             nutzer.append(dict(u, marke=a.get("label") or a.get("name") or "", onboarded=bool(br and br["onboarded"]), posts=n))
-    return page(request, "einstellungen.html", b=b, admin=admin, nutzer=nutzer)
+    token = request.session.pop("mcp_neu", None)
+    a = json.loads(b["auftreten"])
+    slug = re.sub(r"[^a-z0-9]+", "-", (a.get("label") or a.get("name") or "account").lower()).strip("-") or "account"
+    konfig = None
+    if token:
+        konfig = json.dumps({"mcpServers": {f"creative-factory-{slug}": {
+            "command": sys.executable, "args": [os.path.join(HERE, "mcp_bridge.py")],
+            "env": {"CF_URL": str(request.base_url).rstrip("/"), "CF_TOKEN": token}}}}, ensure_ascii=False, indent=2)
+    return page(request, "einstellungen.html", b=b, admin=admin, nutzer=nutzer, zugaenge=mcp.zugaenge(b["id"]), mcp_konfig=konfig, mcp_slug=slug)
 
 
 @app.post("/einstellungen/passwort")
@@ -305,6 +323,50 @@ def admin_zurueck(request: Request):
     request.session.clear()
     request.session["uid"] = aid
     return go("/einstellungen#nutzer")
+
+
+# ---------------------------------------------------------------- MCP (Claude Desktop)
+
+@app.post("/mcp")
+async def mcp_endpunkt(request: Request):
+    """JSON-RPC 2.0 für MCP-Clients. Anmeldung: Authorization: Bearer <Zugangsschlüssel des Accounts>."""
+    token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    b = mcp.brand_fuer(token)
+    if not b:
+        return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32001, "message": "Zugangsschlüssel fehlt oder ist ungültig."}},
+                            status_code=401)
+    try:
+        nachricht = await request.json()
+    except Exception:
+        return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Ungültiges JSON."}}, status_code=400)
+    helfer = {"chat_post": _chat_post}
+    import anyio
+    if isinstance(nachricht, list):
+        antworten = [r for r in [await anyio.to_thread.run_sync(mcp.handle, m, b, helfer) for m in nachricht] if r]
+        return JSONResponse(antworten) if antworten else Response(status_code=202)
+    antwort = await anyio.to_thread.run_sync(mcp.handle, nachricht, b, helfer)
+    return JSONResponse(antwort) if antwort else Response(status_code=202)
+
+
+@app.get("/mcp")
+def mcp_get():
+    return Response(status_code=405, headers={"Allow": "POST"})
+
+
+@app.post("/einstellungen/mcp")
+def einstellungen_mcp(request: Request, name: str = Form("")):
+    b = brand_of(request, onboarding_ok=True)
+    token = mcp.zugang_anlegen(b["id"], request.session["uid"], name.strip() or "Claude Desktop")
+    request.session["mcp_neu"] = token   # nur einmal anzeigen
+    return go("/einstellungen#claude")
+
+
+@app.post("/einstellungen/mcp/{zid}/loeschen")
+def einstellungen_mcp_loeschen(request: Request, zid: int):
+    b = brand_of(request, onboarding_ok=True)
+    mcp.zugang_loeschen(b["id"], zid)
+    flash(request, "Zugang gelöscht. Claude Desktop kommt mit diesem Schlüssel nicht mehr hinein.")
+    return go("/einstellungen#claude")
 
 
 @app.post("/logout")
@@ -744,7 +806,16 @@ def post_edit(request: Request, pid: int):
                 laeuft=jobs.LABELS.get(laufende[0]["kind"]) if laufende else None, fehler=jobs.last_error(b["id"], pid),
                 design_n=len(json.loads(p["design"] or "[]")), manuell=layout_editor.hat_manuelle(p),
                 kanaele=buffer.kanaele_fuer_post(b["id"], p), buffer_da=bool(buffer.verbindung(b["id"])),
-                reel_fotos=[(n, dict(m)) for n, m in medien.post_fotos(b["id"], p)])
+                reel_fotos=[(n, dict(m)) for n, m in medien.post_fotos(b["id"], p)],
+                ig=_ig_profil(b))
+
+
+def _ig_profil(b):
+    """Name und Bild für die Instagram-Vorschau (Handle aus dem Label, Profilbild: Referenzfoto, sonst Logo)."""
+    a = json.loads(b["auftreten"])
+    roh = (a.get("label") or a.get("name") or "account").lower()
+    handle = re.sub(r"[^a-z0-9._]", "", roh.replace(" ", ".").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")) or "account"
+    return {"handle": handle, "name": a.get("name") or "", "bild": b["ref_photo"] or b["logo"] or "", "logo": not b["ref_photo"] and bool(b["logo"])}
 
 
 @app.post("/planen/{pid}")
@@ -1115,6 +1186,92 @@ async def post_video(request: Request, pid: int, datei: UploadFile = File(...)):
     db.run("UPDATE posts SET video_roh=?, status=CASE WHEN status IN ('Idee','Freigegeben','Wartet auf Input') THEN 'In Arbeit' ELSE status END WHERE id=?", rel, pid)
     db.run("UPDATE inputs SET status='hochgeladen', datei=? WHERE post_id=? AND status='offen'", rel, pid)
     jobs.start(b["id"], pid, "schnitt", schnitt.schneiden, b["id"], pid, True)
+    return go(f"/planen/{pid}")
+
+
+# ---------------------------------------------------------------- Fertige Inhalte hochladen
+
+async def _uploads(request, dateien):
+    """Hochgeladene Dateien prüfen und ablegen. Gibt [(name, pfad)] zurück oder wirft ValueError."""
+    b = brand_of(request)
+    out, gesamt = [], 0
+    for d in dateien:
+        if not d or not d.filename:
+            continue
+        if not fertig.art_von(d.filename):
+            raise ValueError(f"„{d.filename}“ ist weder Bild (JPG, PNG, WebP) noch Video (MP4, MOV).")
+        pfad = fertig.ablegen(b["id"], d.filename, d.file)
+        gesamt += os.path.getsize(pfad)
+        out.append((d.filename, pfad))
+        if gesamt > MAX_MEDIA:
+            for _, p in out:
+                os.remove(p)
+            raise ValueError("Zusammen größer als 500 MB.")
+    if not out:
+        raise ValueError("Wähl mindestens eine Datei aus.")
+    if sum(1 for n, _ in out if fertig.art_von(n) == "video") > 1:
+        for _, p in out:
+            os.remove(p)
+        raise ValueError("Bitte nur ein Video pro Post.")
+    return out
+
+
+@app.post("/planen/{pid}/fertig")
+async def post_fertig(request: Request, pid: int, dateien: List[UploadFile] = File(...), captions: str = Form("")):
+    """Fertige Slides oder ein fertiges Video in einen bestehenden Post übernehmen."""
+    b = brand_of(request)
+    post_of(b, pid)
+    if jobs.running(b["id"], pid):
+        flash(request, "Gerade läuft noch etwas an diesem Post.")
+        return go(f"/planen/{pid}")
+    try:
+        liste = await _uploads(request, dateien)
+    except ValueError as e:
+        flash(request, str(e))
+        return go(f"/planen/{pid}")
+    jobs.start(b["id"], pid, "fertig", fertig.uebernehmen, b["id"], pid, liste, bool(captions) and bool(config.ANTHROPIC_API_KEY))
+    flash(request, "Übernehme die fertigen Dateien. Der Post wird so gepostet, wie du ihn hochgeladen hast.")
+    return go(f"/planen/{pid}")
+
+
+@app.post("/hochladen")   # nicht unter /planen/…: dort fängt /planen/{pid} jeden Pfad ab
+async def planen_hochladen(request: Request, dateien: List[UploadFile] = File(...), titel: str = Form(""), datum: str = Form(""),
+                           uhrzeit: str = Form("08:30"), captions: str = Form("")):
+    """Neuen Post aus fertigen Dateien anlegen: ein Video wird ein Reel, ein Bild ein Einzelbild, mehrere Bilder ein Carousel."""
+    b = brand_of(request)
+    try:
+        liste = await _uploads(request, dateien)
+    except ValueError as e:
+        flash(request, str(e))
+        return go("/planen")
+    art = "video" if any(fertig.art_von(n) == "video" for n, _ in liste) else "bild"
+    pid = fertig.neuer_post(b["id"], titel.strip()[:200], datum.strip(), uhrzeit, None, art, len(liste))
+    jobs.start(b["id"], pid, "fertig", fertig.uebernehmen, b["id"], pid, liste, bool(captions) and bool(config.ANTHROPIC_API_KEY))
+    return go(f"/planen/{pid}")
+
+
+@app.post("/planen/{pid}/fertig/zuruecknehmen")
+def post_fertig_zurueck(request: Request, pid: int):
+    """Fertigen Post wieder gestalten lassen (Slides bzw. Animation aus den Texten)."""
+    b = brand_of(request)
+    p = post_of(b, pid)
+    inhalt = json.loads(p["inhalt"])
+    inhalt.pop("fertig", None)
+    db.run("UPDATE posts SET inhalt=?, status='Idee', updated=? WHERE id=?", json.dumps(inhalt, ensure_ascii=False), db.now(), pid)
+    flash(request, "Der Post wird wieder aus den Texten gestaltet. Gib ihn frei, dann entstehen die Visuals.")
+    return go(f"/planen/{pid}")
+
+
+@app.post("/planen/{pid}/captions")
+def post_captions(request: Request, pid: int):
+    b = brand_of(request)
+    p = post_of(b, pid)
+    if not config.ANTHROPIC_API_KEY:
+        flash(request, "Dafür braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY).")
+    elif not (p["video"] or p["rendered_at"]):
+        flash(request, "Es gibt noch keine Bilder oder kein Video, zu denen Claude schreiben könnte.")
+    elif not jobs.running(b["id"], pid):
+        jobs.start(b["id"], pid, "captions", fertig.captions_schreiben, b["id"], pid, False)
     return go(f"/planen/{pid}")
 
 
@@ -1504,6 +1661,42 @@ def _chat_planen(b, nachricht, hist, seite=""):
 
 
 
+def _chat_post(b, p, nachricht, hist):
+    """Art Director am Post: Texte, Szenen, Captions, Schnitt ändern. Gibt (antwort, geaendert) zurück."""
+    geaendert = False
+    res = ai.chat_post(b, p, nachricht, hist)
+    antwort = res["antwort"]
+    inhalt = json.loads(p["inhalt"])
+    design = json.loads(p["design"])
+    if res["slides_geaendert"] and res["neue_slides"]:
+        alt = inhalt.get("slides", [])
+        inhalt["slides"] = res["neue_slides"]
+        nach = marke.texte_nachziehen(alt, inhalt["slides"], design) if design else None
+        design = nach if nach is not None else []
+        geaendert = True
+    for i, s in res["szenen"].items():
+        if 0 <= i < len(design):
+            design[i] = s
+            geaendert = True
+    sets = {"inhalt": json.dumps(inhalt, ensure_ascii=False), "design": json.dumps(design, ensure_ascii=False)}
+    for k in ("caption_ig", "caption_li", "bildidee"):
+        if res[k].strip():
+            sets[k] = res[k].strip(); geaendert = True
+    db.run("UPDATE posts SET " + ", ".join(f"{k}=?" for k in sets) + ", updated=? WHERE id=?", *sets.values(), db.now(), p["id"])
+    if res.get("schnitt_json", "").strip() and p["video_roh"]:
+        try:
+            neu_s = json.loads(res["schnitt_json"])
+            jobs.start(b["id"], p["id"], "schnitt", schnitt.schneiden, b["id"], p["id"], False, neu_s)
+            geaendert = True
+        except json.JSONDecodeError:
+            antwort += " (Der neue Schnitt war fehlerhaft und wurde nicht übernommen.)"
+    if res["neu_gestalten"] or (geaendert and not design and p["design"] != "[]" and not p["video_roh"]):
+        jobs.start(b["id"], p["id"], "gestalten", jobs.gestalten, b["id"], p["id"], True)
+    elif geaendert and design:
+        jobs.start(b["id"], p["id"], "render", jobs.render_post, b["id"], p["id"], design)
+    return antwort, geaendert
+
+
 @app.post("/chat")
 def chat(request: Request, nachricht: str = Form(""), bereich: str = Form("post"), post_id: Optional[int] = Form(None),
          bilder: Optional[List[UploadFile]] = File(None), seite: str = Form("")):
@@ -1542,36 +1735,7 @@ def chat(request: Request, nachricht: str = Form(""), bereich: str = Form("post"
         elif bereich == "planen":
             antwort, geaendert = _chat_planen(b, nachricht, hist, seite.strip()[:300])
         elif p is not None:
-            res = ai.chat_post(b, p, nachricht, hist)
-            antwort = res["antwort"]
-            inhalt = json.loads(p["inhalt"])
-            design = json.loads(p["design"])
-            if res["slides_geaendert"] and res["neue_slides"]:
-                alt = inhalt.get("slides", [])
-                inhalt["slides"] = res["neue_slides"]
-                nach = marke.texte_nachziehen(alt, inhalt["slides"], design) if design else None
-                design = nach if nach is not None else []
-                geaendert = True
-            for i, s in res["szenen"].items():
-                if 0 <= i < len(design):
-                    design[i] = s
-                    geaendert = True
-            sets = {"inhalt": json.dumps(inhalt, ensure_ascii=False), "design": json.dumps(design, ensure_ascii=False)}
-            for k in ("caption_ig", "caption_li", "bildidee"):
-                if res[k].strip():
-                    sets[k] = res[k].strip(); geaendert = True
-            db.run("UPDATE posts SET " + ", ".join(f"{k}=?" for k in sets) + ", updated=? WHERE id=?", *sets.values(), db.now(), p["id"])
-            if res.get("schnitt_json", "").strip() and p["video_roh"]:
-                try:
-                    neu_s = json.loads(res["schnitt_json"])
-                    jobs.start(b["id"], p["id"], "schnitt", schnitt.schneiden, b["id"], p["id"], False, neu_s)
-                    geaendert = True
-                except json.JSONDecodeError:
-                    antwort += " (Der neue Schnitt war fehlerhaft und wurde nicht übernommen.)"
-            if res["neu_gestalten"] or (geaendert and not design and p["design"] != "[]" and not p["video_roh"]):
-                jobs.start(b["id"], p["id"], "gestalten", jobs.gestalten, b["id"], p["id"], True)
-            elif geaendert and design:
-                jobs.start(b["id"], p["id"], "render", jobs.render_post, b["id"], p["id"], design)
+            antwort, geaendert = _chat_post(b, p, nachricht, hist)
         else:
             antwort = "Kein Post ausgewählt."
     except (ai.KeinSchluessel, ai.AIFehler) as e:

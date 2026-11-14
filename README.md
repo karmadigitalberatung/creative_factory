@@ -122,6 +122,20 @@ Futter für die Ideenwerkstatt, in `app/radar.py`. Trends und Swipe-Datei sind R
 - Muster aus der Swipe-Datei und offene Trends fließen in alle Ideen-Vorschläge ein (`ideen.lernkontext`).
 - Reichweiten-Zahlen von Instagram oder LinkedIn sind nicht enthalten, weil es dafür keine offene Schnittstelle gibt. Ein Monitor für Vorbild-Konten über die Instagram-Schnittstelle von Meta (Business Discovery) wäre ein möglicher nächster Schritt.
 
+## Vorschau wie auf Instagram
+
+Ein Post öffnet in der **Vorschau**: Feed-Post mit Wischen durch das Carousel (Zähler, Punkte, Pfeile), Reel im Hochformat mit Video und Ton-Schalter, Story mit Fortschrittsbalken; dazu Caption mit „… mehr“ nach zwei Zeilen und Handle, Profilbild (Referenzfoto, sonst Logo). Keine echten Zahlen. Der Reiter **Bearbeiten** enthält alles Bisherige. Wer gerade bearbeitet hat (Speichern, Hochladen), landet in den nächsten zehn Minuten wieder dort (`sessionStorage`).
+
+## Fertige Posts hochladen
+
+`app/fertig.py`. Im Redaktionsplan „Fertigen Post hochladen“ (ein Video wird ein Reel, ein Bild ein Einzelbild, mehrere Bilder ein Carousel), am Post „Fertige Slides hochladen“ bzw. „Fertiges Video hochladen“. Fertige Posts werden nicht gestaltet, geschnitten oder animiert (`inhalt.fertig`); Hochformat wird auf 4:5 beschnitten, MOV/WebM in MP4 umgewandelt, das Titelbild aus Sekunde 1 genommen. Optional schreibt Claude Titel und Captions aus den Bildern bzw. Standbildern des Videos. „Doch gestalten lassen“ macht daraus wieder einen normalen Entwurf.
+
+## Claude Desktop (MCP)
+
+`app/mcp.py`, Endpunkt `POST /mcp` (JSON-RPC 2.0, MCP-Protokoll 2025-06-18). Unter Einstellungen → Claude Desktop legt man je Account einen Zugang an (Schlüssel `cf_…`, gespeichert ist nur der Hash) und bekommt den Block für `claude_desktop_config.json`. Claude Desktop startet dann `app/mcp_bridge.py` (nur Standardbibliothek), die stdio auf den Endpunkt umsetzt und für `dateien_hochladen` lokale Dateien einliest. Die App muss dabei laufen.
+
+Werkzeuge: `marke_lesen`, `plan_lesen`, `post_lesen` (mit Bildern der Slides bzw. Standbildern), `post_anlegen`, `post_aendern`, `post_gestalten` (Slides oder Reel-Animation), `post_design_wunsch` (Art Director der App), `post_status`, `post_einplanen`, `post_fotos_erzeugen`, `post_fotos_waehlen`, `medien_lesen`, `bild_erzeugen`, `dateien_hochladen`, `ideen_lesen`, `ideen_vorschlagen`, `idee_anlegen`, `ideen_entscheiden`, `trends_lesen`, `trendradar_starten`, `leitlinien_aendern`.
+
 ## Layout-Editor: Elemente und Verläufe
 
 - **Element hinzufügen** (wenn nichts gewählt ist): Text, Rechteck, Kreis, Linie, Verlauf, Foto, Logo, in den Farben der Marke. Neue Elemente liegen obenauf und sind gleich gewählt; ein neuer Text öffnet sofort zum Schreiben.

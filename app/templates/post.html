@@ -2,6 +2,7 @@
 {% block title %}{{ p.titel or 'Post' }} · Planen{% endblock %}
 {% block main %}
 {% set video = p.format in ['Reel', 'Talking Head', 'Story'] %}
+{% set fertig = inhalt.fertig %}
 <section class="post-detail">
   <a class="back" href="/planen">← Planen</a>
   <div class="head">
@@ -24,10 +25,29 @@
   </div>
   {% if p.vorher_pruefen %}<p class="note"><strong>Vorher prüfen:</strong> {{ p.vorher_pruefen }}</p>{% endif %}
   {% if fehler and not laeuft %}<p class="error">Fehler: {{ fehler }}</p>{% endif %}
+  {% if fertig %}
+  <div class="hinweis-leiste klein fertig-leiste">
+    <span><strong>Fertig hochgeladen.</strong> {{ 'Das Video' if fertig == 'video' else 'Die Slides' }} {{ 'wird' if fertig == 'video' else 'werden' }} so gepostet, wie du {{ 'es' if fertig == 'video' else 'sie' }} hochgeladen hast.</span>
+    <span class="row wrapless">{% if ki_text %}<button class="small" form="captionsform" {{ 'disabled' if laeuft }}>Captions von Claude schreiben</button>{% endif %}
+      <button class="small link" form="fertigzurueckform" data-warnen="Den Post wieder aus den Texten gestalten lassen? Die hochgeladenen Dateien werden dabei ersetzt.">Doch gestalten lassen</button></span>
+  </div>
+  {% endif %}
+
+  <nav class="ansicht-tabs post-ansicht" aria-label="Ansicht des Posts" data-post-ansicht="{{ p.id }}">
+    <button type="button" class="on" data-ansicht-wechsel="vorschau" aria-current="page">Vorschau</button>
+    <button type="button" data-ansicht-wechsel="bearbeiten">Bearbeiten</button>
+  </nav>
+  <div data-ansicht="vorschau" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
+    {% include "_ig_vorschau.html" %}
+  </div>
+  <div data-ansicht="bearbeiten" hidden>
 
   {# Formulare für Aufnahme und Schnitt stehen außerhalb, ihre Felder hängen per form="…" daran (keine verschachtelten Formulare) #}
   <form method="post" action="/planen/{{ p.id }}/video" enctype="multipart/form-data" id="videoform" data-busy="Wird hochgeladen …" data-busy-ziel=".video-spalte"></form>
   <form method="post" action="/planen/{{ p.id }}/schneiden" id="schnittform" data-busy="Wird geschnitten …" data-busy-ziel=".video-spalte"></form>
+  <form method="post" action="/planen/{{ p.id }}/fertig" enctype="multipart/form-data" id="fertigform" data-busy="Lädt hoch …"></form>
+  <form method="post" action="/planen/{{ p.id }}/captions" id="captionsform" data-busy="Claude schreibt …"></form>
+  <form method="post" action="/planen/{{ p.id }}/fertig/zuruecknehmen" id="fertigzurueckform"></form>
   <form method="post" action="/planen/{{ p.id }}/animieren" id="animierform" data-busy="Animiert Reel …" data-busy-ziel=".video-spalte"></form>
   <form method="post" action="/planen/{{ p.id }}/reel-fotos" id="reelfotoform" data-busy="Erzeugt Fotos …" {% if video %}data-busy-ziel=".video-spalte"{% else %}data-busy-ziel="#post-fotos"{% endif %}></form>
   <form method="post" action="/planen/{{ p.id }}/reel-fotos/auswahl" id="reelauswahlform"></form>
@@ -56,12 +76,20 @@
         </div>
         {% endif %}
         <div class="aufnahme">
+          <label>Fertiges Video <input type="file" name="dateien" accept="video/*" required form="fertigform"></label>
+          <label class="check small"><input type="checkbox" name="captions" value="1" form="fertigform" {{ 'checked' if ki_text and not p.caption_ig }}> Captions von Claude schreiben lassen</label>
+          <button form="fertigform" class="small">{{ 'Anderes fertiges Video hochladen' if fertig else 'Fertiges Video hochladen' }}</button>
+          <span class="hint">Schon geschnitten und fertig? Dann wird es so übernommen, ohne Schnitt und Animation.</span>
+        </div>
+        {% if not fertig %}
+        <div class="aufnahme">
           <label>{{ 'Aufnahme' if p.format == 'Talking Head' else 'Aufnahme (optional)' }}
             <input type="file" name="datei" accept="video/*" required form="videoform"></label>
           <button form="videoform" class="small">{{ 'Neue Aufnahme hochladen' if p.video_roh else 'Aufnahme hochladen' }}</button>
           <span class="hint">{% if p.format == 'Talking Head' %}Wird transkribiert, geschnitten und mit Motion Graphics überlagert.{% else %}Mit Aufnahme liegt sie unter den Motion Graphics, ohne bleibt {{ 'die Story' if p.format == 'Story' else 'das Reel' }} reine Animation.{% endif %}</span>
         </div>
-        {% if p.format in ['Reel', 'Story'] and not p.video_roh and not laeuft %}
+        {% endif %}
+        {% if p.format in ['Reel', 'Story'] and not p.video_roh and not laeuft and not fertig %}
         <div class="aufnahme">
           <span class="label">Ohne Aufnahme</span>
           <div class="row">
@@ -149,10 +177,19 @@
 
     {% else %}
     <div class="bereich" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
-      {% set raster = p.rendered_at and design_n %}
+      {% set raster = p.rendered_at and (design_n or fertig) %}
       <div class="bereich-kopf">
         <h2>Slides</h2>
-        <span class="muted small">{% if raster %}Klick auf eine Slide, um Text, Bild, Farben, Position und Größe direkt darin zu ändern.{% elif p.status == 'Idee' %}Noch eine Idee. Prüf die Texte und gib frei, dann entstehen die Visuals.{% else %}Noch keine Visuals.{% endif %}</span>
+        <span class="muted small grow">{% if fertig %}Fertig hochgeladen.{% elif raster %}Klick auf eine Slide, um Text, Bild, Farben, Position und Größe direkt darin zu ändern.{% elif p.status == 'Idee' %}Noch eine Idee. Prüf die Texte und gib frei, dann entstehen die Visuals, oder lade fertige Slides hoch.{% else %}Noch keine Visuals.{% endif %}</span>
+        <details class="aufklapp fertig-hoch">
+          <summary class="button small">{{ 'Andere fertige Slides' if fertig else 'Fertige Slides hochladen' }}</summary>
+          <div class="aufklapp-panel">
+            <label>Bilder (in der Reihenfolge der Slides) <input type="file" name="dateien" accept="image/*" multiple required form="fertigform"></label>
+            <label class="check small"><input type="checkbox" name="captions" value="1" form="fertigform" {{ 'checked' if ki_text and not p.caption_ig }}> Captions von Claude schreiben lassen</label>
+            <button class="primary small" form="fertigform">Hochladen</button>
+            <span class="hint">Ein Bild wird ein Einzelbild, mehrere ein Carousel. Hochformat wird auf 4:5 beschnitten. Die Slides werden so gepostet, ohne Gestaltung.</span>
+          </div>
+        </details>
       </div>
       {% if raster %}
       <div class="slide-raster">
@@ -239,7 +276,7 @@
     <div class="row sticky-actions" id="abnehmen">
       <button name="aktion" value="speichern">Speichern</button>
       {% if p.status == 'Idee' %}<button class="primary" name="aktion" value="freigeben">{{ 'Freigeben' if video else 'Freigeben und Visuals erstellen' }}</button>{% endif %}
-      {% if p.status in ['Freigegeben', 'In Arbeit', 'Zur Abnahme', 'Geplant'] and not video %}<button name="aktion" value="neu_gestalten"
+      {% if p.status in ['Freigegeben', 'In Arbeit', 'Zur Abnahme', 'Geplant'] and not video and not fertig %}<button name="aktion" value="neu_gestalten"
         {% if manuell %}data-warnen="Slide {{ manuell|join(', ') }} {{ 'ist' if manuell|length == 1 else 'sind' }} von Hand angepasst. Neu gestalten ersetzt das ganze Layout. Trotzdem neu gestalten?"{% endif %}>Neu gestalten</button>{% endif %}
       {% if p.status in ['Zur Abnahme', 'Freigegeben', 'In Arbeit'] and (p.rendered_at or p.video) %}<button class="primary" name="aktion" value="abnehmen">Abnehmen und einplanen</button>{% endif %}
       {% if p.status == 'Geplant' %}<button name="aktion" value="gepostet">Als gepostet markieren</button>{% endif %}
@@ -297,6 +334,7 @@
   <form method="post" action="/planen/{{ p.id }}/verwerfen" onsubmit="return confirm('Post wirklich löschen?')">
     <button class="link danger">Post löschen</button>
   </form>
+  </div>
 
 </section>
 <template id="slidetpl">

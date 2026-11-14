@@ -7,7 +7,7 @@ from .engine import layouts, render
 
 _pool = ThreadPoolExecutor(max_workers=2)
 
-LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
+LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "fertig": "Übernimmt die Dateien", "captions": "Schreibt Captions", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
           "schnitt": "Schneidet Video", "animation": "Animiert Reel",
           "muster": "Musterseiten", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
 
@@ -79,6 +79,9 @@ def render_post(brand_id, post_id, design=None):
 def gestalten(brand_id, post_id, neu=True):
     """Nach der Freigabe: Foto (falls nötig), Layout entwerfen, rendern, prüfen."""
     b, p = _brand(brand_id), _post(post_id)
+    if json.loads(p["inhalt"]).get("fertig"):   # fertig hochgeladen: nichts gestalten, nur zur Abnahme
+        db.run("UPDATE posts SET status='Zur Abnahme', updated=? WHERE id=?", db.now(), post_id)
+        return
     db.run("UPDATE posts SET status='In Arbeit', updated=? WHERE id=?", db.now(), post_id)
 
     if p["format"] == "Talking Head":

@@ -852,3 +852,55 @@ window.addEventListener("hashchange", redaktionAuf);
   leiste.querySelector("[data-auswahl-leeren]").addEventListener("click", () => { boxen.forEach((b) => (b.checked = false)); zeigen(); });
   zeigen();
 })();
+
+// Einstellungen: MCP-Konfiguration kopieren
+document.querySelectorAll("[data-kopieren-knopf]").forEach((k) => k.addEventListener("click", async () => {
+  const feld = k.closest(".mcp-neu").querySelector("[data-kopieren]");
+  try { await navigator.clipboard.writeText(feld.value); } catch (e) { feld.select(); document.execCommand("copy"); }
+  k.textContent = "Kopiert";
+}));
+
+// Post: Vorschau (Instagram) und Bearbeiten. Start in der Vorschau; wer gerade bearbeitet hat (Speichern, Hochladen …), landet wieder in Bearbeiten.
+(() => {
+  const nav = document.querySelector("[data-post-ansicht]");
+  if (!nav) return;
+  const pid = nav.dataset.postAnsicht, key = "post-ansicht-" + pid;
+  const zeigen = (was, merken) => {
+    document.querySelectorAll("[data-ansicht]").forEach((d) => { d.hidden = d.dataset.ansicht !== was; });
+    nav.querySelectorAll("[data-ansicht-wechsel]").forEach((b) => { const on = b.dataset.ansichtWechsel === was; b.classList.toggle("on", on); on ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"); });
+    if (merken) { try { sessionStorage.setItem(key, JSON.stringify({ was, t: Date.now() })); } catch (e) {} }
+  };
+  document.querySelectorAll("[data-ansicht-wechsel]").forEach((b) => b.addEventListener("click", () => { zeigen(b.dataset.ansichtWechsel, true); window.scrollTo({ top: 0 }); }));
+  let start = "vorschau";
+  try { const m = JSON.parse(sessionStorage.getItem(key) || "null"); if (m && Date.now() - m.t < 10 * 60 * 1000) start = m.was; } catch (e) {}
+  if (new URLSearchParams(location.search).get("tab") || /^#(abnehmen|post-fotos|reel-fotos|slides)/.test(location.hash)) start = "bearbeiten";
+  zeigen(start, false);
+  // Beim Absenden eines Formulars aus der Bearbeitung danach wieder dort landen
+  document.addEventListener("submit", (e) => { if (e.target.closest("[data-ansicht='bearbeiten']") || (e.submitter && e.submitter.closest("[data-ansicht='bearbeiten']"))) { try { sessionStorage.setItem(key, JSON.stringify({ was: "bearbeiten", t: Date.now() })); } catch (x) {} } }, true);
+
+  // Carousel wischen: Zähler, Punkte, Pfeile
+  const k = document.querySelector("[data-ig-karussell]");
+  const spur = k && k.querySelector("[data-ig-spur]");
+  if (spur) {
+    const n = spur.children.length, zaehler = k.querySelector("[data-ig-zaehler]"), punkte = document.querySelectorAll("[data-ig-punkte] i");
+    const pfeile = k.querySelectorAll("[data-ig-pfeil]");
+    const aktuell = () => Math.round(spur.scrollLeft / spur.clientWidth);
+    const anzeigen = () => { const i = aktuell(); if (zaehler) zaehler.textContent = `${i + 1}/${n}`; punkte.forEach((p, j) => p.classList.toggle("on", j === i));
+      pfeile.forEach((p) => { p.hidden = (+p.dataset.igPfeil < 0 && i === 0) || (+p.dataset.igPfeil > 0 && i === n - 1); }); };
+    spur.addEventListener("scroll", anzeigen, { passive: true });
+    pfeile.forEach((p) => p.addEventListener("click", () => {
+      const ziel = Math.max(0, Math.min(n - 1, aktuell() + +p.dataset.igPfeil)) * spur.clientWidth;
+      spur.scrollTo({ left: ziel, behavior: "smooth" });
+      setTimeout(() => { if (Math.abs(spur.scrollLeft - ziel) > 2) spur.scrollLeft = ziel; anzeigen(); }, 450);   // ohne Animation (z. B. Tab im Hintergrund) trotzdem weiter
+    }));
+  }
+  // Caption „… mehr“
+  document.querySelectorAll("[data-ig-caption]").forEach((c) => {
+    if (c.scrollHeight <= c.clientHeight + 2) { c.classList.remove("kurz"); return; }
+    const mehr = document.createElement("button"); mehr.type = "button"; mehr.className = "ig-mehr"; mehr.textContent = "… mehr";
+    mehr.addEventListener("click", () => { c.classList.remove("kurz"); mehr.remove(); });
+    c.after(mehr);
+  });
+  // Reel: Ton an/aus
+  document.querySelectorAll("[data-ig-ton]").forEach((b) => b.addEventListener("click", () => { const v = document.querySelector("[data-ig-video]"); if (v) { v.muted = !v.muted; b.classList.toggle("an", !v.muted); } }));
+})();

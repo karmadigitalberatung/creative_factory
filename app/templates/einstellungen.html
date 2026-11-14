@@ -22,6 +22,37 @@
     {% endif %}
   </section>
 
+  <section class="card" id="claude">
+    <div class="bereich-zeile"><h2>Claude Desktop</h2><span class="small muted">MCP-Zugang für {{ auf.label or auf.name or 'diesen Account' }}</span></div>
+    <p class="small muted">Damit planst du direkt in Claude Desktop: Plan lesen, Posts anlegen und ändern, Slides und Reels gestalten lassen, Ideen und Trends,
+      Fotos erzeugen und fertige Dateien hochladen. Claude arbeitet dabei immer nur in diesem Account.</p>
+    {% if mcp_konfig %}
+    <div class="mcp-neu stack">
+      <strong>Neuer Zugang angelegt. Der Schlüssel wird nur jetzt angezeigt.</strong>
+      <ol class="small">
+        <li>Öffne in Claude Desktop <em>Einstellungen → Entwickler → Konfiguration bearbeiten</em> (Datei <code>claude_desktop_config.json</code>).</li>
+        <li>Füge den Eintrag unter <code>mcpServers</code> ein (gibt es schon andere Server, nur den Block <code>creative-factory-{{ mcp_slug }}</code> ergänzen).</li>
+        <li>Claude Desktop neu starten. Die Creative Factory muss dabei laufen.</li>
+      </ol>
+      <textarea class="mcp-konfig" rows="12" readonly data-kopieren>{{ mcp_konfig }}</textarea>
+      <div class="row"><button type="button" class="small" data-kopieren-knopf>Kopieren</button><span class="hint">Gib den Schlüssel nicht weiter: Wer ihn hat, kann in diesem Account planen.</span></div>
+    </div>
+    {% endif %}
+    {% if zugaenge %}
+    <table class="tabelle">
+      <thead><tr><th>Name</th><th>Schlüssel</th><th>Angelegt</th><th>Zuletzt benutzt</th><th></th></tr></thead>
+      <tbody>{% for z in zugaenge %}
+        <tr><td>{{ z.name }}</td><td><code>{{ z.praefix }}…</code></td><td>{{ z.created|zeit }}</td><td>{{ z.zuletzt|zeit if z.zuletzt else 'noch nie' }}</td>
+          <td class="aktionen"><form method="post" action="/einstellungen/mcp/{{ z.id }}/loeschen"><button class="small link danger" data-warnen="Zugang „{{ z.name }}“ löschen? Claude Desktop kommt damit nicht mehr hinein.">Löschen</button></form></td></tr>
+      {% endfor %}</tbody>
+    </table>
+    {% endif %}
+    <form method="post" action="/einstellungen/mcp" class="row">
+      <label class="grow">Name des Zugangs <input name="name" placeholder="z. B. Claude Desktop MacBook"></label>
+      <button class="primary">Zugang für Claude Desktop anlegen</button>
+    </form>
+  </section>
+
   {% if admin %}
   <section class="card" id="nutzer">
     <div class="bereich-zeile"><h2>Nutzer</h2><span class="small muted">{{ nutzer|length }} Konten</span></div>
