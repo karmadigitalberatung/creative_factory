@@ -315,7 +315,7 @@ NL_WEBSITE_WUNSCH = ("Gestalte eine neue, sehr hochwertige Newsletter-Vorlage, d
                      "aktion neu, kurzer Name, als_standard true.")
 
 
-def nl_vorlage_gestalten(brand_id, wunsch=""):
+def nl_vorlage_gestalten(brand_id, wunsch="", als_standard=True):
     """Claude gestaltet eine Newsletter-Vorlage im Look der Website (Screenshots) oder, ohne Website, der Musterseiten; wird Standard."""
     import os
     from PIL import Image
@@ -334,7 +334,8 @@ def nl_vorlage_gestalten(brand_id, wunsch=""):
     if not res["vorlage"]:
         raise ValueError("Claude hat keine verwendbare Newsletter-Vorlage geliefert.")
     vid = vorlagen.anlegen(brand_id, "Newsletter", res["name"] or "Newsletter", res["vorlage"])
-    nl_design_setzen(brand_id, {"standard": vid})
+    if als_standard:
+        nl_design_setzen(brand_id, {"standard": vid})
     db.run("INSERT INTO chats (brand_id, post_id, bereich, role, text, created) VALUES (?,?,?,?,?,?)",
            brand_id, None, "design-newsletter", "claude", res["antwort"], db.now())
     return vid
