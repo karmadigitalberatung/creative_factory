@@ -1,15 +1,13 @@
-/* heykajo Studio · Designsprache F „Leicht“: schwebende dunkle Sidebar, warmes Off-White, Haarlinien, kleine Radien,
-   Inter leicht für Überschriften mit einem Akzentwort in Instrument Serif kursiv. heykajo-Gelb nur als Punkt und Zähler, nie als Rand oder Fläche. */
+/* heykajo Studio · Designsprache H: schwebende Sidebar in heykajo-Beige mit gelbem Aktiv-Zustand, warmes Off-White, Haarlinien, kleine Radien,
+   nur Inter (leicht für Überschriften). heykajo-Gelb nur als Punkt und Zähler, nie als Rand oder Fläche. */
 @font-face { font-family: "Inter"; src: url("/static/fonts/Inter-Variable.ttf") format("truetype"); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: "Instrument Serif"; src: url("/static/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
-@font-face { font-family: "Instrument Serif"; src: url("/static/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
 :root {
   --grund: #F5F5F0; --karte: #FFFFFF; --flaeche: #FAFAF7; --flaeche-2: #F0F1EC; --tinte: #14180F; --tinte-2: #4A5045;
-  --muted: #6B7066; --leise: #A4AAA0; --linie: #E3E4DD; --linie-2: #D9DAD2; --akzent: #E6FF02; --side-on: #262C21;
+  --muted: #6B7066; --leise: #A4AAA0; --linie: #E3E4DD; --linie-2: #D9DAD2; --akzent: #E6FF02; --beige: #CFC9BC; --beige-hell: #DCD7CC; --beige-text: #4C4C4C;
   --gut: #2F6B47; --warn: #8A4E17; --warn-grund: #FBF5EC; --bad: #A6362A;
   --rund: 6px; --rund-klein: 4px; --rund-gross: 8px;
   --punkt-rand: 0 0 0 1px rgba(20, 24, 15, 0.35);
-  --serif: "Instrument Serif", Georgia, "Times New Roman", serif; --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --serif: var(--sans); --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ink: var(--tinte); --line: var(--linie); --card: var(--karte); --paper: var(--grund);
 }
 * { box-sizing: border-box; }
@@ -19,43 +17,43 @@ body { margin: 0; background: var(--grund); color: var(--tinte); font: 14px/1.55
 a { color: inherit; }
 img { max-width: 100%; }
 h1 { font: 300 48px/1.04 var(--sans); letter-spacing: -0.03em; margin: 0 0 6px; }
-h1 em, h2 em, .logo em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
+h1 em, h2 em, .logo em { font: inherit; font-style: normal; letter-spacing: inherit; }
 h2 { font: 400 22px/1.2 var(--sans); letter-spacing: -0.02em; margin: 0 0 6px; }
 h3, .label { font: 500 11px/1.4 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
 .lead { color: var(--muted); max-width: 680px; margin: 0 0 24px; font-size: 15px; }
 .muted { color: var(--muted); } .small { font-size: 12px; } .leise { color: var(--leise); }
 code { background: var(--flaeche-2); padding: 1px 6px; border-radius: var(--rund-klein); font-size: 12px; }
 
-/* ---------- Rahmen: schwebende Sidebar + Inhalt */
+/* ---------- Rahmen: schwebende Sidebar in heykajo-Beige + Inhalt */
 .app { display: flex; flex-wrap: wrap; min-height: 100vh; align-items: flex-start; padding: 12px; gap: 12px; }
-.side { flex: 0 0 236px; position: sticky; top: calc(12px + var(--admin-h, 0px)); height: calc(100vh - 24px - var(--admin-h, 0px)); background: var(--tinte); color: #FFF;
+.side { flex: 0 0 236px; position: sticky; top: calc(12px + var(--admin-h, 0px)); height: calc(100vh - 24px - var(--admin-h, 0px)); background: var(--beige); color: var(--tinte);
   border-radius: var(--rund-gross); padding: 26px 14px 16px; display: flex; flex-direction: column; gap: 30px; overflow-y: auto; }
-.marke { display: block; padding: 0 12px; text-decoration: none; color: #FFF; line-height: 0; }
+.marke { display: block; padding: 0 12px; text-decoration: none; color: var(--tinte); line-height: 0; }
 .marke .logo-svg { height: 28px; width: auto; display: block; }
 .marke.dunkel { padding: 0; }
 .marke.dunkel .logo-svg { height: 30px; }
 .side-gruppe { display: flex; flex-direction: column; gap: 2px; }
-.side-gruppe a { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--rund-klein); text-decoration: none; color: #E4E7E1; font-size: 14px; transition: background .15s, color .15s; }
-.side-gruppe a:hover { color: #FFF; background: rgba(255, 255, 255, 0.04); }
-.side-gruppe a.on { color: #FFF; font-weight: 500; background: var(--side-on); }
-.side-gruppe a.on:not(.unterpunkt-kopf)::after { content: ""; margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--akzent); flex: none; }
+.side-gruppe a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--rund-klein); text-decoration: none; color: var(--tinte); font-size: 14px; transition: background .15s; }
+.side-gruppe a svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.side-gruppe a:hover { background: rgba(17, 25, 12, 0.06); }
+.side-gruppe a.on { font-weight: 500; background: var(--akzent); }
 .side-gruppe a.unterpunkt-kopf.on { background: none; }
-.side-gruppe a.unterpunkt { padding: 6px 12px 6px 24px; font-size: 13px; color: var(--leise); }
-.side-gruppe a.unterpunkt:hover { color: #FFF; }
-.side-gruppe a.unterpunkt.on { margin-left: 12px; padding-left: 12px; color: #FFF; }
-.side-gruppe .zahl { margin-left: auto; font-size: 11px; color: #E4E7E1; }
-.side-gruppe a.on .zahl { color: #E4E7E1; }
-.side-gruppe a.on:has(.zahl)::after { display: none; }
+.side-gruppe a.unterpunkt-kopf.on:hover { background: rgba(17, 25, 12, 0.06); }
+.side-gruppe a.unterpunkt { padding: 6px 12px 6px 42px; font-size: 13px; color: var(--beige-text); }
+.side-gruppe a.unterpunkt:hover { color: var(--tinte); }
+.side-gruppe a.unterpunkt.on { margin-left: 30px; padding-left: 12px; color: var(--tinte); }
+.side-gruppe .zahl { margin-left: auto; font-size: 11px; color: var(--tinte); }
 .side-gruppe .zahl.alarm { min-width: 20px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--tinte); background: var(--akzent); border-radius: 3px; font-weight: 500; }
+.side-gruppe a.on .zahl.alarm { background: var(--tinte); color: var(--akzent); }
 .side-fuss { margin-top: auto; padding: 0 2px; display: flex; flex-direction: column; gap: 14px; }
-.naechster { display: flex; flex-direction: column; gap: 5px; padding: 14px; border: 1px solid #2C3328; border-radius: var(--rund); text-decoration: none; color: #FFF; font-size: 13px; line-height: 1.4; transition: border-color .15s; }
-.naechster:hover { border-color: #4A5045; }
-.naechster .label { color: #8E948A; margin: 0; }
-.naechster .leise { font-size: 12px; }
+.naechster { display: flex; flex-direction: column; gap: 5px; padding: 14px; border-radius: var(--rund); background: var(--beige-hell); text-decoration: none; color: var(--tinte); font-size: 13px; line-height: 1.4; transition: background .15s; }
+.naechster:hover { background: #E4E0D7; }
+.naechster .label { color: var(--beige-text); margin: 0; }
+.naechster .leise { font-size: 12px; color: var(--beige-text); }
 .profil { display: flex; flex-direction: column; padding: 0 10px; font-size: 13px; line-height: 1.45; }
 .profil form { margin: 0; }
-.profil-link, .profil button.link { color: #8E948A; font-size: 12px; text-decoration: none; }
-.profil-link:hover, .profil button.link:hover { color: #FFF; }
+.profil-link, .profil button.link { color: var(--beige-text); font-size: 12px; text-decoration: none; }
+.profil-link:hover, .profil button.link:hover { color: var(--tinte); }
 .inhalt { flex: 999 1 560px; min-width: 0; }
 .inhalt main { padding: 28px 36px 64px; max-width: 1600px; }
 .flash { margin: 16px 36px 0; padding: 12px 16px; border: 1px solid var(--linie); border-radius: var(--rund); background: var(--karte); display: flex; align-items: center; gap: 12px; font-size: 14px; }
@@ -350,6 +348,7 @@ details[open] summary { margin-bottom: 14px; }
   .side { flex: 1 1 100%; position: static; height: auto; padding: 18px 0 8px; gap: 12px; }
   .side-gruppe { flex-direction: row; overflow-x: auto; }
   .side-gruppe a { padding: 10px 16px; white-space: nowrap; }
+  .side-gruppe a.unterpunkt, .side-gruppe a.unterpunkt.on { padding: 10px 16px; margin-left: 0; }
   .side-fuss { display: none; }
   .marke { padding: 0 16px; }
   .inhalt main { padding: 24px 16px 48px; }
@@ -627,9 +626,8 @@ details[open] summary { margin-bottom: 14px; }
 .sticky-actions { padding-right: 90px; }
 
 /* ---------- Seitenleiste: Planen mit Unterpunkten */
-.side-gruppe a.unterpunkt-kopf { pointer-events: none; color: var(--leise); }
-.side-gruppe a.unterpunkt-kopf.on { color: #FFF; font-weight: 500; box-shadow: none; }
-.side-gruppe a.unterpunkt { padding-left: 44px; font-size: 13px; }
+.side-gruppe a.unterpunkt-kopf { color: var(--tinte); }
+.side-gruppe a.unterpunkt-kopf.on { font-weight: 500; }
 
 /* ---------- Ideenwerkstatt */
 .ideen-werkzeug { display: flex; flex-direction: column; gap: 12px; }

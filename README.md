@@ -220,7 +220,7 @@ Offen:
 
 ## Designsprache
 
-Designsprache F („Leicht“) für alle heykajo-Backends (Entwürfe im Canvas „Creative Factory · Redesign“): schwebende dunkle Sidebar mit dem Original-Logo von heykajo.ai und „STUDIO“ auf der Grundlinie (`app/templates/_logo.html`), warmes Off-White, Haarlinien, Radien 3 bis 8 px, Überschriften in Inter Light mit einem Akzentwort in Instrument Serif kursiv (`<em>`). heykajo-Gelb nur als Punkt und Zähler, nie als Rand oder Fläche. Schriften liefert die App selbst aus (`app/static/fonts`), nichts lädt von Google.
+Designsprache H für alle heykajo-Backends (Entwürfe im Canvas „Creative Factory · Redesign“): schwebende Sidebar im heykajo-Beige `#CFC9BC` mit Menü-Icons, aktiver Punkt als gelbe Fläche, Zähler gelb; oben das Original-Logo von heykajo.ai mit „STUDIO“ auf der Grundlinie (`app/templates/_logo.html`). Inhalt in warmem Off-White mit weißen Karten, Haarlinien, Radien 3 bis 8 px. Nur Inter (Überschriften leicht), keine Serifenschrift. Im Inhalt ist Gelb nur Punkt oder Zähler, nie Rand. Schriften liefert die App selbst aus (`app/static/fonts`), nichts lädt von Google.
 
 ## Betrieb (VPS)
 
