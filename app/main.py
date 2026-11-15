@@ -1799,6 +1799,7 @@ def design_newsletter_vorlage_speichern(request: Request, vid: int, name: str = 
             flash(request, fehler + " Nichts geändert.")
             return go(f"/design/newsletter/vorlage/{vid}")
         szene = dict(szene, html=neu)
+        hub.schriften_sichern(b["id"], neu)
     vorlagen.aendern(b["id"], vid, szene, name.strip()[:80] or v["name"])
     flash(request, "Gespeichert.")
     return go(f"/design/newsletter/vorlage/{vid}")
@@ -2194,6 +2195,8 @@ def _chat_newsletter(b, nachricht, hist, neue, fokus):
         vorlagen.aendern(b["id"], res["vorlage_id"], res["vorlage"], res["name"] or None); ziel = res["vorlage_id"]; geaendert = True
     elif res["vorlage"] and res["aktion"] in ("neu", "aendern"):
         ziel = vorlagen.anlegen(b["id"], "Newsletter", res["name"] or "Neue Vorlage", res["vorlage"]); geaendert = True
+    if ziel and res["vorlage"]:
+        hub.schriften_sichern(b["id"], res["vorlage"]["html"])
     werte = {k: res[k] for k in ("fusszeile", "regeln") if res[k].strip()}
     if ziel and res["als_standard"]:
         werte["standard"] = ziel
@@ -2337,7 +2340,7 @@ def media_oeffentlich(bid: int, sig: str, rel: str):
         raise HTTPException(404)
     if not os.path.isfile(path):
         raise HTTPException(404)
-    return FileResponse(path, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=31536000, immutable", "Access-Control-Allow-Origin": "*"})
 
 
 @app.get("/media/{rel:path}")

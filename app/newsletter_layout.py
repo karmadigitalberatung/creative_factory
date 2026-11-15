@@ -10,8 +10,10 @@ DOKU = """Newsletter-Vorlage = vollständiges E-Mail-HTML (<!doctype html> bis <
 Technik (E-Mail-tauglich, sonst sieht es in Outlook und Gmail kaputt aus):
 - Layout mit verschachtelten <table role="presentation" cellpadding="0" cellspacing="0">, Inhaltsbreite 600 px (width="600" plus style max-width:600px;width:100%).
 - Alle Styles inline (style="…"); höchstens ein kleiner <style>-Block für @media (max-width:620px). Kein JavaScript, keine externen CSS-Dateien.
-- Schrift: sichere Schriften (Helvetica/Arial, Georgia/Times, Verdana, Trebuchet MS). Eine Google-Schrift darf per <link href="https://fonts.googleapis.com/css2?family=…" rel="stylesheet">
-  im <head> dazu, aber immer mit sicherer Ausweichschrift, z. B. font-family:'Inter',Helvetica,Arial,sans-serif (Apple Mail zeigt sie, Gmail und Outlook die Ausweichschrift).
+- Schrift: sichere Schriften (Helvetica/Arial, Georgia/Times, Verdana, Trebuchet MS). Eine Google-Schrift gibst du per <link href="https://fonts.googleapis.com/css2?family=Name:wght@400;700" rel="stylesheet">
+  im <head> an (genau die Gewichte, die du nutzt); die App lädt sie auf den eigenen Server und bindet sie selbst ein, es geht nichts an Google.
+  Immer mit sicherer Ausweichschrift, z. B. font-family:'Inter',Helvetica,Arial,sans-serif (Apple Mail zeigt die Schrift, Gmail und Outlook die Ausweichschrift).
+  Nur Schriften, die es bei Google Fonts gibt; Lizenzschriften (Adobe Fonts u. a.) nicht.
 - Mehrspaltig: im wiederholten Themen-Bereich Spalten als <div style="display:inline-block;width:100%;max-width:270px;vertical-align:top">, dann stehen sie nebeneinander und auf dem Handy untereinander.
 - Bilder: <img src="{{bild}}" width="…" style="display:block;width:100%;height:auto;border:0">. Hintergrundbilder vermeiden.
 

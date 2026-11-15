@@ -261,7 +261,7 @@ def nl_design(auftreten):
     """Newsletter-Design des Accounts mit Standardwerten aus den Markenfarben."""
     farbe = {f["rolle"]: f["hex"] for f in auftreten.get("farben") or []}
     d = {"layout": "brief", "logo": True, "kopf_farbe": farbe.get("hintergrund", "#FFFFFF"), "knopf_farbe": farbe.get("akzent", "#111111"),
-         "grund_farbe": farbe.get("flaeche", "#F4F4F2"), "bilder": True, "schrift": "sans", "fusszeile": "", "regeln": "", "standard": None}
+         "grund_farbe": farbe.get("flaeche", "#F4F4F2"), "bilder": True, "schrift": "sans", "fusszeile": "", "regeln": "", "standard": None, "schriften": {}}
     d.update({k: v for k, v in (auftreten.get("newsletter_design") or {}).items() if k in d})
     if d["layout"] not in NL_LAYOUTS:
         d["layout"] = "brief"
@@ -334,11 +334,23 @@ def nl_vorlage_gestalten(brand_id, wunsch="", als_standard=True):
     if not res["vorlage"]:
         raise ValueError("Claude hat keine verwendbare Newsletter-Vorlage geliefert.")
     vid = vorlagen.anlegen(brand_id, "Newsletter", res["name"] or "Newsletter", res["vorlage"])
+    schriften_sichern(brand_id, res["vorlage"]["html"])
     if als_standard:
         nl_design_setzen(brand_id, {"standard": vid})
     db.run("INSERT INTO chats (brand_id, post_id, bereich, role, text, created) VALUES (?,?,?,?,?,?)",
            brand_id, None, "design-newsletter", "claude", res["antwort"], db.now())
     return vid
+
+
+def schriften_sichern(brand_id, html):
+    """Google-Schriften der Vorlage auf den eigenen Server holen (mailschriften); Fehler sind egal, dann gilt die Ausweichschrift."""
+    from . import mailschriften
+    try:
+        return mailschriften.sichern(brand_id, html)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 def nl_vorlage(brand_id, vid=None):
@@ -376,8 +388,9 @@ def newsletter_html_aus(brand, nl, fuer_email=True, vorlage_id=None, vorlage=Non
     def bild_url(x):
         return url(x if isinstance(x, str) else (x.get("bild") or (_bild_des_posts(brand["id"], x["post_id"]) if x.get("post_id") else None)))
 
-    return nll.rendern(v, nl, a.get("label") or a.get("name") or "", url(brand["logo"]) if brand["logo"] else "",
-                       bild_url, d.get("fusszeile", ""), fuer_email)
+    from . import mailschriften
+    return mailschriften.einbinden(nll.rendern(v, nl, a.get("label") or a.get("name") or "", url(brand["logo"]) if brand["logo"] else "",
+                                                bild_url, d.get("fusszeile", ""), fuer_email), d.get("schriften"), url)
 
 
 NL_BEISPIEL = {"betreff": "Was diese Woche zählt", "vorschautext": "Drei Gedanken und ein Beitrag für dich.", "anrede": "Hallo,",
