@@ -9,6 +9,6 @@
     <label>Passwort <input type="password" name="passwort" required minlength="{{ 1 if modus == 'login' else 10 }}" autocomplete="{{ 'current-password' if modus == 'login' else 'new-password' }}"></label>
     <button class="primary">{{ 'Anmelden' if modus == 'login' else 'Konto anlegen' }}</button>
   </form>
-  <p class="muted">{% if modus == 'login' %}Noch kein Konto? <a href="/registrieren">Registrieren</a>{% else %}Schon ein Konto? <a href="/login">Anmelden</a>{% endif %}</p>
+  <p class="muted">{% if modus == 'login' %}Noch kein Zugang? Den bekommst du von uns.{% else %}Schon ein Konto? <a href="/login">Anmelden</a>{% endif %}</p>
 </section>
 {% endblock %}

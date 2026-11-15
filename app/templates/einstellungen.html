@@ -99,7 +99,7 @@
 
     <form method="post" action="/admin/nutzer/neu" class="row nutzer-neu">
       <label class="grow">E-Mail <input type="email" name="email" required autocomplete="off"></label>
-      <label>Startpasswort <input type="password" name="passwort" minlength="10" required autocomplete="new-password"></label>
+      <label>Startpasswort <input type="text" name="passwort" minlength="10" required autocomplete="off" value="{{ pw_vorschlag }}" spellcheck="false"></label>
       <label>Rolle <select name="rolle"><option value="nutzer">Nutzer</option><option value="admin">Admin</option></select></label>
       <button class="primary">Nutzer anlegen</button>
     </form>

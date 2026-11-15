@@ -98,7 +98,7 @@ Unten links in der Seitenleiste:
 
 - **Mein Konto**: das eigene Passwort ändern.
 - **Nutzer** (nur für Admins): alle Konten mit Marke, Rolle, Anzahl Posts und letztem Login.
-  - Neue Nutzer mit Startpasswort anlegen.
+  - Neue Nutzer mit Startpasswort anlegen (die App schlägt ein sichtbares vor). Selbst registrieren ist abgeschaltet; nur in einer leeren Installation legt der erste Nutzer sein Konto selbst an und wird Admin.
   - Ein Passwort neu setzen, zum Admin machen oder zurückstufen, sperren und entsperren. Gesperrte Konten können sich nicht anmelden; eine laufende Sitzung endet beim nächsten Klick.
   - **Öffnen** zeigt ein Konto so, wie die Person es sieht. Oben steht dann ein Hinweis mit „Zurück zum Admin-Account“ (Sitzung: `admin_uid`).
 - Rollen stehen in `users.rolle` (`nutzer` oder `admin`). Gibt es keinen Admin, wird beim Start das älteste Konto Admin.

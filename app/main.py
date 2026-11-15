@@ -223,20 +223,28 @@ def login(request: Request, email: str = Form(...), passwort: str = Form(...)):
     return go("/")
 
 
+def _registrieren_offen():
+    """Selbst registrieren geht nur in einer leeren Installation (erster Nutzer wird Admin); sonst legt der Admin Konten an."""
+    return not db.one("SELECT id FROM users LIMIT 1")
+
+
 @app.get("/registrieren", response_class=HTMLResponse)
 def register_form(request: Request):
+    if not _registrieren_offen():
+        return go("/login")
     return page(request, "login.html", modus="registrieren")
 
 
 @app.post("/registrieren")
 def register(request: Request, email: str = Form(...), passwort: str = Form(...)):
+    if not _registrieren_offen():
+        raise HTTPException(403)
     email = email.strip().lower()
     if "@" not in email or len(passwort) < 10:
         return page(request, "login.html", modus="registrieren", fehler="Gültige E-Mail und mindestens 10 Zeichen Passwort.")
     if db.one("SELECT id FROM users WHERE email=?", email):
         return page(request, "login.html", modus="registrieren", fehler="Für diese E-Mail gibt es schon ein Konto.")
-    uid = db.run("INSERT INTO users (email, pw, created) VALUES (?,?,?)", email, db.hash_pw(passwort), db.now())
-    db.run("INSERT INTO brands (user_id, auftreten, created) VALUES (?,?,?)", uid, json.dumps(marke.neu(), ensure_ascii=False), db.now())
+    uid = _nutzer_neu(email, passwort, "admin")
     request.session["uid"] = uid
     return go("/start")
 
@@ -278,7 +286,8 @@ def einstellungen(request: Request):
         konfig = json.dumps({"mcpServers": {f"creative-factory-{slug}": {
             "command": sys.executable, "args": [os.path.join(HERE, "mcp_bridge.py")],
             "env": {"CF_URL": str(request.base_url).rstrip("/"), "CF_TOKEN": token}}}}, ensure_ascii=False, indent=2)
-    return page(request, "einstellungen.html", b=b, admin=admin, nutzer=nutzer, zugaenge=mcp.zugaenge(b["id"]), mcp_konfig=konfig, mcp_slug=slug)
+    import secrets
+    return page(request, "einstellungen.html", b=b, admin=admin, nutzer=nutzer, pw_vorschlag=secrets.token_urlsafe(9), zugaenge=mcp.zugaenge(b["id"]), mcp_konfig=konfig, mcp_slug=slug)
 
 
 @app.post("/einstellungen/passwort")
