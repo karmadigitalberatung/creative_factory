@@ -314,6 +314,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   const knoepfe = document.querySelectorAll("[data-layout]");
   if (!knoepfe.length) return;
   const PID = window.POST_ID;
+  const BASIS = window.LAYOUT_BASIS || `/planen/${PID}/layout`, BILD = window.BILD_BASIS || `/planen/${PID}/bild`;
   const TYP = { text: "Text", stapel: "Textblock", liste: "Liste", foto: "Foto", form: "Form", logo: "Logo", farbfelder: "Farbfelder", verlauf: "Verlauf" };
   const hatHoehe = (typ) => ["foto", "form", "verlauf"].includes(typ);
   const RAND = 96, FANG = 10;
@@ -356,7 +357,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
     do {
       nochmal = false;
       try {
-        const r = await fetch(`/planen/${PID}/layout/${S.nr}/vorschau`, { method: "POST", credentials: "same-origin",
+        const r = await fetch(`${BASIS}/${S.nr}/vorschau`, { method: "POST", credentials: "same-origin",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify({ szene: S.szene }) });
         const d = await r.json();
         if (d.fehler) { markieren(d.fehler); break; }
@@ -546,7 +547,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
           const fd = new FormData();
           fd.append("beschreibung", text); fd.append("format", ziel.format()); fd.append("generator", (feld.querySelector("select") || {}).value || "");
           knopf.disabled = true; knopf.classList.add("busy"); knopf.textContent = "Erzeugt Bild …"; markieren("Erzeugt Bild …");
-          await holen(`/planen/${PID}/bild/erzeugen`, fd);
+          await holen(`${BILD}/erzeugen`, fd);
           if (knopf.isConnected) { knopf.disabled = false; knopf.classList.remove("busy"); knopf.textContent = "Bild erzeugen"; }
         });
       }
@@ -564,7 +565,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
       if (!datei.files[0]) return;
       const fd = new FormData(); fd.append("datei", datei.files[0]); datei.value = "";
       markieren("Lädt hoch …");
-      await holen(`/planen/${PID}/bild/upload`, fd);
+      await holen(`${BILD}/upload`, fd);
     });
     return zeigen;
   }
@@ -724,11 +725,11 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   // ---------- Öffnen, Rückgängig, Speichern
   async function oeffnen(nr, zumBild) {
     le.hidden = false; seite.innerHTML = '<p class="leer busy">Lädt …</p>'; bild.removeAttribute("src");
-    const r = await fetch(`/planen/${PID}/layout/${nr}`, { credentials: "same-origin" });
+    const r = await fetch(`${BASIS}/${nr}`, { credentials: "same-origin" });
     const d = await r.json();
     if (d.fehler) { seite.innerHTML = `<p class="error">${esc(d.fehler)}</p>`; return; }
     S = { ...d, aktiv: null, zurueck: [], vor: [], geaendert: false };
-    le.querySelector("h2").textContent = `Slide ${d.nr} von ${d.gesamt} · Layout anpassen`;
+    le.querySelector("h2").textContent = d.titel || `Slide ${d.nr} von ${d.gesamt} · Layout anpassen`;
     le.querySelector("[data-entwurf]").hidden = !d.manuell;
     markieren(d.manuell ? "von Hand angepasst" : "");
     bild.onload = () => { if (!ziehen) boxenZeichnen(); };
@@ -758,7 +759,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   le.querySelector("[data-speichern]").addEventListener("click", async (ev) => {
     if (inline) inlineZu();
     const b = ev.currentTarget; b.disabled = true; markieren("Speichert …");
-    const r = await fetch(`/planen/${PID}/layout/${S.nr}`, { method: "POST", credentials: "same-origin",
+    const r = await fetch(`${BASIS}/${S.nr}`, { method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ szene: S.szene }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d.fehler) { markieren(d.fehler || "Speichern fehlgeschlagen"); b.disabled = false; return; }
@@ -766,7 +767,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   });
   le.querySelector("[data-entwurf]").addEventListener("click", async () => {
     if (!confirm("Alle Handanpassungen dieser Slide verwerfen und zum ursprünglichen Entwurf zurück?")) return;
-    await fetch(`/planen/${PID}/layout/${S.nr}/entwurf`, { method: "POST", credentials: "same-origin" });
+    await fetch(`${BASIS}/${S.nr}/entwurf`, { method: "POST", credentials: "same-origin" });
     S.geaendert = false; location.reload();
   });
   document.addEventListener("keydown", (ev) => {
@@ -800,11 +801,11 @@ document.querySelectorAll("[data-zaehler]").forEach((z) => {
   boxen.forEach((b) => b.addEventListener("change", zeigen));
 });
 
-// Formatwechsel zwischen Slides (Carousel, Einzelbild) und Video (Reel, Talking Head): vorher warnen
+// Formatwechsel zwischen Slides (Carousel, Einzelbild) und Video (Reel, Story): vorher warnen
 (() => {
   const sel = document.querySelector("select[data-format-vorher]");
   if (!sel) return;
-  const gruppe = (f) => (["Reel", "Talking Head", "Story"].includes(f) ? "video" : "slides");
+  const gruppe = (f) => (["Reel", "Story"].includes(f) ? "video" : "slides");
   sel.form.addEventListener("submit", (e) => {
     const vorher = sel.dataset.formatVorher;
     if (sel.value === vorher || gruppe(sel.value) === gruppe(vorher) || sel.dataset.hatVisuals !== "1") return;
@@ -904,3 +905,9 @@ document.querySelectorAll("[data-kopieren-knopf]").forEach((k) => k.addEventList
   // Reel: Ton an/aus
   document.querySelectorAll("[data-ig-ton]").forEach((b) => b.addEventListener("click", () => { const v = document.querySelector("[data-ig-video]"); if (v) { v.muted = !v.muted; b.classList.toggle("an", !v.muted); } }));
 })();
+
+// Newsletter: HTML der Ausgabe in die Zwischenablage (für MailerLite-Tarife ohne eigenes HTML über die Schnittstelle)
+document.querySelectorAll("[data-html-kopieren]").forEach((k) => k.addEventListener("click", async () => {
+  const html = await (await fetch(k.dataset.htmlKopieren, { credentials: "same-origin" })).text();
+  try { await navigator.clipboard.writeText(html); k.textContent = "Kopiert"; } catch (e) { k.textContent = "Kopieren nicht erlaubt"; }
+}));

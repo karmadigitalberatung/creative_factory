@@ -69,7 +69,7 @@ def neuer_post(brand_id, inhalt, **kw):
 
 def idee_anlegen(brand_id, i, datum=None, uhrzeit=None):
     inhalt = {"slides": i["slides"]}
-    if i["format"] in ("Talking Head", "Reel", "Story") and i.get("skript"):
+    if i["format"] in ("Reel", "Story") and i.get("skript"):
         inhalt["skript"] = i["skript"]
     extra = {}
     if datum:
@@ -99,19 +99,20 @@ def lauf(brand_id, manuell=False):
     speichern(brand_id, e)
     if not config.ANTHROPIC_API_KEY:
         return 0
+    blog_neu = blog_vorschlagen(brand_id, b)   # unabhängig vom Rhythmus: höchstens eine Blog-Idee im Monat
     heute = datetime.date.today()
     termine = freie_termine(brand_id, e, heute)
     offen_ideen = ideen.anzahl(brand_id, "neu")   # Vorschläge, über die noch nicht entschieden ist
     anzahl = max(0, min(len(termine), e["max_offen"] - offen_ideen))
     punkte = offene_punkte(brand_id, heute)
     if not anzahl and not punkte and not manuell:
-        return 0   # nichts zu tun: Claude nicht fragen
+        return blog_neu   # nichts zu tun: Claude nicht fragen
     if not anzahl and not punkte:
         hinweis = ("Alles im Plan: " + ("keine freien Termine im Rhythmus." if not termine else
                    f"in der Ideenwerkstatt liegen schon {offen_ideen} offene Ideen (Grenze {e['max_offen']})."))
         db.run("INSERT INTO chats (brand_id, post_id, bereich, role, text, created) VALUES (?,?,?,?,?,?)",
                brand_id, None, "planen", "claude", "Redaktion: " + hinweis, db.now())
-        return 0
+        return blog_neu
     auftrag = AUFTRAG.format(rhythmus=", ".join(TAGE_LANG[t] for t in e["tage"]), uhrzeit=e["uhrzeit"], vorlauf=e["vorlauf"],
                              termine=", ".join(termine) or "keine", anzahl=anzahl,
                              punkte=("Weise in antwort auf diese offenen Punkte hin: " + "; ".join(punkte) + ".") if punkte else "")
@@ -130,7 +131,28 @@ def lauf(brand_id, manuell=False):
     text = res["antwort"].strip() or (f"Ich habe {neu} neue Ideen für freie Termine in die Ideenwerkstatt gelegt." if neu else "Nichts Neues.")
     db.run("INSERT INTO chats (brand_id, post_id, bereich, role, text, created) VALUES (?,?,?,?,?,?)",
            brand_id, None, "planen", "claude", "Redaktion: " + text, db.now())
-    return neu
+    return neu + blog_neu
+
+
+def blog_vorschlagen(brand_id, b):
+    """Ist ein Blog eingerichtet und gab es 30 Tage keinen Blogbeitrag oder offene Blog-Idee: eine Blog-Idee in die Werkstatt legen."""
+    from . import hub
+    if not hub.ziel(brand_id, "blog"):
+        return 0
+    grenze = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+    if db.one("SELECT id FROM posts WHERE brand_id=? AND format='Blog' AND (datum>=? OR datum='')", brand_id, grenze):
+        return 0
+    if db.one("SELECT id FROM ideen WHERE brand_id=? AND format='Blog' AND status IN ('neu','gemerkt')", brand_id):
+        return 0
+    try:
+        res = ai.ideen(b, 1, "Ein Blogbeitrag für die Website, passend zu einer Themen-Säule, die zuletzt zu kurz kam", ["Blog"],
+                       lernkontext=ideen.lernkontext(brand_id))
+    except Exception:
+        traceback.print_exc()
+        return 0
+    for i in res[:1]:
+        ideen.anlegen(brand_id, dict(i, format="Blog"), "redaktion")
+    return len(res[:1])
 
 
 # ---------------------------------------------------------------- Zeitplan

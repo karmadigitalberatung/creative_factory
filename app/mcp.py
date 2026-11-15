@@ -8,7 +8,7 @@ Die Werkzeuge rufen dieselben Funktionen auf wie die Weboberfläche (Jobs laufen
 """
 import base64, datetime, hashlib, io, json, os, re, secrets
 from PIL import Image
-from . import config, db, fertig, ideen, jobs, leitlinien, marke, medien, radar, redaktion, storage
+from . import config, db, fertig, hub, ideen, jobs, leitlinien, marke, medien, radar, redaktion, storage
 
 PROTOKOLL = "2025-06-18"
 VERSION = "1.0"
@@ -125,7 +125,7 @@ SLIDE_DOKU = ("Slides: Liste von Objekten mit art und Feldern je Art: " +
 def marke_lesen(b, a):
     auf = json.loads(b["auftreten"])
     return [_text({
-        "name": auf.get("name"), "website": auf.get("website"), "formate": auf.get("formate"),
+        "name": auf.get("name"), "website": auf.get("website"), "formate": auf.get("formate"), "formate_verfuegbar": hub.formate(b["id"]),
         "farben": auf.get("farben"), "schriften": {r: (s.get("datei") or "").replace("marke:", "") for r, s in (auf.get("schriften") or {}).items()},
         "schreibstil": auf.get("schreibstil"), "layout_prinzipien": auf.get("layout_prinzipien"), "bildstil": auf.get("bildstil"),
         "leitlinien": leitlinien.laden(auf), "redaktion": {k: v for k, v in redaktion.einstellungen(auf).items() if k != "letzter_lauf"},
@@ -160,6 +160,11 @@ def post_lesen(b, a):
              bildidee=p["bildidee"], vorher_pruefen=p["vorher_pruefen"], anzahl_slides=p["slide_count"],
              fotos=[{"name": n, "medien_id": m["id"], "titel": m["titel"]} for n, m in medien.post_fotos(b["id"], p)],
              letzter_fehler=jobs.last_error(b["id"], p["id"]))
+    if p["format"] == "Blog":
+        d = dict(_kurz(p), blog=inhalt.get("blog"), ableitungen=[dict(x) for x in hub.ableitungen(b["id"], p["id"])], vorher_pruefen=p["vorher_pruefen"])
+        return [_text(d)]
+    if p["format"] == "Newsletter":
+        return [_text(dict(_kurz(p), newsletter=inhalt.get("newsletter"), vorher_pruefen=p["vorher_pruefen"]))]
     out = [_text(d)]
     if a.get("bilder", True) and (p["video"] or p["rendered_at"]):
         bilder = fertig.bilder_des_posts(b["id"], p)
@@ -178,6 +183,8 @@ def post_anlegen(b, a):
     inhalt = {"slides": slides}
     if a.get("skript"):
         inhalt["skript"] = str(a["skript"])
+    if a.get("aufnahme") and fmt in marke.VIDEO_FORMATE:
+        inhalt["aufnahme"] = True
     cols = {"status": "Idee", "inhalt": json.dumps(inhalt, ensure_ascii=False), "titel": str(a.get("titel") or "Neuer Post")[:200],
             "format": fmt, "datum": _datum(a.get("datum")), "uhrzeit": str(a.get("uhrzeit") or "08:30")[:5],
             "caption_ig": str(a.get("caption_ig") or ""), "caption_li": str(a.get("caption_li") or ""),
@@ -201,6 +208,8 @@ def post_aendern(b, a):
         inhalt["slides"] = _slides(a["slides"])
     if "skript" in a and a["skript"] is not None:
         inhalt["skript"] = str(a["skript"])
+    if "aufnahme" in a and a["aufnahme"] is not None:
+        inhalt["aufnahme"] = bool(a["aufnahme"])
     sets["inhalt"] = json.dumps(inhalt, ensure_ascii=False)
     db.run("UPDATE posts SET " + ", ".join(f"{k}=?" for k in sets) + ", updated=? WHERE id=?", *sets.values(), db.now(), p["id"])
     hinweis = "Gespeichert."
@@ -224,7 +233,8 @@ def post_gestalten(b, a):
         raise Fehler("Dieser Post ist fertig hochgeladen und wird nicht gestaltet.")
     db.run("UPDATE posts SET status=CASE WHEN status='Idee' THEN 'Freigegeben' ELSE status END, updated=? WHERE id=?", db.now(), p["id"])
     jobs.start(b["id"], p["id"], "gestalten", jobs.gestalten, b["id"], p["id"], True)
-    was = "die Animation (Reel/Story)" if p["format"] in ("Reel", "Story") else ("die Aufnahme-Anleitung" if p["format"] == "Talking Head" else "die Slides")
+    mit_aufnahme = json.loads(p["inhalt"]).get("aufnahme") and not p["video_roh"]
+    was = ("die Aufnahme-Anleitung (die Person spricht selbst)" if mit_aufnahme else "die Animation (Reel/Story)") if p["format"] in marke.VIDEO_FORMATE else "die Slides"
     return [_text(f"Gestartet: {was}. Das dauert ein bis drei Minuten; mit post_status prüfen, mit post_lesen ansehen.")]
 
 
@@ -377,6 +387,70 @@ def dateien_hochladen(b, a):
                    ". Mit post_lesen ansehen."})]
 
 
+def blog_anlegen(b, a):
+    if not hub.ziel(b["id"], "blog"):
+        raise Fehler("Für diesen Account ist kein Blog eingerichtet (Connectors → Blog).")
+    titel = str(a.get("titel") or "")[:200]
+    inhalt = {"slides": [], "blog": {"titel": titel, "teaser": str(a.get("teaser") or ""), "text": str(a.get("text") or ""),
+                                     "notizen": str(a.get("notizen") or ""), "slug": hub._slug(titel)}}
+    cols = {"status": "Idee", "format": "Blog", "titel": titel or "Neuer Blogbeitrag", "inhalt": json.dumps(inhalt, ensure_ascii=False),
+            "datum": _datum(a.get("datum")), "uhrzeit": "08:30", "created": db.now(), "updated": db.now()}
+    pid = db.run(f"INSERT INTO posts (brand_id,{','.join(cols)}) VALUES (?{',?' * len(cols)})", b["id"], *cols.values())
+    if not a.get("text") and a.get("schreiben", True) and config.ANTHROPIC_API_KEY:
+        jobs.start(b["id"], pid, "blog", jobs.gestalten, b["id"], pid)
+        return [_text({"post_id": pid, "hinweis": "Die App schreibt den Beitrag (ein bis zwei Minuten). Mit post_lesen ansehen."})]
+    return [_text({"post_id": pid, "hinweis": "Angelegt."})]
+
+
+def blog_aendern(b, a):
+    p = _post(b, a["post_id"])
+    if p["format"] != "Blog":
+        raise Fehler("Das ist kein Blogbeitrag.")
+    inhalt = json.loads(p["inhalt"])
+    blog = inhalt.get("blog") or {}
+    for k in ("titel", "teaser", "text", "notizen", "seo_titel", "seo_beschreibung", "slug"):
+        if a.get(k) is not None:
+            blog[k] = str(a[k])
+    if a.get("schlagworte") is not None:
+        blog["schlagworte"] = [str(x) for x in a["schlagworte"]]
+    inhalt["blog"] = blog
+    db.run("UPDATE posts SET titel=?, inhalt=?, datum=?, updated=? WHERE id=?", blog.get("titel") or p["titel"], json.dumps(inhalt, ensure_ascii=False),
+           _datum(a.get("datum")) if a.get("datum") is not None else p["datum"], db.now(), p["id"])
+    if a.get("ueberarbeiten"):
+        jobs.start(b["id"], p["id"], "blog", jobs.gestalten, b["id"], p["id"])
+        return [_text("Gespeichert; die App überarbeitet den Beitrag nach den Notizen.")]
+    return [_text("Gespeichert.")]
+
+
+def blog_aufteilen(b, a):
+    p = _post(b, a["post_id"])
+    if jobs.running(b["id"], p["id"]):
+        raise Fehler("An diesem Beitrag läuft gerade schon etwas.")
+    jobs.start(b["id"], p["id"], "aufteilen", hub.aufteilen, b["id"], p["id"], max(2, min(int(a.get("anzahl") or 4), 8)))
+    return [_text("Der Beitrag wird in Social-Posts aufgeteilt (Entwürfe an den Tagen danach). Danach mit plan_lesen ansehen.")]
+
+
+def blog_uebergeben(b, a):
+    p = _post(b, a["post_id"])
+    jobs.start(b["id"], p["id"], "uebergabe", hub.blog_uebergeben, b["id"], p["id"])
+    return [_text("Der Beitrag wird als Entwurf an WordPress bzw. heykajo übergeben. Veröffentlichen macht die Person dort.")]
+
+
+def newsletter_erstellen(b, a):
+    if not hub.ziel(b["id"], "newsletter"):
+        raise Fehler("Für diesen Account ist MailerLite nicht verbunden.")
+    ids = [int(x) for x in a.get("themen_ids") or [] if _post(b, x)]
+    pid = hub.newsletter_anlegen(b["id"], ids, str(a.get("anlass") or "")[:2000], _datum(a.get("datum")))
+    jobs.start(b["id"], pid, "newsletter", jobs.gestalten, b["id"], pid)
+    return [_text({"post_id": pid, "hinweis": "Die App schreibt die Ausgabe aus den Themen (etwa eine Minute). Mit post_lesen ansehen."})]
+
+
+def newsletter_an_mailerlite(b, a):
+    p = _post(b, a["post_id"])
+    jobs.start(b["id"], p["id"], "uebergabe", hub.newsletter_an_mailerlite, b["id"], p["id"])
+    return [_text("Die Ausgabe wird in MailerLite als Kampagnen-Entwurf angelegt. Gesendet wird dort von der Person.")]
+
+
 def _o(props, req=()):
     return {"type": "object", "properties": props, "required": list(req)}
 
@@ -385,7 +459,8 @@ STR, INT, BOOL = {"type": "string"}, {"type": "integer"}, {"type": "boolean"}
 SLIDES = {"type": "array", "items": {"type": "object"}, "description": SLIDE_DOKU}
 POST_FELDER = {"titel": STR, "format": {"type": "string", "enum": marke.FORMATE}, "datum": {"type": "string", "description": "JJJJ-MM-TT"},
                "uhrzeit": {"type": "string", "description": "HH:MM"}, "slides": SLIDES, "skript": STR, "caption_ig": STR, "caption_li": STR,
-               "bildidee": STR, "vorher_pruefen": STR}
+               "bildidee": STR, "vorher_pruefen": STR,
+               "aufnahme": {"type": "boolean", "description": "Reel/Story: die Person spricht selbst in die Kamera (sonst reine Animation)"}}
 
 WERKZEUGE = [
     ("marke_lesen", "Auftreten (Farben, Schriften, Schreibstil, Layout, Bildstil), Leitlinien und Redaktions-Rhythmus des Accounts. Zuerst lesen, bevor du planst oder schreibst.",
@@ -417,6 +492,17 @@ WERKZEUGE = [
      "ein Bild ein Einzelbild, mehrere Bilder ein Carousel. Sie werden so gepostet, wie sie sind; captions=true lässt Claude in der App Captions schreiben.",
      _o({"pfade": {"type": "array", "items": STR, "description": "Vollständige lokale Dateipfade"}, "post_id": INT, "titel": STR, "datum": STR,
          "uhrzeit": STR, "format": STR, "captions": BOOL}, ["pfade"]), dateien_hochladen),
+    ("blog_anlegen", "Blogbeitrag anlegen (nur wenn ein Blog eingerichtet ist). Ohne text schreibt die App ihn aus titel und notizen nach Schreibstil und Leitlinien.",
+     _o({"titel": STR, "notizen": STR, "teaser": STR, "text": {"type": "string", "description": "Markdown, optional"}, "datum": STR, "schreiben": BOOL}, ["titel"]), blog_anlegen),
+    ("blog_aendern", "Blogbeitrag ändern (Titel, Teaser, Text als Markdown, Notizen, SEO). ueberarbeiten=true lässt die App ihn nach den Notizen überarbeiten.",
+     _o({"post_id": INT, "titel": STR, "teaser": STR, "text": STR, "notizen": STR, "seo_titel": STR, "seo_beschreibung": STR, "slug": STR,
+         "schlagworte": {"type": "array", "items": STR}, "datum": STR, "ueberarbeiten": BOOL}, ["post_id"]), blog_aendern),
+    ("blog_aufteilen", "Einen Blogbeitrag in verknüpfte Social-Posts aufteilen (Entwürfe, verteilt auf die Tage nach dem Blog).",
+     _o({"post_id": INT, "anzahl": INT}, ["post_id"]), blog_aufteilen),
+    ("blog_uebergeben", "Blogbeitrag als Entwurf an WordPress bzw. heykajo übergeben (erneut: aktualisiert den Entwurf).", _o({"post_id": INT}, ["post_id"]), blog_uebergeben),
+    ("newsletter_erstellen", "Newsletter-Ausgabe aus gewählten Beiträgen (themen_ids: Post- und Blog-IDs aus plan_lesen) und einem Anlass schreiben lassen.",
+     _o({"themen_ids": {"type": "array", "items": INT}, "anlass": STR, "datum": STR}), newsletter_erstellen),
+    ("newsletter_an_mailerlite", "Newsletter als Kampagnen-Entwurf in MailerLite anlegen oder aktualisieren.", _o({"post_id": INT}, ["post_id"]), newsletter_an_mailerlite),
     ("ideen_lesen", "Ideen der Ideenwerkstatt (status: neu, gemerkt, uebernommen, verworfen).", _o({"status": STR}), ideen_lesen),
     ("ideen_vorschlagen", "Die Ideenwerkstatt neue Ideen suchen lassen (nach Leitlinien, Trends und Swipe-Datei).", _o({"anzahl": INT, "thema": STR}), ideen_vorschlagen),
     ("idee_anlegen", "Eine eigene Idee in die Ideenwerkstatt legen (z. B. aus diesem Gespräch). " + SLIDE_DOKU,
@@ -432,7 +518,8 @@ WERKZEUGE = [
          "vorbilder": {"type": "array", "items": {"type": "object"}}, "sonstiges": STR}), leitlinien_aendern),
 ]
 
-ANLEITUNG = ("Creative Factory: Redaktionsplanung für Instagram und LinkedIn dieses Accounts. Lies zuerst marke_lesen und plan_lesen. "
+ANLEITUNG = ("Creative Factory: Content Hub dieses Accounts (Instagram, LinkedIn, Blog, Newsletter). Lies zuerst marke_lesen und plan_lesen. "
+             "Blogbeiträge lassen sich mit blog_aufteilen in Social-Posts zerlegen; Newsletter entstehen aus gewählten Beiträgen. "
              "Posts entstehen als Entwurf (post_anlegen), post_gestalten erzeugt Slides oder die Reel-Animation, post_lesen zeigt das Ergebnis als Bilder. "
              "Fertige eigene Dateien lädt dateien_hochladen hoch. Längere Arbeiten laufen im Hintergrund: mit post_status nachsehen. "
              "Halte dich an Schreibstil und Leitlinien der Marke und erfinde keine Fakten über die Person.")

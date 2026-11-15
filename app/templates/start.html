@@ -3,7 +3,7 @@
 {% block main %}
 <section class="auth wide">
   <h1>Schön, dass du <em>da bist.</em></h1>
-  <p class="lead">Drei Angaben, dann legen wir gemeinsam dein Auftreten fest: Farben, Schriften, Logo und wie du schreibst.</p>
+  <p class="lead">Drei Angaben, dann legen wir gemeinsam dein Design fest: Farben, Schriften, Logo und wie du schreibst.</p>
   <form method="post" action="/start" enctype="multipart/form-data" class="card stack">
     <div class="row">
       <label class="grow">Dein Name oder Markenname <input name="name" required value="{{ auf.name }}" placeholder="z. B. Kristina Muster"></label>
@@ -13,7 +13,7 @@
     <label>Ein Foto von dir <span class="hint">optional · wird für Layouts und KI-Fotos genutzt</span><input type="file" name="foto" accept="image/*"></label>
     <label class="check"><input type="checkbox" name="einwilligung" value="1">
       Ich bin die Person auf dem Foto und willige ein, dass daraus Grafiken und KI-Bilder von mir erzeugt werden.</label>
-    <button class="primary">Weiter zum Auftreten</button>
+    <button class="primary">Weiter zu Design &amp; Layout</button>
   </form>
 </section>
 {% endblock %}

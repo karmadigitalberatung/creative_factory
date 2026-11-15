@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ p.titel or 'Post' }} · Planen{% endblock %}
 {% block main %}
-{% set video = p.format in ['Reel', 'Talking Head', 'Story'] %}
+{% set video = p.format in ['Reel', 'Story'] %}
+{% set mit_aufnahme = inhalt.aufnahme %}
 {% set fertig = inhalt.fertig %}
 <section class="post-detail">
   <a class="back" href="/planen">← Planen</a>
@@ -71,8 +72,8 @@
                src="/media/{{ p.video }}?v={{ p.rendered_at|int }}"></video>
         {% else %}
         <div class="video-leer">
-          <span>{{ 'Noch keine Aufnahme' if p.format == 'Talking Head' else 'Noch kein Video' }}</span>
-          <span class="small leise">{% if p.format == 'Talking Head' %}Skript und Anleitung stehen unter <a href="/input">Input</a>, oder lade die Aufnahme hier hoch.{% else %}{{ 'Die Story' if p.format == 'Story' else 'Das Reel' }} entsteht als Animation aus Skript und Szenen – mit oder ohne eigene Aufnahme. Beim Freigeben wird es erzeugt.{% endif %}</span>
+          <span>{{ 'Noch keine Aufnahme' if mit_aufnahme else 'Noch kein Video' }}</span>
+          <span class="small leise">{% if mit_aufnahme %}Skript und Anleitung stehen unter <a href="/input">Input</a>, oder lade die Aufnahme hier hoch.{% else %}{{ 'Die Story' if p.format == 'Story' else 'Das Reel' }} entsteht als Animation aus Skript und Szenen – mit oder ohne eigene Aufnahme. Beim Freigeben wird es erzeugt.{% endif %}</span>
         </div>
         {% endif %}
         <div class="aufnahme">
@@ -83,13 +84,13 @@
         </div>
         {% if not fertig %}
         <div class="aufnahme">
-          <label>{{ 'Aufnahme' if p.format == 'Talking Head' else 'Aufnahme (optional)' }}
+          <label>{{ 'Aufnahme' if mit_aufnahme else 'Aufnahme (optional)' }}
             <input type="file" name="datei" accept="video/*" required form="videoform"></label>
           <button form="videoform" class="small">{{ 'Neue Aufnahme hochladen' if p.video_roh else 'Aufnahme hochladen' }}</button>
-          <span class="hint">{% if p.format == 'Talking Head' %}Wird transkribiert, geschnitten und mit Motion Graphics überlagert.{% else %}Mit Aufnahme liegt sie unter den Motion Graphics, ohne bleibt {{ 'die Story' if p.format == 'Story' else 'das Reel' }} reine Animation.{% endif %}</span>
+          <span class="hint">{% if mit_aufnahme %}Wird transkribiert, geschnitten und mit Motion Graphics überlagert.{% else %}Mit Aufnahme liegt sie unter den Motion Graphics, ohne bleibt {{ 'die Story' if p.format == 'Story' else 'das Reel' }} reine Animation.{% endif %}</span>
         </div>
         {% endif %}
-        {% if p.format in ['Reel', 'Story'] and not p.video_roh and not laeuft and not fertig %}
+        {% if p.format in ['Reel', 'Story'] and not p.video_roh and not laeuft and not fertig and not mit_aufnahme %}
         <div class="aufnahme">
           <span class="label">Ohne Aufnahme</span>
           <div class="row">
@@ -112,13 +113,15 @@
         </div>
 
         <div data-reiter-inhalt="skript" class="stack" {{ 'hidden' if tab != 'skript' }}>
-          <label>{{ 'Skript zum Sprechen' if p.format == 'Talking Head' else 'Skript' }}
-            <span class="hint">{% if p.format == 'Talking Head' %}Erscheint bei der Aufnahme als Teleprompter (unter Input).{% else %}Gesprochener oder eingeblendeter Text in Reihenfolge – Grundlage für Szenen und Timing.{% endif %}</span>
+          <input type="hidden" name="aufnahme_form" value="1">
+          <label class="check"><input type="checkbox" name="aufnahme" value="1" {{ 'checked' if mit_aufnahme }}> Ich spreche selbst in die Kamera (eigene Aufnahme, Motion Graphics kommen darüber)</label>
+          <label>{{ 'Skript zum Sprechen' if mit_aufnahme else 'Skript' }}
+            <span class="hint">{% if mit_aufnahme %}Erscheint bei der Aufnahme als Teleprompter (unter Input).{% else %}Gesprochener oder eingeblendeter Text in Reihenfolge – Grundlage für Szenen und Timing.{% endif %}</span>
             <textarea name="skript" rows="14">{{ inhalt.skript or '' }}</textarea></label>
         </div>
 
         <div data-reiter-inhalt="szenen" class="stack" hidden>
-          <span class="hint">{% if p.format == 'Talking Head' %}Titel und Aussagen, die als Motion Graphics über die Aufnahme kommen.{% else %}Jede Szene ist eine Aussage der Animation.{% endif %}</span>
+          <span class="hint">{% if mit_aufnahme %}Titel und Aussagen, die als Motion Graphics über die Aufnahme kommen.{% else %}Jede Szene ist eine Aussage der Animation.{% endif %}</span>
           {% if cut and cut.einblendungen %}
           <div><span class="label">Motion-Szenen im Video</span>
             <div class="einblendungen">{% for f in cut.einblendungen %}<img src="/media/posts/{{ p.id }}/{{ f }}?v={{ p.rendered_at|int }}" alt="Szene {{ loop.index }}">{% endfor %}</div></div>

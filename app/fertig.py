@@ -1,4 +1,4 @@
-"""Fertige Inhalte hochladen: Bilder als fertige Slides (Einzelbild, Carousel) oder ein fertiges Video (Reel, Story, Talking Head).
+"""Fertige Inhalte hochladen: Bilder als fertige Slides (Einzelbild, Carousel) oder ein fertiges Video (Reel, Story).
 
 Fertige Posts werden nicht gestaltet, geschnitten oder animiert, sondern so übernommen, wie sie sind (inhalt["fertig"] = True).
 Captions kann Claude auf Wunsch aus den Bildern bzw. Standbildern des Videos schreiben.
@@ -85,7 +85,7 @@ def video_uebernehmen(brand_id, post_id, quelle):
     if not os.path.exists(os.path.join(d, "reel-cover.jpg")):   # sehr kurze Videos: erstes Bild
         subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-i", ziel, "-frames:v", "1", "-q:v", "3", os.path.join(d, "reel-cover.jpg")],
                        capture_output=True)
-    db.run("UPDATE posts SET video=?, schnitt=NULL, rendered_at=?, format=CASE WHEN format IN ('Reel','Story','Talking Head') THEN format ELSE 'Reel' END, "
+    db.run("UPDATE posts SET video=?, schnitt=NULL, rendered_at=?, format=CASE WHEN format IN ('Reel','Story') THEN format ELSE 'Reel' END, "
            "updated=? WHERE id=?", f"posts/{post_id}/reel.mp4", db.now(), db.now(), post_id)
     _inhalt_fertig(post_id, "video")
     _status_fertig(post_id)

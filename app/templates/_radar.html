@@ -4,7 +4,7 @@
     {% if ki_text %}
     <form method="post" action="/radar/scannen" class="stack" data-busy="Der Radar sucht im Web …">
       <div class="small">Der Radar beobachtet deine Themen-Säulen:
-        {% for s in saeulen %}<span class="chip">{{ s.name }}</span> {% else %}<span class="muted">noch keine, dann leitet Claude die Themen aus deinem Auftreten ab.</span>{% endfor %}
+        {% for s in saeulen %}<span class="chip">{{ s.name }}</span> {% else %}<span class="muted">noch keine, dann leitet Claude die Themen aus Design &amp; Layout ab.</span>{% endfor %}
         <a href="/leitlinien">in den Leitlinien ändern</a></div>
       <div class="row">
         <button class="primary" {{ 'disabled' if 'radar' in radar_laeuft }}>{{ 'Radar sucht …' if 'radar' in radar_laeuft else 'Radar jetzt laufen lassen' }}</button>

@@ -24,11 +24,11 @@ STANDARD = {
     },
     "layout_prinzipien": "",
     "bildstil": "",
-    "formate": ["Carousel", "Einzelbild", "Talking Head", "Reel", "Story"],
+    "formate": ["Carousel", "Einzelbild", "Reel", "Story"],
 }
 ROLLEN = ["hintergrund", "text", "akzent", "flaeche", "dunkel", "hell", "weitere"]
-FORMATE = ["Carousel", "Einzelbild", "Talking Head", "Reel", "Story"]
-VIDEO_FORMATE = ("Reel", "Talking Head", "Story")   # Hochformat 9:16, Video-Ansicht; Talking Head braucht eine Aufnahme, Reel und Story nicht
+FORMATE = ["Carousel", "Einzelbild", "Reel", "Story"]
+VIDEO_FORMATE = ("Reel", "Story")   # Hochformat 9:16, Video-Ansicht. Spricht die Person selbst (früher „Talking Head“): inhalt["aufnahme"] = True
 STATUS = ["Idee", "Freigegeben", "In Arbeit", "Wartet auf Input", "Zur Abnahme", "Geplant", "Gepostet"]
 ARTEN = {  # Slide-Art -> (Feld a, b, c, liste)
     "cover": ("zeile1", "zeile2", "subline", None),

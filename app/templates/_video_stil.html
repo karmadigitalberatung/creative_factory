@@ -1,0 +1,55 @@
+{# Video-Stil (Reel und Story), auf der Design-Seite des Typs #}
+      <div class="card stack" id="video-stil" {% if vstil_laeuft %}data-arbeitet="Claude leitet den Video-Stil ab" data-poll="/jobs"{% endif %}>
+        <div class="row"><h2 class="grow">Video-Stil</h2>
+          <form method="post" action="/auftreten/video-stil/ableiten?zurueck={{ request.url.path }}"><button class="link small" {{ 'disabled' if not ki_text }}>aus Brand Guide neu ableiten</button></form></div>
+        <p class="muted small">So sehen Reels aus: Motion Graphics, Untertitel und Übergänge im Look deiner Slides.
+          {% if vstil_quelle == 'claude' %}Abgeleitet aus Layout-Prinzipien und Musterseiten.{% elif vstil_quelle == 'hand' %}Von Hand angepasst – bleibt, bis du ihn neu ableitest.{% else %}Geschätzt aus den Layout-Prinzipien; wird vor dem ersten Reel genauer abgeleitet.{% endif %}</p>
+        {% if vstil.beschreibung %}<p class="small">{{ vstil.beschreibung }}</p>{% endif %}
+        <div class="chips">
+          <span class="chip">Ecken {{ vstil.radius }} px</span>
+          <span class="chip">{{ 'mit Schatten' if vstil.schatten else 'ohne Schatten' }}</span>
+          <span class="chip">Karten: {{ {'flaeche': 'gefüllt', 'kontur': 'Kontur', 'keine': 'ohne Box'}[vstil.karten] }}</span>
+          <span class="chip">Pille: {{ 'Kontur' if vstil.pille == 'kontur' else 'gefüllt' }}</span>
+          <span class="chip">Listen: {{ {'kreis': 'Kreis', 'zahl': 'Zahl', 'strich': 'Strich'}[vstil.liste] }}</span>
+          <span class="chip">Untertitel: {{ {'box': 'Box', 'schatten': 'Schatten', 'klar': 'frei'}[vstil.untertitel.stil] }}</span>
+          <span class="chip">Übergang: {{ {'kreis': 'Kreisblende', 'blende': 'Überblendung', 'schieben': 'Schieben', 'schnitt': 'harter Schnitt'}[vstil.uebergang] }}</span>
+          {% if vstil.haarlinien %}<span class="chip">Haarlinien</span>{% endif %}
+          {% if vstil.foto_sw %}<span class="chip">Fotos schwarzweiß</span>{% endif %}
+          {% if vstil.akzent_sparsam %}<span class="chip">Akzent sparsam</span>{% endif %}
+          {% if vstil.titel_versal %}<span class="chip">Titel in Versalien</span>{% endif %}
+          {% if vstil.ecken.oben_links or vstil.ecken.oben_rechts %}<span class="chip">Ecken-Texte</span>{% endif %}
+        </div>
+        <details><summary class="small">Anpassen</summary>
+          <form method="post" action="/auftreten/video-stil?zurueck={{ request.url.path }}" class="stack">
+            <label>Beschreibung für die Regie <textarea name="beschreibung" rows="3">{{ vstil.beschreibung }}</textarea></label>
+            <div class="row">
+              <label>Ecken (px) <input type="number" name="radius" min="0" max="60" value="{{ vstil.radius }}"></label>
+              <label>Karten <select name="karten">{% for k, n in [('flaeche', 'gefüllt'), ('kontur', 'Kontur'), ('keine', 'ohne Box')] %}<option value="{{ k }}" {{ 'selected' if vstil.karten == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Pille <select name="pille">{% for k, n in [('gefuellt', 'gefüllt'), ('kontur', 'Kontur')] %}<option value="{{ k }}" {{ 'selected' if vstil.pille == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Listen <select name="liste">{% for k, n in [('kreis', 'Kreis'), ('zahl', 'Zahl'), ('strich', 'Strich')] %}<option value="{{ k }}" {{ 'selected' if vstil.liste == k }}>{{ n }}</option>{% endfor %}</select></label>
+            </div>
+            <div class="row">
+              <label>Ausrichtung <select name="ausrichtung">{% for k, n in [('links', 'links'), ('mitte', 'Mitte')] %}<option value="{{ k }}" {{ 'selected' if vstil.ausrichtung == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Übergang <select name="uebergang">{% for k, n in [('kreis', 'Kreisblende'), ('blende', 'Überblendung'), ('schieben', 'Schieben'), ('schnitt', 'harter Schnitt')] %}<option value="{{ k }}" {{ 'selected' if vstil.uebergang == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Untertitel <select name="ut_stil">{% for k, n in [('box', 'Box'), ('schatten', 'Schatten'), ('klar', 'frei')] %}<option value="{{ k }}" {{ 'selected' if vstil.untertitel.stil == k }}>{{ n }}</option>{% endfor %}</select></label>
+              <label>Untertitel-Gewicht <input type="number" name="ut_gewicht" min="100" max="900" step="50" value="{{ vstil.untertitel.gewicht }}"></label>
+            </div>
+            <div class="row wrapless">
+              <label class="check small"><input type="checkbox" name="schatten" value="1" {{ 'checked' if vstil.schatten }}> Schatten</label>
+              <label class="check small"><input type="checkbox" name="haarlinien" value="1" {{ 'checked' if vstil.haarlinien }}> Haarlinien</label>
+              <label class="check small"><input type="checkbox" name="foto_sw" value="1" {{ 'checked' if vstil.foto_sw }}> Fotos schwarzweiß</label>
+              <label class="check small"><input type="checkbox" name="akzent_sparsam" value="1" {{ 'checked' if vstil.akzent_sparsam }}> Akzent sparsam</label>
+              <label class="check small"><input type="checkbox" name="titel_versal" value="1" {{ 'checked' if vstil.titel_versal }}> Titelwort in Versalien</label>
+              <label class="check small"><input type="checkbox" name="ut_versal" value="1" {{ 'checked' if vstil.untertitel.versal }}> Untertitel in Versalien</label>
+            </div>
+            <div class="row">
+              <label class="grow">Ecke oben links <textarea name="ecke_ol" rows="2" placeholder="z. B. KARMA DIGITAL&#10;WIEN">{{ vstil.ecken.oben_links }}</textarea></label>
+              <label class="grow">Ecke oben rechts <textarea name="ecke_or" rows="2">{{ vstil.ecken.oben_rechts }}</textarea></label>
+              <label class="grow">Ecke unten links <textarea name="ecke_ul" rows="2" placeholder="{titel} = Titel des Posts">{{ vstil.ecken.unten_links }}</textarea></label>
+              <label class="check small"><input type="checkbox" name="seitenzahl" value="1" {{ 'checked' if vstil.ecken.seitenzahl }}> Seitenzahl unten rechts</label>
+            </div>
+            <div class="row"><button class="primary">Video-Stil speichern</button></div>
+          </form>
+        </details>
+      </div>
+

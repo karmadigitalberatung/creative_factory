@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Design für {{ info.titel }} · Creative Factory{% endblock %}
+{% block main %}
+<section class="design-typ">
+  <a class="back" href="/design">← Design &amp; Layout</a>
+  <div class="head">
+    <div class="kopf-text">
+      <span class="label">Design &amp; Layout</span>
+      <h1>Design für <em>{{ info.titel }}</em></h1>
+    </div>
+    <div class="kopf-aktionen"><button type="button" class="button primary" data-chat-auf>Mit Claude gestalten</button></div>
+  </div>
+  <p class="lead">{% if info.art == 'newsletter' %}So sieht dein Newsletter aus. Claude schreibt jede Ausgabe passend zum Layout; die App baut daraus die E-Mail und legt sie als Entwurf in MailerLite an.{% elif info.art == 'slides' %}Diese Vorlagen zeigen, wie deine {{ info.titel }} aussehen. Claude orientiert sich bei jedem neuen Post daran und variiert passend zum Inhalt.
+    Klick eine Vorlage an, um sie im Layout-Editor zu ändern, oder sag im Chat, was anders werden soll. Beispielbilder, die dir gefallen, hängst du im Chat an.{% else %}So sehen deine {{ info.titel }} aus: ein Beispiel im Stil deiner Marke, seine Szenen als Vorlagen, dazu Video-Stil und Regeln. Claude orientiert sich beim Animieren daran. Wünsche und Beispielbilder schickst du im Chat.{% endif %}</p>
+  {% if fehler %}<p class="error">Beim letzten Gestalten ging etwas schief: {{ fehler.error }}</p>{% endif %}
+
+  {% if info.art == 'newsletter' %}
+  <div class="card stack">
+    <div class="row"><h2 class="grow">Vorlagen</h2><span class="small muted">{{ nl_vorlagen|length }}</span></div>
+    <div class="nl-vorlagen">
+      {% for v in nl_vorlagen %}
+      <figure class="nl-vorlage {{ 'on' if v.id == nl_standard }}">
+        <a class="nl-rahmen" href="/design/newsletter/vorlage/{{ v.id }}" title="„{{ v.name }}“ bearbeiten"><iframe src="/design/newsletter/vorschau.html?vorlage={{ v.id }}&v={{ v.updated|int }}" title="Vorlage {{ v.name }}" loading="lazy" tabindex="-1"></iframe></a>
+        <figcaption>
+          <span class="grow ellipsis"><strong>{{ v.name }}</strong>{% if v.id == nl_standard %} <span class="chip gelb">Standard</span>{% endif %}</span>
+          <a class="button small" href="/design/newsletter/vorlage/{{ v.id }}">Bearbeiten</a>
+          <details class="aufklapp"><summary class="button small quadrat" aria-label="Mehr zu „{{ v.name }}“">…</summary>
+            <div class="aufklapp-panel klein">
+              {% if v.id != nl_standard %}<form method="post" action="/design/newsletter/vorlage/{{ v.id }}/standard"><button class="small">Als Standard</button></form>{% endif %}
+              <form method="post" action="/design/vorlage/{{ v.id }}/kopie"><button class="small">Kopie anlegen</button></form>
+              {% if nl_vorlagen|length > 1 %}<form method="post" action="/design/vorlage/{{ v.id }}/loeschen"><button class="small link danger" data-warnen="Vorlage „{{ v.name }}“ löschen?">Löschen</button></form>{% endif %}
+            </div></details>
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    <p class="hint">Die Standard-Vorlage nimmt jeder neue Newsletter; beim Erstellen kannst du eine andere wählen. Ein Beispiel, das dir gefällt (Screenshot einer E-Mail), schickst du über „Mit Claude gestalten“: Claude baut daraus eine neue Vorlage.</p>
+  </div>
+  <form method="post" action="/design/newsletter/einstellungen" class="card stack">
+    <h2>Fußzeile und Regeln</h2>
+    <label>Impressum in der Fußzeile <span class="hint">Pflicht: Name, Anschrift, ggf. Firmenbuch und UID. Den Abmeldelink fügt MailerLite ein.</span>
+      <textarea name="fusszeile" rows="3" placeholder="Name · Straße 1 · 1010 Wien · Firmenbuch …">{{ nl.fusszeile }}</textarea></label>
+    <label>Regeln zum Schreiben <span class="hint">z. B. Anrede, Länge, wiederkehrende Rubriken</span>
+      <textarea name="regeln" rows="4" placeholder="- Anrede immer per du&#10;- Höchstens drei Themen&#10;- Am Ende immer eine Frage an die Leser">{{ nl.regeln }}</textarea></label>
+    <p class="hint">Logo und Bilder erscheinen in der echten E-Mail erst, wenn die App auf dem Server läuft (sie brauchen eine öffentliche Adresse); bis dahin steht dein Name in der Kopfzeile.</p>
+    <div class="row"><button class="small">Speichern</button></div>
+  </form>
+  {% elif info.art == 'slides' %}
+  <div class="card stack" {% if laeuft %}data-arbeitet="Claude gestaltet Vorlagen" data-poll="/jobs"{% endif %}>
+    <div class="row"><h2 class="grow">Vorlagen</h2><span class="small muted">{{ vorlagen_liste|length }}</span></div>
+    {% if vorlagen_liste %}
+    <div class="vorlagen-raster">
+      {% for v in vorlagen_liste %}
+      <figure class="vorlage">
+        <button type="button" class="slide-oeffnen" data-layout="{{ v.id }}" title="„{{ v.name }}“ im Layout-Editor öffnen"><img src="/media/{{ v.bild }}?v={{ v.updated|int }}" alt="{{ v.name }}" loading="lazy"></button>
+        <figcaption>
+          <span class="grow ellipsis">{{ v.name }}</span>
+          <details class="aufklapp"><summary class="button small quadrat" aria-label="Mehr zu „{{ v.name }}“">…</summary>
+            <div class="aufklapp-panel klein">
+              <button type="button" class="small" data-layout="{{ v.id }}">Im Layout-Editor bearbeiten</button>
+              <form method="post" action="/design/vorlage/{{ v.id }}/kopie"><button class="small">Kopie anlegen</button></form>
+              <form method="post" action="/design/vorlage/{{ v.id }}/loeschen"><button class="small link danger" data-warnen="Vorlage „{{ v.name }}“ löschen?">Löschen</button></form>
+            </div></details>
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="leer-hinweis">Noch keine Vorlagen für {{ info.titel }}. Lass dir unten Beispiele generieren oder beschreib im Chat, was du willst.</p>
+    {% endif %}
+    {% if ki_text %}
+    <form method="post" action="/design/{{ slug }}/generieren" class="row" data-busy="Claude gestaltet …">
+      <label class="grow">Wunsch (optional) <input name="wunsch" placeholder="z. B. mehr Fotos, Titel ganz groß, ruhiger, wie auf meiner Website"></label>
+      <button {{ 'disabled' if laeuft }} {% if vorlagen_liste %}data-warnen="Neue Beispiele ersetzen die bisherigen {{ vorlagen_liste|length }} Vorlagen. Weiter?"{% endif %}>{{ 'Neue Beispiele generieren' if vorlagen_liste else 'Beispiele generieren' }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="card stack" {% if laeuft %}data-arbeitet="Claude führt Regie und rendert das Beispiel" data-poll="/jobs"{% endif %}>
+    <div class="row"><h2 class="grow">Vorlagen</h2><span class="small muted">{{ vorlagen_liste|length }} Szenen</span></div>
+    {% if vorlagen_liste %}
+    <div class="video-vorlagen">
+      {% if beispiel %}<figure class="beispiel"><video src="/media/{{ beispiel }}?v={{ vorlagen_liste[0].updated|int }}" controls muted loop playsinline preload="metadata"></video><figcaption class="small muted">Beispiel</figcaption></figure>{% endif %}
+      <div class="vorlagen-raster hoch">
+        {% for v in vorlagen_liste %}
+        <figure class="vorlage">{% if v.bild %}<img src="/media/{{ v.bild }}?v={{ v.updated|int }}" alt="{{ v.name }}" loading="lazy">{% endif %}
+          <figcaption><span class="grow ellipsis">{{ v.name }}</span>
+            <form method="post" action="/design/vorlage/{{ v.id }}/loeschen"><button class="small link danger" data-warnen="Szene „{{ v.name }}“ aus den Vorlagen löschen?" aria-label="„{{ v.name }}“ löschen">×</button></form></figcaption></figure>
+        {% endfor %}
+      </div>
+    </div>
+    <p class="hint">Claude übernimmt beim Animieren Aufbau, Bausteine, Schriftgrößen und Rhythmus dieser Szenen. Ändern kannst du sie per Chat („Mit Claude gestalten“).</p>
+    {% else %}
+    <p class="leer-hinweis">Noch keine Vorlagen. Lass dir ein Beispiel {{ 'Reel' if typ == 'Reel' else 'Story' }} gestalten: Claude führt Regie, rendert es, und die Szenen werden deine Vorlagen.</p>
+    {% endif %}
+    {% if ki_text %}
+    <form method="post" action="/design/{{ slug }}/generieren" class="row" data-busy="Claude führt Regie …">
+      <label class="grow">Wunsch (optional) <input name="wunsch" placeholder="z. B. mehr Bewegung, große Typo, Fotos als Vollbild, ruhig und edel"></label>
+      <button {{ 'disabled' if laeuft }} {% if vorlagen_liste %}data-warnen="Ein neues Beispiel ersetzt die bisherigen Vorlagen. Weiter?"{% endif %}>{{ 'Neues Beispiel gestalten' if vorlagen_liste else 'Beispiel gestalten' }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% include "_video_stil.html" %}
+  {% endif %}
+
+  {% if info.art != 'newsletter' %}
+  <div class="card stack">
+    <h2>Regeln für {{ info.titel }}</h2>
+    <p class="small muted">Gelten zusätzlich zu den Layout-Prinzipien deiner Marke, nur für diesen Typ. Claude ergänzt sie, wenn du im Chat Wünsche äußerst.</p>
+    <form method="post" action="/design/{{ slug }}/regeln" class="stack">
+      <textarea name="regeln" rows="5" placeholder="{{ {'Carousel': '- Cover immer mit Foto und Titel unten\n- Innenseiten mit viel Weißraum, höchstens 25 Wörter', 'Einzelbild': '- Immer ein Foto der Person\n- Headline höchstens 8 Wörter'}.get(typ, '- Untertitel groß und mittig\n- Erste Szene mit Frage') }}">{{ regeln }}</textarea>
+      <div class="row"><button class="small">Regeln speichern</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if beispiele %}
+  <div class="card stack">
+    <h2>Beispielbilder aus dem Chat</h2>
+    <div class="vorbilder">{% for m in beispiele %}<figure><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy">
+      <form method="post" action="/mediathek/{{ m.id }}/loeschen"><input type="hidden" name="zurueck" value="/design/{{ slug }}"><button class="link danger small">entfernen</button></form></figure>{% endfor %}</div>
+  </div>
+  {% endif %}
+</section>
+<script>window.LAYOUT_BASIS = "/design/vorlage"; window.BILD_BASIS = "/medien/bild";
+window.BILDER = {{ bilder|default([])|tojson }}; window.POST_BILD = {{ {'datei': b.ref_photo or '', 'idee': ''}|tojson }}; window.GENERATOREN = {{ generatoren|tojson }};</script>
+{% endblock %}

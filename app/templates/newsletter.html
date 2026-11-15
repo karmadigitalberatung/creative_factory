@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ nl.betreff or 'Newsletter' }} · Planen{% endblock %}
+{% block main %}
+<section class="post-detail hub-detail">
+  <a class="back" href="/planen">← Planen</a>
+  <div class="head">
+    <div class="kopf-text">
+      <h1>{{ nl.betreff or 'Neuer Newsletter' }} <em class="status-word s-{{ p.status|lower|replace(' ', '-') }}">{{ p.status|status }}</em></h1>
+      <span class="muted">Newsletter{% if p.datum %} · {{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{{ p.datum[:4] }}{% endif %} · {{ (nl.themen or [])|length }} Themen</span>
+    </div>
+  </div>
+  {% if p.vorher_pruefen %}<p class="note"><strong>Vorher prüfen:</strong> {{ p.vorher_pruefen }}</p>{% endif %}
+  {% if fehler and not laeuft %}<p class="error">Fehler: {{ fehler }}</p>{% endif %}
+  {% if nl.extern and nl.extern.hinweis %}<p class="note">{{ nl.extern.hinweis }}</p>{% endif %}
+
+  <form method="post" action="/planen/{{ p.id }}/newsletter" id="nlform"></form>
+
+  <nav class="ansicht-tabs post-ansicht" aria-label="Ansicht" data-post-ansicht="{{ p.id }}">
+    <button type="button" class="on" data-ansicht-wechsel="vorschau" aria-current="page">Vorschau</button>
+    <button type="button" data-ansicht-wechsel="bearbeiten">Bearbeiten</button>
+  </nav>
+
+  <div data-ansicht="vorschau" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
+    <div class="hub-buehne">
+      <div class="mail-fenster">
+        <div class="mail-kopf">
+          <span class="mail-von"><strong>{{ ziel.daten.absender_name if ziel and ziel.daten.absender_name else (auf.name or 'Absender') }}</strong>{% if ziel and ziel.daten.absender %} &lt;{{ ziel.daten.absender }}&gt;{% endif %}</span>
+          <span class="mail-betreff">{{ nl.betreff or 'Betreff folgt' }}</span>
+          <span class="mail-vorschau">{{ nl.vorschautext }}</span>
+        </div>
+        {% if nl.abschnitte %}<iframe class="mail-inhalt" src="/planen/{{ p.id }}/newsletter.html?v={{ p.updated|int }}" title="Newsletter-Vorschau" loading="lazy"></iframe>
+        {% else %}<div class="ig-leer feed"><span>Noch kein Inhalt</span><span class="small">{% if laeuft %}Claude schreibt gerade …{% else %}Unter „Bearbeiten“ Themen wählen und „Neu schreiben“.{% endif %}</span></div>{% endif %}
+      </div>
+      <aside class="ig-info">
+        <span class="label">So kommt die E-Mail an</span>
+        <span class="small muted">Betreff {{ (nl.betreff or '')|length }} Zeichen{% if (nl.betreff or '')|length > 50 %} (kürzer ist besser){% endif %}. Gesendet wird in MailerLite, nicht hier.</span>
+        <div class="stack ig-info-knoepfe">
+          {% if nl.abschnitte and ziel %}<button class="primary" form="nlform" name="aktion" value="mailerlite" {{ 'disabled' if laeuft }}>{{ 'In MailerLite aktualisieren' if nl.extern else 'In MailerLite als Entwurf anlegen' }}</button>{% endif %}
+          {% if nl.extern and nl.extern.bearbeiten %}<a class="button" href="{{ nl.extern.bearbeiten }}" target="_blank" rel="noopener">In MailerLite öffnen</a>{% endif %}
+          {% if nl.abschnitte %}<button type="button" data-html-kopieren="/planen/{{ p.id }}/newsletter.html">HTML kopieren</button>{% endif %}
+          {% if ki_text %}<button form="nlform" name="aktion" value="schreiben" {{ 'disabled' if laeuft }}>Neu schreiben</button>{% endif %}
+          <button type="button" data-ansicht-wechsel="bearbeiten">Bearbeiten</button>
+        </div>
+        {% if ziel and not ziel.daten.absender %}<span class="hint warn">Unter <a href="/connectors#newsletter">Connectors</a> fehlt noch die Absenderadresse.</span>{% endif %}
+      </aside>
+    </div>
+  </div>
+
+  <div data-ansicht="bearbeiten" hidden>
+    <input type="hidden" name="nl_form" value="1" form="nlform">
+    <div class="card stack">
+      <div class="row"><label class="grow">Betreff <input name="betreff" value="{{ nl.betreff or '' }}" form="nlform" data-max="60"></label>
+        <label>Versand geplant am <input type="date" name="datum" value="{{ p.datum }}" form="nlform"></label></div>
+      <label>Vorschautext <span class="hint">steht im Posteingang neben dem Betreff</span><input name="vorschautext" value="{{ nl.vorschautext or '' }}" form="nlform" data-max="110"></label>
+      <label>Vorlage <select name="vorlage" form="nlform" style="width:auto">{% for v in nl_vorlagen %}<option value="{{ v.id }}" {{ 'selected' if v.id == vorlage_aktiv }}>{{ v.name }}</option>{% endfor %}</select></label>
+      <label>Anrede <input name="anrede" value="{{ nl.anrede or '' }}" form="nlform"></label>
+      <label>Einstieg <textarea name="intro" rows="4" form="nlform">{{ nl.intro or '' }}</textarea></label>
+    </div>
+    {% for ab in nl.abschnitte or [] %}{% set i = loop.index0 %}
+    <div class="card stack">
+      <div class="row"><span class="label grow">Abschnitt {{ loop.index }}{% if ab.post_id and themen_titel.get(ab.post_id) %} · aus „{{ themen_titel[ab.post_id].titel }}“{% endif %}</span>
+        <label class="check small"><input type="checkbox" name="ab_weg_{{ i }}" value="1" form="nlform"> entfernen</label></div>
+      <input type="hidden" name="ab_post_{{ i }}" value="{{ ab.post_id or '' }}" form="nlform">
+      <label>Überschrift <input name="ab_titel_{{ i }}" value="{{ ab.titel }}" form="nlform"></label>
+      <label>Text <textarea name="ab_text_{{ i }}" rows="5" form="nlform">{{ ab.text }}</textarea></label>
+      <div class="row"><label class="grow">Link <input name="ab_link_{{ i }}" value="{{ ab.link }}" form="nlform" placeholder="https://…"></label>
+        <label>Knopftext <input name="ab_linktext_{{ i }}" value="{{ ab.link_text }}" form="nlform"></label></div>
+    </div>
+    {% endfor %}
+    <div class="card stack">
+      <label>Schluss und Gruß <textarea name="schluss" rows="4" form="nlform">{{ nl.schluss or '' }}</textarea></label>
+    </div>
+    <div class="card stack">
+      <h2>Themen</h2>
+      <input type="hidden" name="themen_form" value="1" form="nlform">
+      <p class="small muted">Aus diesen Beiträgen schreibt Claude die Ausgabe. Nach einer Änderung „Neu schreiben“.</p>
+      <div class="themen-liste">{% for k in kandidaten %}<label class="check small"><input type="checkbox" name="thema_id" value="{{ k.id }}" form="nlform" {{ 'checked' if k.id in (nl.themen or []) }}>
+        <span class="chip">{{ k.format }}</span> {{ k.titel }}<span class="muted">{% if k.datum %} · {{ k.datum[8:10] }}.{{ k.datum[5:7] }}.{% endif %}</span></label>{% endfor %}</div>
+      <label>Anlass oder Schwerpunkt <textarea name="thema" rows="2" form="nlform">{{ nl.thema or '' }}</textarea></label>
+    </div>
+    <div class="row sticky-actions">
+      <button form="nlform" name="aktion" value="speichern">Speichern</button>
+      {% if ki_text %}<button form="nlform" name="aktion" value="schreiben" {{ 'disabled' if laeuft }}>Neu schreiben</button>{% endif %}
+      {% if nl.abschnitte and ziel %}<button class="primary" form="nlform" name="aktion" value="mailerlite">In MailerLite als Entwurf</button>{% endif %}
+    </div>
+    <form method="post" action="/planen/{{ p.id }}/verwerfen" onsubmit="return confirm('Newsletter wirklich löschen?')"><button class="link danger">Newsletter löschen</button></form>
+  </div>
+</section>
+{% endblock %}

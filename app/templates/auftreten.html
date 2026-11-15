@@ -1,15 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Auftreten · Creative Factory{% endblock %}
+{% block title %}Design & Layout · Creative Factory{% endblock %}
 {% block main %}
 <section>
   <div class="head">
-    <h1>Dein <em>Auftreten.</em></h1>
+    <h1>Design <em>&amp; Layout</em></h1>
     <form method="post" action="/auftreten/zurueck"><button class="link">Letzte Änderung zurücknehmen</button></form>
   </div>
-  <p class="lead">Schreibstil, Farben, Schriften, Logo und Layout-Prinzipien. Das ist der Rahmen, in dem jeder Post individuell gestaltet wird. Am einfachsten legst du alles im Chat fest (Symbol unten rechts).</p>
+  <p class="lead">Je Contenttyp Vorlagen, an denen sich Claude beim Gestalten orientiert. Mit „Bearbeiten“ änderst du sie im Layout-Editor oder per Chat und lässt neue gestalten.</p>
 
   <div class="voll">
     <div class="col-main stack">
+      <div class="typ-raster" {% if laeuft %}data-arbeitet="Claude gestaltet Vorlagen" data-poll="/jobs"{% endif %}>
+        {% for t in typen %}
+        <a class="card typ-karte" href="/design/{{ t.slug }}">
+          <div class="row"><h2 class="grow">{{ t.titel }}</h2><span class="small muted">{% if t.art == 'newsletter' %}Standard: {{ nl_standard.name }}{% else %}{{ t.vorlagen|length }} Vorlagen{% endif %}</span></div>
+          {% if t.art == 'newsletter' %}
+          <div class="typ-vorschau nl"><iframe src="/design/newsletter/vorschau.html?vorlage={{ nl_standard.id }}&v={{ nl_standard.updated|int }}" title="Newsletter-Vorschau" loading="lazy" tabindex="-1"></iframe></div>
+          {% elif t.vorlagen or t.art == 'slides' %}
+          <div class="typ-vorschau {{ 'hoch' if t.art == 'video' }}">{% for v in t.vorlagen[:4] %}<img src="/media/{{ v.bild }}?v={{ v.updated|int }}" alt="{{ v.name }}" loading="lazy">{% else %}<span class="small muted">Noch keine Vorlagen. Lass dir Beispiele generieren.</span>{% endfor %}</div>
+          {% else %}
+          <div class="typ-vorschau video"><span class="chip">Ecken {{ vstil.radius }} px</span><span class="chip">Übergang: {{ {'kreis': 'Kreisblende', 'blende': 'Überblendung', 'schieben': 'Schieben', 'schnitt': 'harter Schnitt'}[vstil.uebergang] }}</span><span class="chip">Untertitel: {{ {'box': 'Box', 'schatten': 'Schatten', 'klar': 'frei'}[vstil.untertitel.stil] }}</span></div>
+          {% endif %}
+          <span class="small muted">{{ t.text }}{% if t.art == 'newsletter' and not nl_verbunden %} Zum Verschicken verbindest du MailerLite unter Connectors.{% endif %}</span>
+          <span class="button small typ-knopf">Bearbeiten</span>
+        </a>
+        {% endfor %}
+      </div>
+
+      <h2 class="abschnitt-titel">Grundlagen</h2>
+      <p class="small muted">Gelten für alle Contenttypen: Website, Farben, Schriften, Logo und Stil.</p>
       <div class="card stack" id="website" {% if website_laeuft %}data-arbeitet="Claude liest deine Website und übernimmt Farben, Schriften und Layout" data-poll="/jobs"{% endif %}>
         <div class="row"><h2 class="grow">Website als Vorlage</h2></div>
         {% if auf.website_analyse %}
@@ -24,86 +43,7 @@
           <label class="grow">Website <input name="url" type="url" value="{{ auf.website }}" placeholder="https://"></label>
           <button {{ 'disabled' if not ki_text or website_laeuft }}>{{ 'Von der Website neu übernehmen' if auf.website_analyse else 'Von der Website übernehmen' }}</button>
         </form>
-        <p class="hint">Ersetzt Farben, Schriften, Layout-Prinzipien und Bildstil und gestaltet die Musterseiten neu. Rückgängig mit „Letzte Änderung zurücknehmen“.</p>
-      </div>
-
-      <div class="card muster-karte" {% if laeuft %}data-arbeitet="Claude gestaltet deine Musterseiten" data-poll="/jobs"{% endif %}>
-        <div class="row"><h2 class="grow">Musterseiten</h2>
-          <form method="post" action="/auftreten/muster"><button class="link small">neu erstellen</button></form></div>
-        <p class="muted small">So sehen Posts in deinem Auftreten aus. Jeder echte Post wird individuell gestaltet; das hier zeigt nur den Rahmen.</p>
-        <div class="muster">
-          {% for m in muster %}<img src="/media/muster/{{ m }}?v={{ b.muster_at|int }}" alt="Musterseite {{ loop.index }}">{% endfor %}
-        </div>
-        {% if b.muster_design %}<p class="hint">Gestaltet im Stil deiner Vorbilder. Neue Posts orientieren sich an diesen Musterseiten.</p>{% endif %}
-      </div>
-
-
-      <div class="card stack" id="video-stil" {% if vstil_laeuft %}data-arbeitet="Claude leitet den Video-Stil ab" data-poll="/jobs"{% endif %}>
-        <div class="row"><h2 class="grow">Video-Stil</h2>
-          <form method="post" action="/auftreten/video-stil/ableiten"><button class="link small" {{ 'disabled' if not ki_text }}>aus Brand Guide neu ableiten</button></form></div>
-        <p class="muted small">So sehen Reels aus: Motion Graphics, Untertitel und Übergänge im Look deiner Slides.
-          {% if vstil_quelle == 'claude' %}Abgeleitet aus Layout-Prinzipien und Musterseiten.{% elif vstil_quelle == 'hand' %}Von Hand angepasst – bleibt, bis du ihn neu ableitest.{% else %}Geschätzt aus den Layout-Prinzipien; wird vor dem ersten Reel genauer abgeleitet.{% endif %}</p>
-        {% if vstil.beschreibung %}<p class="small">{{ vstil.beschreibung }}</p>{% endif %}
-        <div class="chips">
-          <span class="chip">Ecken {{ vstil.radius }} px</span>
-          <span class="chip">{{ 'mit Schatten' if vstil.schatten else 'ohne Schatten' }}</span>
-          <span class="chip">Karten: {{ {'flaeche': 'gefüllt', 'kontur': 'Kontur', 'keine': 'ohne Box'}[vstil.karten] }}</span>
-          <span class="chip">Pille: {{ 'Kontur' if vstil.pille == 'kontur' else 'gefüllt' }}</span>
-          <span class="chip">Listen: {{ {'kreis': 'Kreis', 'zahl': 'Zahl', 'strich': 'Strich'}[vstil.liste] }}</span>
-          <span class="chip">Untertitel: {{ {'box': 'Box', 'schatten': 'Schatten', 'klar': 'frei'}[vstil.untertitel.stil] }}</span>
-          <span class="chip">Übergang: {{ {'kreis': 'Kreisblende', 'blende': 'Überblendung', 'schieben': 'Schieben', 'schnitt': 'harter Schnitt'}[vstil.uebergang] }}</span>
-          {% if vstil.haarlinien %}<span class="chip">Haarlinien</span>{% endif %}
-          {% if vstil.foto_sw %}<span class="chip">Fotos schwarzweiß</span>{% endif %}
-          {% if vstil.akzent_sparsam %}<span class="chip">Akzent sparsam</span>{% endif %}
-          {% if vstil.titel_versal %}<span class="chip">Titel in Versalien</span>{% endif %}
-          {% if vstil.ecken.oben_links or vstil.ecken.oben_rechts %}<span class="chip">Ecken-Texte</span>{% endif %}
-        </div>
-        <details><summary class="small">Anpassen</summary>
-          <form method="post" action="/auftreten/video-stil" class="stack">
-            <label>Beschreibung für die Regie <textarea name="beschreibung" rows="3">{{ vstil.beschreibung }}</textarea></label>
-            <div class="row">
-              <label>Ecken (px) <input type="number" name="radius" min="0" max="60" value="{{ vstil.radius }}"></label>
-              <label>Karten <select name="karten">{% for k, n in [('flaeche', 'gefüllt'), ('kontur', 'Kontur'), ('keine', 'ohne Box')] %}<option value="{{ k }}" {{ 'selected' if vstil.karten == k }}>{{ n }}</option>{% endfor %}</select></label>
-              <label>Pille <select name="pille">{% for k, n in [('gefuellt', 'gefüllt'), ('kontur', 'Kontur')] %}<option value="{{ k }}" {{ 'selected' if vstil.pille == k }}>{{ n }}</option>{% endfor %}</select></label>
-              <label>Listen <select name="liste">{% for k, n in [('kreis', 'Kreis'), ('zahl', 'Zahl'), ('strich', 'Strich')] %}<option value="{{ k }}" {{ 'selected' if vstil.liste == k }}>{{ n }}</option>{% endfor %}</select></label>
-            </div>
-            <div class="row">
-              <label>Ausrichtung <select name="ausrichtung">{% for k, n in [('links', 'links'), ('mitte', 'Mitte')] %}<option value="{{ k }}" {{ 'selected' if vstil.ausrichtung == k }}>{{ n }}</option>{% endfor %}</select></label>
-              <label>Übergang <select name="uebergang">{% for k, n in [('kreis', 'Kreisblende'), ('blende', 'Überblendung'), ('schieben', 'Schieben'), ('schnitt', 'harter Schnitt')] %}<option value="{{ k }}" {{ 'selected' if vstil.uebergang == k }}>{{ n }}</option>{% endfor %}</select></label>
-              <label>Untertitel <select name="ut_stil">{% for k, n in [('box', 'Box'), ('schatten', 'Schatten'), ('klar', 'frei')] %}<option value="{{ k }}" {{ 'selected' if vstil.untertitel.stil == k }}>{{ n }}</option>{% endfor %}</select></label>
-              <label>Untertitel-Gewicht <input type="number" name="ut_gewicht" min="100" max="900" step="50" value="{{ vstil.untertitel.gewicht }}"></label>
-            </div>
-            <div class="row wrapless">
-              <label class="check small"><input type="checkbox" name="schatten" value="1" {{ 'checked' if vstil.schatten }}> Schatten</label>
-              <label class="check small"><input type="checkbox" name="haarlinien" value="1" {{ 'checked' if vstil.haarlinien }}> Haarlinien</label>
-              <label class="check small"><input type="checkbox" name="foto_sw" value="1" {{ 'checked' if vstil.foto_sw }}> Fotos schwarzweiß</label>
-              <label class="check small"><input type="checkbox" name="akzent_sparsam" value="1" {{ 'checked' if vstil.akzent_sparsam }}> Akzent sparsam</label>
-              <label class="check small"><input type="checkbox" name="titel_versal" value="1" {{ 'checked' if vstil.titel_versal }}> Titelwort in Versalien</label>
-              <label class="check small"><input type="checkbox" name="ut_versal" value="1" {{ 'checked' if vstil.untertitel.versal }}> Untertitel in Versalien</label>
-            </div>
-            <div class="row">
-              <label class="grow">Ecke oben links <textarea name="ecke_ol" rows="2" placeholder="z. B. KARMA DIGITAL&#10;WIEN">{{ vstil.ecken.oben_links }}</textarea></label>
-              <label class="grow">Ecke oben rechts <textarea name="ecke_or" rows="2">{{ vstil.ecken.oben_rechts }}</textarea></label>
-              <label class="grow">Ecke unten links <textarea name="ecke_ul" rows="2" placeholder="{titel} = Titel des Posts">{{ vstil.ecken.unten_links }}</textarea></label>
-              <label class="check small"><input type="checkbox" name="seitenzahl" value="1" {{ 'checked' if vstil.ecken.seitenzahl }}> Seitenzahl unten rechts</label>
-            </div>
-            <div class="row"><button class="primary">Video-Stil speichern</button></div>
-          </form>
-        </details>
-      </div>
-
-      <div class="card">
-        <div class="row"><h2 class="grow">Vorbilder</h2><a class="small" href="/mediathek?art=vorbild">in der Mediathek</a></div>
-        {% if vorbilder %}
-        <div class="vorbilder">
-          {% for m in vorbilder %}
-          <figure><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy">
-            <form method="post" action="/mediathek/{{ m.id }}/loeschen"><input type="hidden" name="zurueck" value="/auftreten"><button class="link danger small" title="Vorbild entfernen">entfernen</button></form></figure>
-          {% endfor %}
-        </div>
-        {% else %}
-        <p class="muted small">Noch keine Vorbilder. Häng im Chat (unten rechts) Bilder an: Posts, die dir gefallen, Pinterest-Screenshots oder eigene Layouts. Claude leitet daraus deine Layout-Prinzipien und Musterseiten ab.</p>
-        {% endif %}
+        <p class="hint">Ersetzt Farben, Schriften, Layout-Prinzipien und Bildstil und gestaltet die Carousel- und Einzelbild-Vorlagen neu. Rückgängig mit „Letzte Änderung zurücknehmen“.</p>
       </div>
 
       <form method="post" action="/auftreten" class="stack">
@@ -155,7 +95,7 @@
           <label>Layout-Prinzipien <span class="hint">wie Posts aufgebaut sind</span><textarea name="layout_prinzipien" rows="5">{{ auf.layout_prinzipien }}</textarea></label>
           <label>Bildstil <span class="hint">für Fotos und KI-Bilder</span><textarea name="bildstil" rows="4">{{ auf.bildstil }}</textarea></label>
         </div>
-        <button class="primary">Auftreten speichern</button>
+        <button class="primary">Grundlagen speichern</button>
       </form>
 
       <div class="card stack">

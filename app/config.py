@@ -54,3 +54,6 @@ def secret_key():
             f.write(secrets.token_hex(32))
         os.chmod(path, 0o600)
     return open(path).read().strip()
+
+# Öffentliche Adresse der App (später auf dem Server), z. B. https://app.creative-factory.at – dann gehen Bilder in Newsletter und an Buffer
+OEFFENTLICHE_URL = os.environ.get("OEFFENTLICHE_URL", "")

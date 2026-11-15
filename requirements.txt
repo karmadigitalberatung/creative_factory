@@ -8,3 +8,4 @@ anthropic>=0.125
 google-genai>=1.40
 imageio-ffmpeg>=0.6
 faster-whisper>=1.2
+markdown-it-py>=3

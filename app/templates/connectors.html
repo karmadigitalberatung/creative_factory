@@ -83,6 +83,81 @@
     {% endif %}
   </div>
 
+  <div class="card connector" id="blog">
+    <div class="connector-kopf">
+      <span class="connector-logo" aria-hidden="true">W</span>
+      <div class="grow">
+        <h2>Blog</h2>
+        <span class="muted small">Blogbeiträge im Redaktionsplan: Claude schreibt, du teilst sie in Posts auf und schickst sie als Entwurf auf deine Website.</span>
+      </div>
+      {% if blog_ziel %}<span class="status-punkt an">{{ blog_dienste[blog_ziel.dienst] }}</span>{% else %}<span class="status-punkt">Aus</span>{% endif %}
+    </div>
+    {% if blog_ziel %}
+    <div class="row">
+      <span class="grow small">{% if blog_ziel.dienst == 'wordpress' %}WordPress: {{ blog_ziel.daten.url }} (als {{ blog_ziel.daten.name }}){% elif blog_ziel.dienst == 'heykajo' %}heykajo: {{ blog_ziel.daten.url }}, Collection „{{ blog_ziel.daten.collection }}“{% else %}Blogbeiträge nur in der App, ohne Übergabe.{% endif %}</span>
+      <form method="post" action="/connectors/blog/trennen"><button class="small link danger" data-warnen="Blog trennen? Bestehende Beiträge bleiben im Plan, das Format Blog verschwindet aus der Auswahl.">Trennen</button></form>
+    </div>
+    {% endif %}
+    <details class="schluessel-weg" {{ 'open' if not blog_ziel }}>
+      <summary>{{ 'Anderes Ziel einrichten' if blog_ziel else 'Einrichten' }}</summary>
+      <div class="connector-wege drei">
+        <form method="post" action="/connectors/blog" class="stack" data-busy="Prüft WordPress …">
+          <strong>WordPress</strong>
+          <input type="hidden" name="dienst" value="wordpress">
+          <label>Website <input name="url" placeholder="https://meine-website.at" required></label>
+          <label>Benutzername <input name="benutzer" autocomplete="off" required></label>
+          <label>Anwendungspasswort <input type="password" name="passwort" autocomplete="off" required></label>
+          <span class="hint">In WordPress unter Benutzer → Profil → Anwendungspasswörter anlegen. Beiträge kommen als Entwurf, veröffentlicht wird in WordPress.</span>
+          <button class="primary">Mit WordPress verbinden</button>
+        </form>
+        <form method="post" action="/connectors/blog" class="stack" data-busy="Prüft heykajo …">
+          <strong>heykajo</strong>
+          <input type="hidden" name="dienst" value="heykajo">
+          <label>Website <input name="url" placeholder="https://kunde.preview.heykajo.ai" required></label>
+          <label>CMS-Schlüssel <input type="password" name="token" autocomplete="off" required></label>
+          <label>Collection <input name="collection" placeholder="z. B. blog oder news" required></label>
+          <span class="hint">Beiträge kommen als Entwurf in die Collection, veröffentlicht wird im heykajo-Dashboard.</span>
+          <button class="primary">Mit heykajo verbinden</button>
+        </form>
+        <form method="post" action="/connectors/blog" class="stack">
+          <strong>Nur in der App</strong>
+          <input type="hidden" name="dienst" value="app">
+          <span class="small muted">Blogbeiträge schreiben, ansehen und in Posts aufteilen; den Text kopierst du selbst auf deine Website.</span>
+          <button>Blog in der App einschalten</button>
+        </form>
+      </div>
+    </details>
+  </div>
+
+  <div class="card connector" id="newsletter">
+    <div class="connector-kopf">
+      <span class="connector-logo" aria-hidden="true">M</span>
+      <div class="grow">
+        <h2>Newsletter · MailerLite</h2>
+        <span class="muted small">Du wählst die Themen, Claude schreibt die Ausgabe, sie kommt als Kampagnen-Entwurf in MailerLite. Gesendet wird dort.</span>
+      </div>
+      {% if nl_ziel %}<span class="status-punkt an">Verbunden</span>{% else %}<span class="status-punkt">Nicht verbunden</span>{% endif %}
+    </div>
+    {% if not nl_ziel %}
+    <form method="post" action="/connectors/newsletter" class="row" data-busy="Verbindet mit MailerLite …">
+      <label class="grow">API-Schlüssel <input type="password" name="token" autocomplete="off" required placeholder="MailerLite → Integrationen → API"></label>
+      <button class="primary">Verbinden</button>
+    </form>
+    {% else %}
+    <form method="post" action="/connectors/newsletter" class="stack">
+      <input type="hidden" name="einstellungen" value="1">
+      <div class="row">
+        <label class="grow">Absendername <input name="absender_name" value="{{ nl_ziel.daten.absender_name or auf.name or '' }}" required></label>
+        <label class="grow">Absenderadresse <input type="email" name="absender" value="{{ nl_ziel.daten.absender or '' }}" required placeholder="muss in MailerLite bestätigt sein"></label>
+      </div>
+      <span class="label">Empfängergruppen</span>
+      <div class="themen-liste">{% for g in nl_ziel.daten.alle_gruppen or [] %}<label class="check small"><input type="checkbox" name="gruppe" value="{{ g.id }}" {{ 'checked' if g.id in (nl_ziel.daten.gruppen or []) }}> {{ g.name }} <span class="muted">· {{ g.anzahl }}</span></label>{% else %}<span class="small muted">Keine Gruppen in MailerLite.</span>{% endfor %}</div>
+      <div class="row"><button class="primary">Speichern</button><span class="hint">Ohne Gruppe legst du die Empfänger im MailerLite-Entwurf fest.</span></div>
+    </form>
+    <form method="post" action="/connectors/newsletter/trennen"><button class="small link danger" data-warnen="MailerLite trennen?">Trennen</button></form>
+    {% endif %}
+  </div>
+
   <p class="muted small">Weitere Connectors (z. B. Kalender, Cloud-Speicher) kommen später an diese Stelle.</p>
 </section>
 {% endblock %}

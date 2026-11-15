@@ -831,3 +831,79 @@ details[open] summary { margin-bottom: 14px; }
 .ig-info-knoepfe { margin: 8px 0; }
 .ig-info .warn { color: var(--warn); }
 @media (prefers-reduced-motion: reduce) { .ig-balken span { animation: none; } }
+
+/* ---------- Content Hub: Blog, Newsletter, Connectors */
+.connector-wege.drei { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 12px; }
+.connector-wege.drei form { padding: 14px; border: 1px solid var(--linie); border-radius: var(--rund); }
+.familie { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 12px; }
+.familie .label { margin: 0 6px 0 0; }
+.familie-post { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--linie); border-radius: 999px; background: var(--karte); text-decoration: none; font-size: 13px; }
+.familie-post:hover { border-color: var(--tinte); }
+.hub-buehne { display: flex; gap: 40px; align-items: flex-start; justify-content: center; padding: 28px 16px 40px; background: var(--flaeche-2); border-radius: var(--rund); margin-bottom: 24px; flex-wrap: wrap; }
+.blog-artikel { width: 680px; max-width: 100%; background: #FFF; color: #1A1A1A; padding: 40px 48px 48px; border-radius: 6px; box-shadow: 0 20px 50px rgba(0,0,0,.08);
+  font: 17px/1.7 markeText, Georgia, serif; }
+.blog-bild { width: calc(100% + 96px); max-width: none; margin: -40px -48px 28px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px 6px 0 0; display: block; }
+.blog-meta { font: 12px/1.4 var(--sans); color: #888; text-transform: uppercase; letter-spacing: .08em; }
+.blog-titel { font: 400 40px/1.12 markeTitel, var(--serif); margin: 10px 0 14px; color: #111; }
+.blog-teaser { font-size: 19px; color: #444; margin: 0 0 24px; }
+.blog-text h2 { font: 400 26px/1.25 markeTitel, var(--serif); margin: 34px 0 10px; }
+.blog-text h3 { font: 600 19px/1.3 markeText, var(--sans); margin: 26px 0 8px; }
+.blog-text p, .blog-text ul, .blog-text ol { margin: 0 0 16px; }
+.blog-text a { color: inherit; }
+.blog-text blockquote { margin: 20px 0; padding-left: 16px; border-left: 3px solid var(--akzent); color: #444; }
+.blog-eingabe { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.seo-vorschau { display: flex; flex-direction: column; gap: 2px; padding: 12px; background: #FFF; border: 1px solid var(--linie); border-radius: var(--rund); font-family: Arial, sans-serif; }
+.seo-url { font-size: 12px; color: #4D5156; } .seo-titel { font-size: 17px; color: #1A0DAB; } .seo-text { font-size: 13px; color: #4D5156; }
+.mail-fenster { width: 660px; max-width: 100%; background: #FFF; border-radius: 10px; box-shadow: 0 20px 50px rgba(0,0,0,.1); overflow: hidden; }
+.mail-kopf { display: flex; flex-direction: column; gap: 3px; padding: 16px 20px; border-bottom: 1px solid #EEE; font-family: -apple-system, Helvetica, Arial, sans-serif; color: #222; }
+.mail-betreff { font-size: 17px; font-weight: 600; } .mail-vorschau, .mail-von { font-size: 13px; color: #666; }
+.mail-inhalt { width: 100%; height: 900px; border: 0; display: block; }
+.themen-liste { display: flex; flex-direction: column; gap: 6px; }
+
+/* ---------- Design & Layout */
+.typ-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.typ-karte { display: flex; flex-direction: column; gap: 10px; text-decoration: none; color: inherit; }
+.typ-karte:hover { border-color: var(--tinte); }
+.typ-karte h2 { margin: 0; }
+.typ-vorschau { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 60px; align-items: start; }
+.typ-vorschau img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--rund-klein); border: 1px solid var(--linie); }
+.typ-vorschau.video { display: flex; flex-wrap: wrap; gap: 6px; }
+.typ-knopf { align-self: flex-start; }
+.abschnitt-titel { margin: 28px 0 0; }
+.vorlagen-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.vorlage { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.vorlage .slide-oeffnen { padding: 0; border: 1px solid var(--linie); border-radius: var(--rund-klein); background: none; height: auto; overflow: hidden; }
+.vorlage .slide-oeffnen:hover { border-color: var(--tinte); }
+.vorlage .slide-oeffnen img { width: 100%; display: block; aspect-ratio: 4 / 5; object-fit: cover; }
+.vorlage figcaption { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.aufklapp-panel.klein { width: 220px; }
+.aufklapp-panel.klein form { margin: 0; }
+.typ-vorschau > span { grid-column: 1 / -1; }
+.typ-vorschau.hoch img, .vorlagen-raster.hoch img { aspect-ratio: 9 / 16; }
+.vorlagen-raster.hoch { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.vorlagen-raster.hoch .vorlage img { width: 100%; object-fit: cover; border-radius: var(--rund-klein); border: 1px solid var(--linie); display: block; }
+.video-vorlagen { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.video-vorlagen .vorlagen-raster { flex: 1; min-width: 260px; }
+.beispiel { margin: 0; width: 200px; flex: none; }
+.beispiel video { width: 100%; aspect-ratio: 9 / 16; background: #000; border-radius: var(--rund-klein); display: block; }
+
+/* ---------- Design für Newsletter */
+.nl-vorlagen { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.nl-vorlage { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.nl-vorlage .nl-rahmen { position: relative; display: block; height: 400px; overflow: hidden; border-radius: var(--rund-klein); background: #FFF; border: 1px solid var(--linie); }
+.nl-vorlage.on .nl-rahmen { border-color: var(--tinte); box-shadow: 0 0 0 1px var(--tinte); }
+.nl-vorlage .nl-rahmen:hover { border-color: var(--tinte); }
+.nl-vorlage iframe { position: absolute; top: 0; left: 0; width: 200%; height: 200%; border: 0; transform: scale(.5); transform-origin: 0 0; pointer-events: none; }
+.nl-vorlage figcaption { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.chip.gelb { background: var(--akzent); border-color: transparent; color: #111; }
+.nl-editor .titel-feld { font: inherit; border: 0; border-bottom: 1px dashed transparent; background: none; padding: 0; width: 100%; color: inherit; }
+.nl-editor .titel-feld:hover, .nl-editor .titel-feld:focus { border-bottom-color: var(--linie); outline: none; }
+.nl-buehne { height: calc(100vh - 260px); min-height: 520px; max-width: 760px; border-radius: var(--rund); overflow: hidden; border: 1px solid var(--linie); background: #FFF; }
+.nl-buehne iframe { width: 100%; height: 100%; border: 0; }
+.nl-html { margin-top: 18px; max-width: 760px; }
+.nl-html summary { cursor: pointer; padding: 6px 0; }
+.nl-html textarea { font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre; }
+.farb-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.farb-chip { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); display: inline-block; }
+.typ-vorschau.nl { display: block; } .typ-vorschau.nl { position: relative; height: 150px; overflow: hidden; border-radius: var(--rund-klein); }
+.typ-vorschau.nl iframe { position: absolute; top: 0; left: 0; width: 250%; height: 250%; border: 0; transform: scale(.4); transform-origin: 0 0; pointer-events: none; background: #FFF; }

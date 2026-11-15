@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, buffer, config, db, fertig, ideen, jobs, layout_editor, mcp, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
+from . import ai, buffer, config, db, fertig, hub, ideen, jobs, layout_editor, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI(title="Creative Factory")
@@ -45,6 +45,22 @@ def _verwaiste_jobs():
         a = json.loads(b["auftreten"])
         if "leitlinien" not in a:
             leitlinien.speichern(b["id"], leitlinien.laden(a))
+    for p in db.q("SELECT id, inhalt FROM posts WHERE format='Talking Head'"):   # Talking Head ist jetzt ein Reel, in dem die Person selbst spricht
+        inhalt = json.loads(p["inhalt"]); inhalt["aufnahme"] = True
+        db.run("UPDATE posts SET format='Reel', inhalt=? WHERE id=?", json.dumps(inhalt, ensure_ascii=False), p["id"])
+    try:
+        for i in db.q("SELECT id, entwurf FROM ideen WHERE format='Talking Head'"):
+            e = json.loads(i["entwurf"]); e["aufnahme"] = True
+            db.run("UPDATE ideen SET format='Reel', entwurf=? WHERE id=?", json.dumps(e, ensure_ascii=False), i["id"])
+    except Exception:
+        pass   # Tabelle ideen gibt es noch nicht
+    for b in db.q("SELECT id, auftreten FROM brands"):
+        a = json.loads(b["auftreten"])
+        if "Talking Head" in (a.get("formate") or []):
+            a["formate"] = [f for f in a["formate"] if f != "Talking Head"]
+            db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), b["id"])
+    for b in db.q("SELECT id FROM brands"):
+        vorlagen.uebernehmen_aus_muster(b["id"])
     redaktion.starten()   # proaktive Redaktion: prüft alle 10 Minuten, ob ein täglicher Lauf fällig ist
 
 WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -135,10 +151,23 @@ def _chatbox(request, name, ctx):
         return {"bereich": "post", "post_id": p["id"], "titel": f"Chat zu „{p['titel'] or 'diesem Post'}“", "verlauf": ctx.get("chat") or [],
                 "hint": "z. B. „Cover mit großem Foto und Titel unten“, „Slide 3 als Liste“, „Captions kürzer“, „Story-Version dazu“",
                 "seite": f"Post „{p['titel']}“ ({p['format']}, Status {p['status']})", "schnellfragen": []}
+    if name == "nl_vorlage.html":
+        v = ctx["v"]
+        return {"bereich": f"nlvorlage-{v['id']}", "post_id": None, "titel": f"Vorlage „{v['name']}“", "verlauf": ctx.get("chat") or [],
+                "hint": "z. B. „Kopf dunkel und mittig“, „Themen als zwei Spalten“, „wie dieses Beispiel“ – Screenshot anhängen",
+                "seite": f"Newsletter-Vorlage „{v['name']}“", "schnellfragen": []}
+    if name == "design_typ.html":
+        t, slug = ctx["typ"], ctx["slug"]
+        return {"bereich": f"design-{slug}", "post_id": None, "titel": f"Design für {vorlagen.TYPEN[t]['titel']}", "verlauf": ctx.get("chat") or [],
+                "hint": ("z. B. „Magazin-Layout, Kopf in Türkis“, „Fußzeile: Name, Adresse …“, „wie dieses Beispiel“ – Screenshots anhängen geht auch"
+                         if t == "Newsletter" else
+                         "z. B. „Cover mit großem Foto und Titel unten“, „noch eine Vorlage für Zitate“, „wie dieses Beispiel“ – Bilder anhängen geht auch"
+                         if vorlagen.TYPEN[t]["art"] == "slides" else "z. B. „Untertitel größer“, „mehr Bewegung“, „wie dieses Beispiel“ – Bilder anhängen geht auch"),
+                "seite": f"Design für {vorlagen.TYPEN[t]['titel']}", "schnellfragen": [], "bilder": True}
     if name == "auftreten.html":
-        return {"bereich": "auftreten", "post_id": None, "titel": "Chat zum Auftreten", "verlauf": ctx.get("chat") or [],
-                "hint": "z. B. „Lies meine Website und schlag mir ein Auftreten vor“, „Akzent eher Salbeigrün“ – du kannst auch Bilder anhängen",
-                "seite": "Auftreten (Brand Guide)", "schnellfragen": []}
+        return {"bereich": "auftreten", "post_id": None, "titel": "Chat zu Design & Layout", "verlauf": ctx.get("chat") or [],
+                "hint": "z. B. „Lies meine Website und schlag mir ein Design vor“, „Akzent eher Salbeigrün“ – du kannst auch Bilder anhängen",
+                "seite": "Design & Layout (Grundlagen der Marke)", "schnellfragen": []}
     if name == "planen.html":
         a = ctx.get("ansicht", "board")
         seite = "Planen, Ansicht " + {"kalender": f"Kalender ({ctx.get('monat', '')})", "tabelle": "Tabelle", "board": "Board"}.get(a, a)
@@ -164,7 +193,10 @@ def post_view(r, laufende=None):
     d["kurz"] = r["titel"] or " ".join(x for x in (c.get("zeile1"), c.get("zeile2")) if x) or c.get("text") or "Ohne Titel"
     d["laeuft"] = jobs.label(r["id"], laufende or [])
     d["thumb"] = None
-    if r["video"]:
+    if r["format"] in ("Blog", "Newsletter"):
+        d["thumb"] = r["photo"] or None
+        d["kurz"] = r["titel"] or ("Blogbeitrag" if r["format"] == "Blog" else "Newsletter")
+    elif r["video"]:
         d["thumb"] = f"posts/{r['id']}/reel-cover.jpg"
     elif r["rendered_at"]:
         d["thumb"] = f"posts/{r['id']}/slide-01.png"
@@ -406,7 +438,7 @@ async def start(request: Request, name: str = Form(...), website: str = Form("")
         flash(request, "Willkommen! Ich lese gerade deine Website und übernehme Farben, Schriften und Layout. Das dauert zwei bis drei Minuten.")
     else:
         jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
-        flash(request, "Willkommen! Leg jetzt dein Auftreten fest: Farben, Schriften, Logo und Schreibstil. Der Chat rechts hilft dir dabei.")
+        flash(request, "Willkommen! Leg jetzt Design und Layout fest: Farben, Schriften, Logo und Vorlagen. Der Chat rechts hilft dir dabei.")
     return go("/auftreten")
 
 
@@ -515,7 +547,8 @@ def werkstatt(request: Request, ansicht: str = "", m: str = "", gepostet: int = 
         ctx.update(wochen=wochen, tage=tage, erster=erster, heute=heute, monat=f"{MONATE[erster.month - 1]} {erster.year}",
                    vor=vor.strftime("%Y-%m"), nach=nach.strftime("%Y-%m"),
                    rhythmus=red["tage"] if red["aktiv"] else [])
-    return page(request, "planen.html", b=b, laeuft=bool(laufende), formate=marke.FORMATE, chat=chat,
+    return page(request, "planen.html", b=b, laeuft=bool(laufende), formate=hub.formate(b["id"]), chat=chat,
+                blog_an=bool(hub.ziel(b["id"], "blog")), nl_an=bool(hub.ziel(b["id"], "newsletter")),
                 anzahl=len(rows), mit_termin=mit_termin, red=red, red_tage=redaktion.TAGE, ansicht=ansicht, ansichten=ANSICHTEN,
                 red_frei=redaktion.freie_termine(b["id"], red), red_laeuft=any(j["kind"] == "redaktion" for j in laufende),
                 offen=_offen(b["id"]), status_filter=request.query_params.get("status", ""), **ctx)
@@ -736,6 +769,10 @@ def werkstatt_ideen(request: Request, anzahl: int = Form(4), thema: str = Form("
 @app.post("/planen/neu")
 def werkstatt_neu(request: Request, format: str = Form("Carousel")):
     b = brand_of(request)
+    if format == "Newsletter":
+        return go("/newsletter/neu")
+    if format == "Blog":
+        return blog_neu(request, "", "", "")
     fmt = format if format in marke.FORMATE else "Carousel"
     slides = [{"art": "cover", "zeile1": "Erste Zeile", "zeile2": "Zweite Zeile.", "subline": ""}]
     if fmt in ("Carousel", "Reel"):
@@ -777,6 +814,8 @@ def werkstatt_verwerfen(request: Request, pid: int):
 def post_edit(request: Request, pid: int):
     b = brand_of(request)
     p = post_of(b, pid)
+    if p["format"] in ("Blog", "Newsletter"):
+        return _hub_seite(request, b, p)
     inhalt = json.loads(p["inhalt"])
     slides = [dict(s, **marke.slide_felder(s)) for s in inhalt.get("slides", [])]
     chat = db.q("SELECT * FROM chats WHERE brand_id=? AND post_id=? ORDER BY id", b["id"], pid)
@@ -830,6 +869,8 @@ async def post_save(request: Request, pid: int):
         neu["slides"] = marke.slides_aus_formular(form)
     if form.get("skript") is not None:
         neu["skript"] = str(form.get("skript")).strip()
+    if form.get("aufnahme_form"):   # Reel/Story: spricht die Person selbst?
+        neu["aufnahme"] = bool(form.get("aufnahme"))
     if form.get("kanaele_form"):   # Kanäle und Platzierung (Feed, Reel, Story) je Buffer-Kanal
         gueltig = {k["id"]: [x for x, _ in k["moeglich"]] for k in buffer.kanaele_fuer_post(b["id"], p)}
         wahl = {}
@@ -968,6 +1009,7 @@ def connectors(request: Request):
     for k in (v["kanaele"] if v else []):
         gruppen.setdefault(k["org"] or "Buffer", []).append(k)
     return page(request, "connectors.html", b=b, buf=v, gruppen=gruppen, oauth=buffer.oauth_moeglich(),
+                blog_ziel=hub.ziel(b["id"], "blog"), nl_ziel=hub.ziel(b["id"], "newsletter"), blog_dienste=hub.BLOG_DIENSTE,
                 redirect_uri=_buffer_redirect(request))
 
 
@@ -1189,6 +1231,230 @@ async def post_video(request: Request, pid: int, datei: UploadFile = File(...)):
     return go(f"/planen/{pid}")
 
 
+# ---------------------------------------------------------------- Content Hub: Blog und Newsletter
+
+def _hub_seite(request, b, p):
+    laufende = jobs.running(b["id"], p["id"])
+    inhalt = json.loads(p["inhalt"])
+    quelle = db.one("SELECT id, titel, format FROM posts WHERE id=? AND brand_id=?", p["quelle_id"], b["id"]) if p["quelle_id"] else None
+    ctx = dict(b=b, p=p, inhalt=inhalt, laeuft=jobs.LABELS.get(laufende[0]["kind"]) if laufende else None,
+               fehler=jobs.last_error(b["id"], p["id"]), quelle=quelle, ableitungen=hub.ableitungen(b["id"], p["id"]))
+    if p["format"] == "Blog":
+        blog = inhalt.get("blog") or {}
+        return page(request, "blog.html", **ctx, blog=blog, blog_html=hub.html(blog.get("text")), ziel=hub.ziel(b["id"], "blog"),
+                    dienste=hub.BLOG_DIENSTE, medien_auswahl=[m for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert")][:24])
+    nl = inhalt.get("newsletter") or {}
+    kandidaten = hub.newsletter_kandidaten(b["id"])
+    return page(request, "newsletter.html", **ctx, nl=nl, ziel=hub.ziel(b["id"], "newsletter"), kandidaten=kandidaten, nl_vorlagen=hub.nl_vorlagen(b["id"]),
+                vorlage_aktiv=hub.nl_vorlage(b["id"], nl.get("vorlage_id"))["id"],
+                themen_titel={k["id"]: k for k in kandidaten})
+
+
+def _hub_job(b, pid, kind, fn, *args):
+    if jobs.running(b["id"], pid):
+        return False
+    jobs.start(b["id"], pid, kind, fn, *args)
+    return True
+
+
+@app.post("/blog/neu")
+def blog_neu(request: Request, titel: str = Form(""), notizen: str = Form(""), datum: str = Form("")):
+    """Blogbeitrag anlegen; mit Titel oder Notizen schreibt Claude gleich los."""
+    b = brand_of(request)
+    titel, notizen = titel.strip()[:200], notizen.strip()[:4000]
+    inhalt = {"slides": [], "blog": {"titel": titel, "teaser": "", "text": "", "notizen": notizen}}
+    cols = {"status": "Idee", "format": "Blog", "titel": titel or "Neuer Blogbeitrag", "inhalt": json.dumps(inhalt, ensure_ascii=False),
+            "datum": datum if re.fullmatch(r"\d{4}-\d{2}-\d{2}", datum or "") else "", "uhrzeit": "08:30", "created": db.now(), "updated": db.now()}
+    pid = db.run(f"INSERT INTO posts (brand_id,{','.join(cols)}) VALUES (?{',?' * len(cols)})", b["id"], *cols.values())
+    if (titel or notizen) and config.ANTHROPIC_API_KEY:
+        jobs.start(b["id"], pid, "blog", jobs.gestalten, b["id"], pid)
+    return go(f"/planen/{pid}")
+
+
+@app.post("/planen/{pid}/blog")
+async def blog_speichern(request: Request, pid: int):
+    b = brand_of(request)
+    p = post_of(b, pid)
+    f = await request.form()
+    aktion = str(f.get("aktion") or "speichern")
+    inhalt = json.loads(p["inhalt"])
+    blog = inhalt.get("blog") or {}
+    if f.get("blog_form"):
+        for k in ("titel", "teaser", "text", "notizen", "seo_titel", "seo_beschreibung", "slug"):
+            if f.get(k) is not None:
+                blog[k] = str(f.get(k)).strip()
+        blog["schlagworte"] = [x.strip() for x in str(f.get("schlagworte") or "").split(",") if x.strip()]
+        blog["slug"] = blog.get("slug") or hub._slug(blog.get("titel", ""))
+        inhalt["blog"] = blog
+        datum = str(f.get("datum") or "").strip()
+        db.run("UPDATE posts SET titel=?, inhalt=?, datum=?, uhrzeit=?, bildidee=?, vorher_pruefen=?, updated=? WHERE id=?",
+               blog.get("titel") or p["titel"], json.dumps(inhalt, ensure_ascii=False), datum if re.fullmatch(r"\d{4}-\d{2}-\d{2}", datum) else "",
+               str(f.get("uhrzeit") or "08:30")[:5], str(f.get("bildidee") or p["bildidee"]).strip(), str(f.get("vorher_pruefen") or "").strip(), db.now(), pid)
+    if aktion == "schreiben":
+        if _hub_job(b, pid, "blog", jobs.gestalten, b["id"], pid):
+            flash(request, "Claude schreibt den Beitrag." if not blog.get("text") else "Claude überarbeitet den Beitrag nach deinen Notizen.")
+    elif aktion == "aufteilen":
+        anzahl = max(2, min(int(f.get("anzahl") or 4), 8))
+        if _hub_job(b, pid, "aufteilen", hub.aufteilen, b["id"], pid, anzahl):
+            flash(request, f"Claude macht aus dem Beitrag {anzahl} Social-Posts. Sie landen als Entwürfe im Redaktionsplan, verteilt auf die Tage danach.")
+    elif aktion == "uebergeben":
+        if _hub_job(b, pid, "uebergabe", hub.blog_uebergeben, b["id"], pid):
+            flash(request, "Der Beitrag wird als Entwurf übergeben. Veröffentlichen machst du dort.")
+    elif aktion == "abnehmen":
+        p2 = post_of(b, pid)
+        if not p2["datum"]:
+            flash(request, "Gespeichert. Zum Einplanen fehlt noch ein Datum.")
+        else:
+            db.run("UPDATE posts SET status='Geplant' WHERE id=?", pid)
+            flash(request, f"Eingeplant für {p2['datum']}.")
+    else:
+        flash(request, "Gespeichert.")
+    return go(f"/planen/{pid}")
+
+
+@app.get("/newsletter/neu", response_class=HTMLResponse)
+def newsletter_neu_form(request: Request):
+    b = brand_of(request)
+    if not hub.ziel(b["id"], "newsletter"):
+        flash(request, "Verbinde zuerst MailerLite unter Connectors.")
+        return go("/connectors#newsletter")
+    return page(request, "newsletter_neu.html", b=b, kandidaten=hub.newsletter_kandidaten(b["id"]), nl_vorlagen=hub.nl_vorlagen(b["id"]),
+                standard=hub.nl_vorlage(b["id"])["id"])
+
+
+@app.post("/newsletter/neu")
+async def newsletter_neu(request: Request):
+    b = brand_of(request)
+    f = await request.form()
+    ids = [int(x) for x in f.getlist("thema") if str(x).isdigit()]
+    if not ids and not str(f.get("anlass") or "").strip():
+        flash(request, "Wähl mindestens ein Thema aus oder schreib einen Anlass dazu.")
+        return go("/newsletter/neu")
+    datum = str(f.get("datum") or "")
+    pid = hub.newsletter_anlegen(b["id"], ids, str(f.get("anlass") or "").strip()[:2000], datum if re.fullmatch(r"\d{4}-\d{2}-\d{2}", datum) else "",
+                                 str(f.get("vorlage") or ""))
+    if config.ANTHROPIC_API_KEY:
+        jobs.start(b["id"], pid, "newsletter", jobs.gestalten, b["id"], pid)
+    return go(f"/planen/{pid}")
+
+
+@app.post("/planen/{pid}/newsletter")
+async def newsletter_speichern(request: Request, pid: int):
+    b = brand_of(request)
+    p = post_of(b, pid)
+    f = await request.form()
+    aktion = str(f.get("aktion") or "speichern")
+    inhalt = json.loads(p["inhalt"])
+    nl = inhalt.get("newsletter") or {}
+    if f.get("nl_form"):
+        if str(f.get("vorlage") or "").isdigit():
+            nl["vorlage_id"] = int(f.get("vorlage"))
+        for k in ("betreff", "vorschautext", "anrede", "intro", "schluss", "thema"):
+            if f.get(k) is not None:
+                nl[k] = str(f.get(k)).strip()
+        abschnitte = []
+        for i in range(30):
+            if f.get(f"ab_titel_{i}") is None:
+                break
+            if f.get(f"ab_weg_{i}"):
+                continue
+            abschnitte.append({"titel": str(f.get(f"ab_titel_{i}")).strip(), "text": str(f.get(f"ab_text_{i}") or "").strip(),
+                               "link": str(f.get(f"ab_link_{i}") or "").strip(), "link_text": str(f.get(f"ab_linktext_{i}") or "").strip(),
+                               "post_id": int(f.get(f"ab_post_{i}") or 0) or None})
+        nl["abschnitte"] = abschnitte
+        if f.getlist("thema_id") or f.get("themen_form"):
+            nl["themen"] = [int(x) for x in f.getlist("thema_id") if str(x).isdigit()]
+        inhalt["newsletter"] = nl
+        datum = str(f.get("datum") or "").strip()
+        db.run("UPDATE posts SET titel=?, inhalt=?, datum=?, uhrzeit=?, updated=? WHERE id=?", (nl.get("betreff") or p["titel"])[:200],
+               json.dumps(inhalt, ensure_ascii=False), datum if re.fullmatch(r"\d{4}-\d{2}-\d{2}", datum) else "", str(f.get("uhrzeit") or "09:00")[:5], db.now(), pid)
+    if aktion == "schreiben":
+        if _hub_job(b, pid, "newsletter", jobs.gestalten, b["id"], pid):
+            flash(request, "Claude schreibt die Ausgabe neu aus den gewählten Themen.")
+    elif aktion == "mailerlite":
+        if _hub_job(b, pid, "uebergabe", hub.newsletter_an_mailerlite, b["id"], pid):
+            flash(request, "Die Ausgabe wird in MailerLite als Kampagnen-Entwurf angelegt. Senden machst du in MailerLite.")
+    elif aktion == "abnehmen":
+        db.run("UPDATE posts SET status='Geplant' WHERE id=?", pid)
+        flash(request, "Abgenommen.")
+    else:
+        flash(request, "Gespeichert.")
+    return go(f"/planen/{pid}")
+
+
+@app.get("/planen/{pid}/newsletter.html", response_class=HTMLResponse)
+def newsletter_ansicht(request: Request, pid: int):
+    b = brand_of(request)
+    p = post_of(b, pid)
+    return HTMLResponse(hub.newsletter_html(b, p, fuer_email=False))
+
+
+@app.get("/schrift/{rolle}")
+def schrift(request: Request, rolle: str):
+    """Schriftdatei der Marke (für Vorschauen im Look der Marke)."""
+    b = brand_of(request, onboarding_ok=True)
+    s = (json.loads(b["auftreten"]).get("schriften") or {}).get(rolle) or {}
+    return FileResponse(marke.font_path(b["id"], s.get("datei")), headers={"Cache-Control": "max-age=3600"})
+
+
+# ---------------------------------------------------------------- Connectors: Blog und Newsletter
+
+@app.post("/connectors/blog")
+def connectors_blog(request: Request, dienst: str = Form(...), url: str = Form(""), benutzer: str = Form(""), passwort: str = Form(""),
+                    token: str = Form(""), collection: str = Form("")):
+    b = brand_of(request)
+    try:
+        if dienst == "wordpress":
+            daten = hub.wordpress_pruefen(url.strip(), benutzer.strip(), passwort.strip())
+            flash(request, f"WordPress verbunden ({daten['url']}, angemeldet als {daten['name']}).")
+        elif dienst == "heykajo":
+            from . import heykajo
+            felder = heykajo.pruefen(url.strip(), token.strip(), collection.strip())
+            daten = {"url": url.strip(), "token": token.strip(), "collection": collection.strip(), "felder": felder}
+            flash(request, f"heykajo verbunden: Beiträge gehen als Entwurf in die Collection „{collection.strip()}“.")
+        elif dienst == "app":
+            daten = {}
+            flash(request, "Blogbeiträge planst du jetzt in der App; ein Ziel kannst du jederzeit verbinden.")
+        else:
+            raise hub.HubFehler("Unbekannter Dienst.")
+    except Exception as e:
+        flash(request, str(e))
+        return go("/connectors#blog")
+    hub.ziel_setzen(b["id"], "blog", dienst, daten)
+    return go("/connectors#blog")
+
+
+@app.post("/connectors/newsletter")
+async def connectors_newsletter(request: Request):
+    b = brand_of(request)
+    f = await request.form()
+    z = hub.ziel(b["id"], "newsletter")
+    token = str(f.get("token") or "").strip() or (z["daten"].get("token") if z else "")
+    try:
+        gruppen = hub.mailerlite_gruppen(token)
+    except Exception as e:
+        flash(request, str(e))
+        return go("/connectors#newsletter")
+    daten = dict((z or {}).get("daten") or {}, token=token, alle_gruppen=gruppen)
+    if f.get("einstellungen"):
+        daten.update(absender=str(f.get("absender") or "").strip(), absender_name=str(f.get("absender_name") or "").strip(),
+                     gruppen=[g for g in f.getlist("gruppe") if any(g == x["id"] for x in gruppen)])
+        flash(request, "Newsletter-Einstellungen gespeichert.")
+    else:
+        flash(request, f"MailerLite verbunden ({len(gruppen)} Gruppen). Trag noch Absender und Empfängergruppen ein.")
+    hub.ziel_setzen(b["id"], "newsletter", "mailerlite", daten)
+    return go("/connectors#newsletter")
+
+
+@app.post("/connectors/{art}/trennen")
+def connectors_trennen(request: Request, art: str):
+    b = brand_of(request)
+    if art in ("blog", "newsletter"):
+        hub.ziel_loeschen(b["id"], art)
+        flash(request, "Getrennt. Bestehende Beiträge bleiben im Plan.")
+    return go("/connectors")
+
+
 # ---------------------------------------------------------------- Fertige Inhalte hochladen
 
 async def _uploads(request, dateien):
@@ -1348,7 +1614,12 @@ def post_reel(request: Request, pid: int):
 
 # ---------------------------------------------------------------- Auftreten
 
-@app.get("/auftreten", response_class=HTMLResponse)
+@app.get("/auftreten")
+def auftreten_alt():
+    return go("/design")
+
+
+@app.get("/design", response_class=HTMLResponse)
 def auftreten(request: Request):
     b = brand_of(request)
     chat = db.q("SELECT * FROM chats WHERE brand_id=? AND bereich='auftreten' ORDER BY id", b["id"])
@@ -1358,11 +1629,204 @@ def auftreten(request: Request):
     a = json.loads(b["auftreten"])
     return page(request, "auftreten.html", b=b, chat=chat, muster=muster, schriften=marke.schriften_liste(b["id"]),
                 vorbilder=medien.liste(b["id"], "vorbild"),
-                rollen=marke.ROLLEN, formate=marke.FORMATE, laeuft=any(j["kind"] == "muster" for j in jobs.running(b["id"])),
+                rollen=marke.ROLLEN, formate=marke.FORMATE, laeuft=any(j["kind"] in ("muster", "vorlagen") for j in jobs.running(b["id"])),
                 website_laeuft=any(j["kind"] == "website" for j in jobs.running(b["id"])),
                 website_fehler=db.one("SELECT error FROM jobs WHERE brand_id=? AND kind='website' AND status='fehler' AND id=(SELECT MAX(id) FROM jobs WHERE brand_id=? AND kind='website')", b["id"], b["id"]),
                 vstil=vstil.von_marke(a), vstil_quelle=(a.get("video_stil") or {}).get("quelle", "schaetzung"),
-                vstil_laeuft=any(j["kind"] == "videostil" for j in jobs.running(b["id"])))
+                vstil_laeuft=any(j["kind"] == "videostil" for j in jobs.running(b["id"])),
+                typen=[dict(info, typ=t, vorlagen=vorlagen.liste(b["id"], t), regeln=vorlagen.regeln(a, t)) for t, info in vorlagen.TYPEN.items()],
+                nl_standard=hub.nl_vorlage(b["id"]), nl_verbunden=bool(hub.ziel(b["id"], "newsletter")))
+
+
+# ---------------------------------------------------------------- Design je Contenttyp
+
+def _zurueck(request, standard):
+    z = request.query_params.get("zurueck", "")
+    return z if z.startswith("/") and not z.startswith("//") else standard
+
+
+def _typ(slug):
+    t = vorlagen.SLUG.get(slug)
+    if not t:
+        raise HTTPException(404)
+    return t
+
+
+@app.get("/design/{slug}", response_class=HTMLResponse)
+def design_typ(request: Request, slug: str):
+    b = brand_of(request)
+    t = _typ(slug)
+    a = json.loads(b["auftreten"])
+    laufende = jobs.running(b["id"])
+    from .motion import stil as vstil
+    chat = db.q("SELECT * FROM chats WHERE brand_id=? AND bereich=? ORDER BY id", b["id"], f"design-{slug}")
+    beispiele = db.q("SELECT * FROM medien WHERE brand_id=? AND art='vorbild' AND beschreibung=? ORDER BY id DESC", b["id"], f"design:{t}")
+    bilder = [{"id": m["id"], "datei": m["datei"], "titel": m["titel"], "beschreibung": m["beschreibung"]}
+              for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert", "person")][:60]
+    return page(request, "design_typ.html", b=b, typ=t, slug=slug, info=vorlagen.TYPEN[t], vorlagen_liste=vorlagen.liste(b["id"], t), bilder=bilder,
+                beispiel=vorlagen.beispiel_video(b["id"], t) if vorlagen.TYPEN[t]["art"] == "video" else None,
+                nl=hub.nl_design(a), nl_vorlagen=hub.nl_vorlagen(b["id"]) if t == "Newsletter" else [],
+                nl_standard=hub.nl_vorlage(b["id"])["id"] if t == "Newsletter" else None, farben=a.get("farben") or [],
+                regeln=vorlagen.regeln(a, t), chat=chat, beispiele=beispiele, laeuft=any(j["kind"] in ("vorlagen", "muster") for j in laufende),
+                vstil=vstil.von_marke(a), vstil_quelle=(a.get("video_stil") or {}).get("quelle", "schaetzung"),
+                vstil_laeuft=any(j["kind"] == "videostil" for j in laufende),
+                fehler=db.one("SELECT error FROM jobs WHERE brand_id=? AND kind='vorlagen' AND status='fehler' AND id=(SELECT MAX(id) FROM jobs WHERE brand_id=? AND kind='vorlagen')", b["id"], b["id"]))
+
+
+@app.post("/design/{slug}/generieren")
+def design_generieren(request: Request, slug: str, wunsch: str = Form("")):
+    b = brand_of(request)
+    t = _typ(slug)
+    if not config.ANTHROPIC_API_KEY:
+        flash(request, "Dafür braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY).")
+    elif not any(j["kind"] == "vorlagen" for j in jobs.running(b["id"])):
+        fn = vorlagen.generieren_video if vorlagen.TYPEN[t]["art"] == "video" else vorlagen.generieren
+        jobs.start(b["id"], None, "vorlagen", fn, b["id"], t, wunsch.strip()[:1000])
+        flash(request, "Claude gestaltet neue Vorlagen (ein bis drei Minuten). Die bisherigen werden dabei ersetzt."
+              if fn is vorlagen.generieren else "Claude führt Regie für ein Beispiel und rendert es (zwei bis drei Minuten). Die Szenen werden deine Vorlagen.")
+    return go(f"/design/{slug}")
+
+
+@app.post("/design/newsletter/einstellungen")
+def design_newsletter(request: Request, fusszeile: str = Form(""), regeln: str = Form("")):
+    b = brand_of(request)
+    hub.nl_design_setzen(b["id"], {"fusszeile": fusszeile.strip()[:1000], "regeln": regeln.strip()[:3000]})
+    flash(request, "Gespeichert. Gilt für alle neuen Ausgaben.")
+    return go("/design/newsletter")
+
+
+def _nl_beispiel(b):
+    bsp = json.loads(json.dumps(hub.NL_BEISPIEL))
+    fotos = [m["datei"] for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert")][:3] or ([b["ref_photo"]] if b["ref_photo"] else [])
+    for ab, f in zip(bsp["abschnitte"], fotos):   # Beispielbilder aus der Mediathek
+        ab["bild"] = f
+    return bsp
+
+
+@app.get("/design/newsletter/vorschau.html", response_class=HTMLResponse)
+def design_newsletter_vorschau(request: Request, vorlage: int = 0):
+    b = brand_of(request)
+    return HTMLResponse(hub.newsletter_html_aus(b, _nl_beispiel(b), fuer_email=False, vorlage_id=vorlage or None))
+
+
+@app.post("/design/newsletter/vorlage/{vid}/standard")
+def design_newsletter_standard(request: Request, vid: int):
+    b = brand_of(request)
+    if vorlagen.eine(b["id"], vid):
+        hub.nl_design_setzen(b["id"], {"standard": vid})
+        flash(request, "Neue Standard-Vorlage für Newsletter.")
+    return go("/design/newsletter")
+
+
+@app.get("/design/newsletter/vorlage/{vid}", response_class=HTMLResponse)
+def design_newsletter_vorlage(request: Request, vid: int):
+    b = brand_of(request)
+    v = vorlagen.eine(b["id"], vid)
+    if not v or v["typ"] != "Newsletter":
+        raise HTTPException(404)
+    chat = db.q("SELECT * FROM chats WHERE brand_id=? AND bereich=? ORDER BY id", b["id"], f"nlvorlage-{vid}")
+    return page(request, "nl_vorlage.html", b=b, v=v, html=v["szene"].get("html", ""), chat=chat, standard=hub.nl_vorlage(b["id"])["id"] == vid)
+
+
+@app.post("/design/newsletter/vorlage/{vid}")
+def design_newsletter_vorlage_speichern(request: Request, vid: int, name: str = Form(""), html: Optional[str] = Form(None)):
+    b = brand_of(request)
+    v = vorlagen.eine(b["id"], vid)
+    if not v or v["typ"] != "Newsletter":
+        raise HTTPException(404)
+    from . import newsletter_layout as nll
+    szene = v["szene"]
+    if html is not None:
+        neu = nll.bereinigen(html)
+        fehler = nll.pruefen(neu)
+        if fehler:
+            flash(request, fehler + " Nichts geändert.")
+            return go(f"/design/newsletter/vorlage/{vid}")
+        szene = dict(szene, html=neu)
+    vorlagen.aendern(b["id"], vid, szene, name.strip()[:80] or v["name"])
+    flash(request, "Gespeichert.")
+    return go(f"/design/newsletter/vorlage/{vid}")
+
+
+@app.post("/design/{slug}/regeln")
+def design_regeln(request: Request, slug: str, regeln: str = Form("")):
+    b = brand_of(request)
+    vorlagen.regeln_setzen(b["id"], _typ(slug), regeln)
+    flash(request, "Regeln gespeichert. Sie gelten für alle neuen Posts dieses Typs.")
+    return go(f"/design/{slug}")
+
+
+@app.post("/design/vorlage/{vid}/loeschen")
+def design_vorlage_loeschen(request: Request, vid: int):
+    b = brand_of(request)
+    v = vorlagen.eine(b["id"], vid)
+    if v:
+        vorlagen.loeschen(b["id"], vid)
+        flash(request, f"Vorlage „{v['name']}“ gelöscht.")
+    return go(f"/design/{vorlagen.TYPEN[v['typ']]['slug']}" if v else "/design")
+
+
+@app.post("/design/vorlage/{vid}/kopie")
+def design_vorlage_kopie(request: Request, vid: int):
+    b = brand_of(request)
+    v = vorlagen.eine(b["id"], vid)
+    if not v:
+        raise HTTPException(404)
+    vorlagen.anlegen(b["id"], v["typ"], v["name"] + " (Kopie)", v["szene"])
+    return go(f"/design/{vorlagen.TYPEN[v['typ']]['slug']}")
+
+
+@app.get("/design/vorlage/{vid}")
+def design_vorlage_daten(request: Request, vid: int):
+    b = brand_of(request)
+    v = vorlagen.eine(b["id"], vid)
+    if not v:
+        return JSONResponse({"fehler": "Diese Vorlage gibt es nicht."}, status_code=404)
+    return JSONResponse(layout_editor.daten_vorlage(b, v))
+
+
+@app.post("/design/vorlage/{vid}/vorschau")
+async def design_vorlage_vorschau(request: Request, vid: int):
+    b = brand_of(request)
+    try:
+        return JSONResponse(layout_editor.vorschau_vorlage(b, (await request.json())["szene"]))
+    except (ValueError, KeyError) as e:
+        return JSONResponse({"fehler": str(e)}, status_code=400)
+
+
+@app.post("/design/vorlage/{vid}")
+async def design_vorlage_speichern(request: Request, vid: int):
+    b = brand_of(request)
+    v = vorlagen.eine(b["id"], vid)
+    if not v:
+        return JSONResponse({"fehler": "Diese Vorlage gibt es nicht."}, status_code=404)
+    try:
+        layout_editor.speichern_vorlage(b, v, (await request.json())["szene"])
+    except (ValueError, KeyError) as e:
+        return JSONResponse({"fehler": str(e)}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/medien/bild/upload")
+async def medien_bild_upload(request: Request, datei: UploadFile = File(...)):
+    b = brand_of(request)
+    try:
+        return JSONResponse(_bild_json(medien.speichern(b["id"], await datei.read(), "foto", os.path.splitext(datei.filename or "Foto")[0])))
+    except ValueError as e:
+        return JSONResponse({"fehler": str(e)}, status_code=400)
+
+
+@app.post("/medien/bild/erzeugen")
+def medien_bild_erzeugen(request: Request, beschreibung: str = Form(...), format: str = Form("4:5"), generator: str = Form("")):
+    b = brand_of(request)
+    if not config.generatoren():
+        return JSONResponse({"fehler": "Kein Bildgenerator in .env (GEMINI_API_KEY oder SEEDREAM_API_KEY)."}, status_code=400)
+    try:
+        m = medien.erzeugen(b["id"], beschreibung.strip(), None, format if format in medien.FORMATE else "4:5",
+                            generator=generator if generator in config.generatoren() else None, setzen=False)
+    except Exception as e:
+        return JSONResponse({"fehler": ai.fehlertext(e)}, status_code=502)
+    return JSONResponse(_bild_json(m))
 
 
 @app.post("/auftreten/website")
@@ -1390,7 +1854,7 @@ def auftreten_videostil_ableiten(request: Request):
         flash(request, "Zum Ableiten braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY).")
     elif not any(j["kind"] == "videostil" for j in jobs.running(b["id"])):
         jobs.start(b["id"], None, "videostil", jobs.video_stil_ableiten, b["id"])
-    return go("/auftreten#video-stil")
+    return go(_zurueck(request, "/design/reel") + "#video-stil")
 
 
 @app.post("/auftreten/video-stil")
@@ -1419,14 +1883,14 @@ async def auftreten_videostil_speichern(request: Request):
            b["id"], "auftreten", b["auftreten"], json.dumps(a, ensure_ascii=False), "video-stil", db.now())
     db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), b["id"])
     flash(request, "Video-Stil gespeichert. Er gilt für alle Reels, die ab jetzt animiert oder geschnitten werden.")
-    return go("/auftreten#video-stil")
+    return go(_zurueck(request, "/design/reel") + "#video-stil")
 
 
 def _auftreten_speichern(b, a, quelle):
     db.run("INSERT INTO changes (brand_id, bereich, alt, neu, quelle, created) VALUES (?,?,?,?,?,?)",
            b["id"], "auftreten", b["auftreten"], json.dumps(a, ensure_ascii=False), quelle, db.now())
     db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), b["id"])
-    jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
+    jobs.start(b["id"], None, "vorlagen", vorlagen.alle_neu_rendern, b["id"])   # Vorlagen mit neuen Farben, Schriften, Logo
 
 
 @app.post("/auftreten")
@@ -1458,7 +1922,7 @@ async def auftreten_save(request: Request):
             a["schriften"][r] = {"datei": d, "gewicht": int(g) if g and str(g).isdigit() else None}
     a["formate"] = [f for f in marke.FORMATE if form.get(f"format_{f}")] or a.get("formate")
     _auftreten_speichern(b, a, "formular")
-    flash(request, "Auftreten gespeichert. Die Musterseiten werden neu erstellt.")
+    flash(request, "Grundlagen gespeichert. Die Vorlagen werden mit den neuen Farben und Schriften aufgefrischt.")
     return go("/auftreten")
 
 
@@ -1484,7 +1948,7 @@ async def auftreten_datei(request: Request, art: str = Form(...), datei: UploadF
     except ValueError as e:
         flash(request, str(e))
         return go("/auftreten")
-    jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
+    jobs.start(b["id"], None, "vorlagen", vorlagen.alle_neu_rendern, b["id"])   # Vorlagen mit neuen Farben, Schriften, Logo
     return go("/auftreten")
 
 
@@ -1503,8 +1967,8 @@ def auftreten_undo(request: Request):
     if c and c["alt"]:
         db.run("UPDATE brands SET auftreten=? WHERE id=?", c["alt"], b["id"])
         db.run("DELETE FROM changes WHERE id=?", c["id"])
-        jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
-        flash(request, "Letzte Änderung am Auftreten zurückgenommen.")
+        jobs.start(b["id"], None, "vorlagen", vorlagen.alle_neu_rendern, b["id"])   # Vorlagen mit neuen Farben, Schriften, Logo
+        flash(request, "Letzte Änderung an Design & Layout zurückgenommen.")
     return go("/auftreten")
 
 
@@ -1552,7 +2016,7 @@ def mediathek_upload(request: Request, dateien: List[UploadFile] = File(...), ar
         except ValueError as e:
             fehler.append(f"{d.filename}: {e}")
     if art == "vorbild" and ok:
-        jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
+        pass   # Vorbilder wirken jetzt je Contenttyp (Design & Layout), keine Neugestaltung nötig
     if request.headers.get("x-requested-with") == "fetch":   # Drag and Drop
         flash(request, f"{ok} Bild{'er' if ok != 1 else ''} gespeichert." + (" " + " ".join(fehler) if fehler else ""))
         return JSONResponse({"ok": ok, "fehler": fehler})
@@ -1616,7 +2080,7 @@ def mediathek_delete(request: Request, mid: int, zurueck: str = Form("/mediathek
     m = db.one("SELECT art FROM medien WHERE id=? AND brand_id=?", mid, b["id"])
     medien.loeschen(b["id"], mid)
     if m and m["art"] == "vorbild":
-        jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
+        pass   # Vorbilder wirken jetzt je Contenttyp (Design & Layout), keine Neugestaltung nötig
     return go(zurueck if zurueck.startswith("/") and not zurueck.startswith("//") else "/mediathek")
 
 
@@ -1661,6 +2125,59 @@ def _chat_planen(b, nachricht, hist, seite=""):
 
 
 
+def _chat_newsletter(b, nachricht, hist, neue, fokus):
+    """Newsletter-Vorlagen per Chat: aus Beispielbildern neue Vorlagen bauen oder bestehende ändern."""
+    vs = hub.nl_vorlagen(b["id"])
+    frueher = [m for m in db.q("SELECT * FROM medien WHERE brand_id=? AND art='vorbild' AND beschreibung='design:Newsletter' ORDER BY id DESC LIMIT 3", b["id"])
+               if m["id"] not in {n["id"] for n in neue}]
+    res = ai.newsletter_vorlage_chat(b, nachricht, hist, [medien.bild_von(b["id"], m).convert("RGB") for m in neue], vs, fokus,
+                                     [medien.bild_von(b["id"], m).convert("RGB") for m in frueher],
+                                     [m for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert")])
+    geaendert, ziel = False, None
+    if res["vorlage"] and res["aktion"] == "aendern" and any(v["id"] == res["vorlage_id"] for v in vs):
+        vorlagen.aendern(b["id"], res["vorlage_id"], res["vorlage"], res["name"] or None); ziel = res["vorlage_id"]; geaendert = True
+    elif res["vorlage"] and res["aktion"] in ("neu", "aendern"):
+        ziel = vorlagen.anlegen(b["id"], "Newsletter", res["name"] or "Neue Vorlage", res["vorlage"]); geaendert = True
+    werte = {k: res[k] for k in ("fusszeile", "regeln") if res[k].strip()}
+    if ziel and res["als_standard"]:
+        werte["standard"] = ziel
+    if werte:
+        hub.nl_design_setzen(b["id"], werte); geaendert = True
+    if res["aktion"] != "keine" and not res["vorlage"]:
+        res["antwort"] += " (Das HTML ließ sich leider nicht übernehmen. Versuch es bitte noch einmal.)"
+    return res["antwort"], geaendert
+
+
+def _chat_design(b, typ, nachricht, hist, neue):
+    """Chat auf der Design-Seite eines Contenttyps: Regeln und Vorlagen ändern, neue Vorlagen gestalten."""
+    if typ == "Newsletter":
+        return _chat_newsletter(b, nachricht, hist, neue, None)
+    alte = [m for m in db.q("SELECT * FROM medien WHERE brand_id=? AND art='vorbild' AND beschreibung=? ORDER BY id DESC LIMIT 6", b["id"], f"design:{typ}")
+            if m["id"] not in {n["id"] for n in neue}][:3]
+    a = json.loads(b["auftreten"])
+    res = ai.design_chat(b, typ, nachricht, hist, [medien.bild_von(b["id"], m).convert("RGB") for m in neue],
+                         [medien.bild_von(b["id"], m).convert("RGB") for m in alte], vorlagen.liste(b["id"], typ), vorlagen.regeln(a, typ))
+    geaendert = False
+    if res["regeln"].strip():
+        vorlagen.regeln_setzen(b["id"], typ, res["regeln"]); geaendert = True
+    if vorlagen.TYPEN[typ]["art"] == "video" and res["aktion"] != "keine" and not any(j["kind"] == "vorlagen" for j in jobs.running(b["id"])):
+        jobs.start(b["id"], None, "vorlagen", vorlagen.generieren_video, b["id"], typ, nachricht[:1000])
+        res["antwort"] += " Ich gestalte jetzt ein neues Beispiel mit neuen Vorlagen; das dauert zwei bis drei Minuten."
+        geaendert = True
+    if typ in vorlagen.BEISPIELE and res["vorlagen"]:
+        if res["aktion"] == "neu":
+            for v in vorlagen.liste(b["id"], typ):
+                vorlagen.loeschen(b["id"], v["id"])
+        bestehend = {v["id"] for v in vorlagen.liste(b["id"], typ)}
+        for v in res["vorlagen"]:
+            if res["aktion"] == "aendern" and v["vorlage_id"] in bestehend:
+                vorlagen.aendern(b["id"], v["vorlage_id"], v["szene"], v["name"] or None)
+            elif res["aktion"] in ("neu", "hinzufuegen") or v["vorlage_id"] not in bestehend:
+                vorlagen.anlegen(b["id"], typ, v["name"] or "Neue Vorlage", v["szene"])
+        geaendert = True
+    return res["antwort"], geaendert
+
+
 def _chat_post(b, p, nachricht, hist):
     """Art Director am Post: Texte, Szenen, Captions, Schnitt ändern. Gibt (antwort, geaendert) zurück."""
     geaendert = False
@@ -1703,10 +2220,12 @@ def chat(request: Request, nachricht: str = Form(""), bereich: str = Form("post"
     b = brand_of(request)
     nachricht = nachricht.strip()[:3000]
     neue = []   # Vorbilder aus dem Chat landen in der Mediathek
-    if bereich == "auftreten":
+    design_typ = vorlagen.SLUG.get(bereich[7:]) if bereich.startswith("design-") else ("Newsletter" if bereich.startswith("nlvorlage-") else None)
+    if bereich == "auftreten" or design_typ:
         for d in [x for x in (bilder or []) if x.filename][:8]:
             try:
-                neue.append(medien.speichern(b["id"], d.file.read(), "vorbild", os.path.splitext(d.filename)[0]))
+                neue.append(medien.speichern(b["id"], d.file.read(), "vorbild", os.path.splitext(d.filename)[0],
+                                             f"design:{design_typ}" if design_typ else ""))
             except ValueError as e:
                 return JSONResponse({"antwort": str(e)})
     if not nachricht and not neue:
@@ -1730,8 +2249,12 @@ def chat(request: Request, nachricht: str = Form(""), bereich: str = Form("post"
                 _auftreten_speichern(b, ai.auftreten_pruefen(json.loads(b["auftreten"]), neu, schriften), "chat")
                 geaendert = True
             elif muster_neu or neue:
-                jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
+                jobs.start(b["id"], None, "vorlagen", vorlagen.alle_neu_rendern, b["id"])   # Vorlagen mit neuen Farben, Schriften, Logo
                 geaendert = True
+        elif bereich.startswith("nlvorlage-") and bereich[10:].isdigit():
+            antwort, geaendert = _chat_newsletter(b, nachricht, hist, neue, int(bereich[10:]))
+        elif design_typ:
+            antwort, geaendert = _chat_design(b, design_typ, nachricht, hist, neue)
         elif bereich == "planen":
             antwort, geaendert = _chat_planen(b, nachricht, hist, seite.strip()[:300])
         elif p is not None:

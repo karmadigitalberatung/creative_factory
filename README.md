@@ -122,6 +122,37 @@ Futter für die Ideenwerkstatt, in `app/radar.py`. Trends und Swipe-Datei sind R
 - Muster aus der Swipe-Datei und offene Trends fließen in alle Ideen-Vorschläge ein (`ideen.lernkontext`).
 - Reichweiten-Zahlen von Instagram oder LinkedIn sind nicht enthalten, weil es dafür keine offene Schnittstelle gibt. Ein Monitor für Vorbild-Konten über die Instagram-Schnittstelle von Meta (Business Discovery) wäre ein möglicher nächster Schritt.
 
+## Design & Layout (früher „Auftreten“)
+
+`/design`, `app/vorlagen.py`. Oben je Contenttyp eine Karte (Carousel, Einzelbild, Reel, Story), darunter die Grundlagen (Website als Vorlage, Farben, Schriften, Stil, Logo und Dateien).
+
+- **Bearbeiten** führt auf `/design/<typ>`:
+  - Carousel und Einzelbild: Vorlagen als Szenen. Ein Klick öffnet sie im Layout-Editor; außerdem Kopie anlegen und Löschen.
+  - „Beispiele generieren“ (mit optionalem Wunsch) lässt Claude die Vorlagen neu gestalten.
+  - Reel und Story: „Beispiel gestalten“ lässt Claude Regie für ein Beispiel im Stil der Marke führen; die App rendert es (abspielbar), und seine Szenen (HTML) werden die Vorlagen. Dazu der Video-Stil.
+- Jeder Typ hat eigene **Regeln** (`auftreten.typ_regeln`) und einen eigenen **Chat** (`bereich design-<typ>`). Dort angehängte Bilder sind die Beispiele dieses Typs (`medien` art `vorbild`, beschreibung `design:<Typ>`). Claude ändert Regeln, ersetzt oder ergänzt Vorlagen oder ändert einzelne.
+- Beim Gestalten eines Posts bzw. Animieren eines Reels oder einer Story bekommt Claude die Vorlagen und Regeln seines Typs.
+- Die bisherigen Musterseiten wurden einmalig die Carousel-Vorlagen. Die Website-Übernahme gestaltet Carousel- und Einzelbild-Vorlagen.
+- Farben, Schriften oder Logo ändern frischt nur die Vorschaubilder auf und überschreibt keine Vorlagen.
+- Die Karte „Vorbilder“ ist entfallen.
+- **Newsletter** (`app/newsletter_layout.py`): Vorlagen sind E-Mail-HTML, das Claude gestaltet; die App füllt bei jeder Ausgabe nur Platzhalter ({{intro}}, {{schluss}}, je Thema {{titel}}, {{text}}, {{bild}}, {{link}} im Bereich `<!--THEMA-->`, optional `<!--AUFMACHER-->`). Jeder Account startet mit Brief, Magazin und Kompakt in den Markenfarben. Ein Beispielbild im Chat („Mit Claude gestalten“) baut Claude als neue Vorlage nach, Farben inklusive; Änderungswünsche gehen auf der Seite einer Vorlage an genau diese. Das HTML lässt sich dort auch selbst bearbeiten. Skripte und Event-Handler werden entfernt. Eine Vorlage ist Standard; beim Erstellen wählt man sie je Ausgabe. Impressum und Schreibregeln gelten für alle. Logo und Bilder kommen in die echte E-Mail erst mit einer öffentlichen Adresse (`OEFFENTLICHE_URL` in `.env`).
+
+## Content Hub: Blog und Newsletter
+
+`app/hub.py`, `app/heykajo.py`. Blog und Newsletter sind Formate im selben Redaktionsplan; sie erscheinen erst, wenn unter Connectors ein Ziel eingerichtet ist.
+
+- **Blog:** Ziel je Account ist WordPress (REST, Anwendungspasswort), heykajo (CMS-Schnittstelle der Website, Collection wählbar, Felder werden erkannt) oder „nur in der App“.
+  - Claude schreibt den Beitrag (Markdown, 900 bis 1500 Wörter) nach Schreibstil und Leitlinien, inklusive SEO-Titel, -Beschreibung und Beitragsbild-Idee.
+  - Die Vorschau zeigt ihn im Look der Marke mit Google-Vorschau.
+  - „In Posts aufteilen“ macht daraus 3 bis 6 verknüpfte Entwürfe (`posts.quelle_id`) an den nächsten freien Tagen.
+  - Übergabe immer als Entwurf; erneutes Übergeben aktualisiert den Entwurf.
+  - Die Redaktion schlägt höchstens einmal im Monat eine Blog-Idee vor, wenn 30 Tage kein Blog geplant war.
+- **Newsletter:** „Neu anlegen → Newsletter“ öffnet die Themenauswahl (Blogs und Posts der letzten 30 und nächsten 21 Tage, dazu ein Anlass).
+  - Claude schreibt Betreff, Vorschautext, Einstieg, je Thema einen Abschnitt und den Schluss.
+  - Vorschau als E-Mail in den Markenfarben.
+  - „In MailerLite als Entwurf anlegen“ erzeugt eine Kampagne (Absender und Gruppen unter Connectors). Erlaubt der Tarif kein eigenes HTML, wird der Entwurf ohne Inhalt angelegt; „HTML kopieren“ liefert den Inhalt. Gesendet wird in MailerLite.
+- **Talking Head** gibt es nicht mehr als eigenes Format: Es ist ein Reel oder eine Story mit „Ich spreche selbst in die Kamera“ (`inhalt.aufnahme`). Bestehende Posts und Ideen werden beim Start umgestellt.
+
 ## Vorschau wie auf Instagram
 
 Ein Post öffnet in der **Vorschau**: Feed-Post mit Wischen durch das Carousel (Zähler, Punkte, Pfeile), Reel im Hochformat mit Video und Ton-Schalter, Story mit Fortschrittsbalken; dazu Caption mit „… mehr“ nach zwei Zeilen und Handle, Profilbild (Referenzfoto, sonst Logo). Keine echten Zahlen. Der Reiter **Bearbeiten** enthält alles Bisherige. Wer gerade bearbeitet hat (Speichern, Hochladen), landet in den nächsten zehn Minuten wieder dort (`sessionStorage`).
@@ -134,7 +165,7 @@ Ein Post öffnet in der **Vorschau**: Feed-Post mit Wischen durch das Carousel (
 
 `app/mcp.py`, Endpunkt `POST /mcp` (JSON-RPC 2.0, MCP-Protokoll 2025-06-18). Unter Einstellungen → Claude Desktop legt man je Account einen Zugang an (Schlüssel `cf_…`, gespeichert ist nur der Hash) und bekommt den Block für `claude_desktop_config.json`. Claude Desktop startet dann `app/mcp_bridge.py` (nur Standardbibliothek), die stdio auf den Endpunkt umsetzt und für `dateien_hochladen` lokale Dateien einliest. Die App muss dabei laufen.
 
-Werkzeuge: `marke_lesen`, `plan_lesen`, `post_lesen` (mit Bildern der Slides bzw. Standbildern), `post_anlegen`, `post_aendern`, `post_gestalten` (Slides oder Reel-Animation), `post_design_wunsch` (Art Director der App), `post_status`, `post_einplanen`, `post_fotos_erzeugen`, `post_fotos_waehlen`, `medien_lesen`, `bild_erzeugen`, `dateien_hochladen`, `ideen_lesen`, `ideen_vorschlagen`, `idee_anlegen`, `ideen_entscheiden`, `trends_lesen`, `trendradar_starten`, `leitlinien_aendern`.
+Werkzeuge: `marke_lesen`, `plan_lesen`, `post_lesen` (mit Bildern der Slides bzw. Standbildern), `post_anlegen`, `post_aendern`, `post_gestalten` (Slides oder Reel-Animation), `post_design_wunsch` (Art Director der App), `post_status`, `post_einplanen`, `post_fotos_erzeugen`, `post_fotos_waehlen`, `medien_lesen`, `bild_erzeugen`, `dateien_hochladen`, `blog_anlegen`, `blog_aendern`, `blog_aufteilen`, `blog_uebergeben`, `newsletter_erstellen`, `newsletter_an_mailerlite`, `ideen_lesen`, `ideen_vorschlagen`, `idee_anlegen`, `ideen_entscheiden`, `trends_lesen`, `trendradar_starten`, `leitlinien_aendern`.
 
 ## Layout-Editor: Elemente und Verläufe
 

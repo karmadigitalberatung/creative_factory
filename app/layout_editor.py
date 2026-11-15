@@ -144,3 +144,29 @@ def mit_foto(p):
     """Nummern der Slides, auf denen ein Foto liegt (als Element oder als Hintergrund)."""
     return [i + 1 for i, s in enumerate(json.loads(p["design"] or "[]"))
             if "foto" in (s.get("hintergrund") or {}) or any(scene.typ_von(e) == "foto" for e in s.get("elemente") or [])]
+
+
+# ---------------------------------------------------------------- Vorlagen (Design & Layout)
+
+OHNE_POST = {"photo": None}
+
+
+def daten_vorlage(b, v):
+    szene = scene.normalisieren(copy.deepcopy(v["szene"]))
+    out = _rendern(b, OHNE_POST, szene, 1, 1, {})
+    a = json.loads(b["auftreten"])
+    out.update(szene=szene, nr=v["id"], gesamt=1, manuell=False, W=1080, H=1350, titel=f"Vorlage „{v['name']}“ · Layout anpassen",
+               farben=[{"name": f["name"], "hex": f["hex"], "rolle": f["rolle"]} for f in a.get("farben") or []], logo=bool(b["logo"]))
+    return out
+
+
+def vorschau_vorlage(b, szene):
+    return _rendern(b, OHNE_POST, _pruefen(szene), 1, 1, {})
+
+
+def speichern_vorlage(b, v, szene):
+    from . import vorlagen
+    szene = _pruefen(copy.deepcopy(szene))
+    for e in szene.get("elemente") or []:
+        e.pop("_felder", None)
+    vorlagen.aendern(b["id"], v["id"], szene)

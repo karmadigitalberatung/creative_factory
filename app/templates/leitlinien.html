@@ -16,7 +16,7 @@
   <form method="post" action="/leitlinien" class="leitlinien" {% if entwirft %}data-arbeitet="Claude entwirft deine Leitlinien" data-poll="/jobs"{% endif %}>
     {% if ki_text %}
     <div class="hinweis-leiste klein entwurf-leiste">
-      <span>{% if leer %}Noch leer? Claude macht dir einen Entwurf aus deinem Auftreten, deiner Website und deinen bisherigen Posts.{% else %}Claude kann leere Felder aus Auftreten, Website und bisherigen Posts vorschlagen. Was du schon eingetragen hast, bleibt.{% endif %}</span>
+      <span>{% if leer %}Noch leer? Claude macht dir einen Entwurf aus Design &amp; Layout, deiner Website und deinen bisherigen Posts.{% else %}Claude kann leere Felder aus Design &amp; Layout, Website und bisherigen Posts vorschlagen. Was du schon eingetragen hast, bleibt.{% endif %}</span>
       <button class="small" name="entwurf" value="1" {{ 'disabled' if entwirft }}>{{ 'Entwirft …' if entwirft else 'Leere Felder von Claude vorschlagen lassen' }}</button>
     </div>
     {% endif %}
@@ -57,7 +57,7 @@
       <section class="card">
         <h2>Format-Vorlieben</h2>
         <p class="small muted">Was dir liegt und was nicht.</p>
-        <textarea name="formate" rows="4" placeholder="z. B. lieber Carousels und animierte Reels, Talking Head höchstens alle zwei Wochen, Storys spontan">{{ ll.formate }}</textarea>
+        <textarea name="formate" rows="4" placeholder="z. B. lieber Carousels und animierte Reels, Reels, in denen ich selbst spreche, höchstens alle zwei Wochen, Storys spontan">{{ ll.formate }}</textarea>
       </section>
     </div>
 

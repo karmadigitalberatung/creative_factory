@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Newsletter erstellen · Creative Factory{% endblock %}
+{% block main %}
+<section class="hub-detail">
+  <a class="back" href="/planen">← Planen</a>
+  <div class="head"><div class="kopf-text"><h1>Newsletter erstellen</h1>
+    <span class="muted">Wähl die Themen aus, Claude schreibt daraus die Ausgabe im Ton deiner Marke.</span></div></div>
+  <form method="post" action="/newsletter/neu" class="stack" data-busy="Legt an …">
+    <div class="card stack">
+      <h2>Themen</h2>
+      {% set blogs = kandidaten|selectattr('format', 'equalto', 'Blog')|list %}
+      {% set posts = kandidaten|rejectattr('format', 'equalto', 'Blog')|list %}
+      {% if blogs %}<span class="label">Blogbeiträge</span>
+      <div class="themen-liste">{% for k in blogs %}<label class="check"><input type="checkbox" name="thema" value="{{ k.id }}" {{ 'checked' if loop.first }}>
+        {{ k.titel }}<span class="muted small">{% if k.datum %} · {{ k.datum[8:10] }}.{{ k.datum[5:7] }}.{% endif %} · {{ k.status|status }}</span></label>{% endfor %}</div>{% endif %}
+      {% if posts %}<span class="label">Posts</span>
+      <div class="themen-liste">{% for k in posts %}<label class="check"><input type="checkbox" name="thema" value="{{ k.id }}">
+        <span class="chip">{{ k.format }}</span> {{ k.titel }}<span class="muted small">{% if k.datum %} · {{ k.datum[8:10] }}.{{ k.datum[5:7] }}.{% endif %} · {{ k.status|status }}</span></label>{% endfor %}</div>{% endif %}
+      {% if not kandidaten %}<p class="leer-hinweis">In den letzten 30 und nächsten 21 Tagen gibt es noch keine Beiträge. Schreib unten einfach, worum es gehen soll.</p>{% endif %}
+    </div>
+    <div class="card stack">
+      <label>Anlass oder Schwerpunkt (optional) <textarea name="anlass" rows="3" placeholder="z. B. Jahresrückblick, neues Angebot ab Jänner, Einladung zum Tag der offenen Tür"></textarea></label>
+      <label>Versand geplant am (optional) <input type="date" name="datum" style="width:auto"></label>
+      <span class="label">Vorlage <a class="small" href="/design/newsletter">Vorlagen ansehen und gestalten</a></span>
+      <div class="row wrapless">{% for v in nl_vorlagen %}<label class="check"><input type="radio" name="vorlage" value="{{ v.id }}" {{ 'checked' if v.id == standard }}> {{ v.name }}</label>{% endfor %}</div>
+    </div>
+    <div class="row"><button class="primary">Newsletter schreiben</button><span class="hint">Danach kannst du alles ansehen, ändern und als Entwurf an MailerLite schicken.</span></div>
+  </form>
+</section>
+{% endblock %}

@@ -28,8 +28,9 @@ def anlegen(brand_id, i, quelle="werkstatt", datum=""):
     """Idee aus einem KI-Vorschlag (Format wie ai.ideen / ai.chat_planen) speichern."""
     _schema()
     entwurf = {"slides": i.get("slides") or [], "caption_ig": i.get("caption_ig", ""), "caption_li": i.get("caption_li", ""),
-               "bildidee": i.get("bildidee", ""), "vorher_pruefen": i.get("vorher_pruefen", ""), "skript": i.get("skript", "")}
-    fmt = i.get("format") if i.get("format") in marke.FORMATE else "Carousel"
+               "bildidee": i.get("bildidee", ""), "vorher_pruefen": i.get("vorher_pruefen", ""), "skript": i.get("skript", ""),
+               "aufnahme": bool(i.get("aufnahme")) and i.get("format") in marke.VIDEO_FORMATE}
+    fmt = i.get("format") if i.get("format") in marke.FORMATE + ["Blog"] else "Carousel"
     a = json.loads(db.one("SELECT auftreten FROM brands WHERE id=?", brand_id)["auftreten"])
     saeule = next((n for n in leitlinien.saeulen_namen(a) if n.lower() == str(i.get("saeule") or "").strip().lower()), "")
     return db.run("INSERT INTO ideen (brand_id, titel, format, aufhaenger, warum, datum, entwurf, quelle, saeule, created) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -75,6 +76,11 @@ def vorbereiten(brand_id, ids, visuals=False):
         inhalt = {"slides": e.get("slides") or [{"art": "cover", "zeile1": r["titel"], "zeile2": "", "subline": ""}]}
         if r["format"] in marke.VIDEO_FORMATE and e.get("skript"):
             inhalt["skript"] = e["skript"]
+        if r["format"] in marke.VIDEO_FORMATE and e.get("aufnahme"):
+            inhalt["aufnahme"] = True
+        if r["format"] == "Blog":   # der Text entsteht beim Vorbereiten (Job blog_schreiben)
+            inhalt = {"slides": [], "blog": {"titel": r["titel"], "teaser": r["aufhaenger"], "text": "",
+                                             "notizen": "\n".join(x for x in (r["warum"], e.get("caption_li", "")) if x)}}
         cols = {"status": "Idee", "inhalt": json.dumps(inhalt, ensure_ascii=False), "titel": r["titel"], "format": r["format"],
                 "caption_ig": e.get("caption_ig", ""), "caption_li": e.get("caption_li", ""), "bildidee": e.get("bildidee", ""),
                 "vorher_pruefen": e.get("vorher_pruefen", ""), "created": db.now(), "updated": db.now()}
@@ -82,7 +88,9 @@ def vorbereiten(brand_id, ids, visuals=False):
             cols["datum"] = r["datum"]
         pid = db.run(f"INSERT INTO posts (brand_id,{','.join(cols)}) VALUES (?{',?' * len(cols)})", brand_id, *cols.values())
         db.run("UPDATE ideen SET status='uebernommen', post_id=?, entschieden=? WHERE id=?", pid, db.now(), i)
-        if visuals:
+        if r["format"] == "Blog":   # Blog: gleich den Text schreiben lassen
+            jobs.start(brand_id, pid, "blog", jobs.gestalten, brand_id, pid)
+        elif visuals:
             db.run("UPDATE posts SET status='Freigegeben' WHERE id=?", pid)
             jobs.start(brand_id, pid, "gestalten", jobs.gestalten, brand_id, pid)
         neu.append(pid)
@@ -118,6 +126,11 @@ def generieren(brand_id, anzahl=6, thema="", formate=None, termine=None):
     if not config.ANTHROPIC_API_KEY:
         raise ai.KeinSchluessel("Kein Claude-Schlüssel in .env (ANTHROPIC_API_KEY)")
     b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
+    from . import hub
+    if not formate:
+        formate = list(json.loads(b["auftreten"]).get("formate") or marke.FORMATE)
+        if hub.ziel(brand_id, "blog"):
+            formate.append("Blog")
     res = ai.ideen(b, anzahl, thema, formate, lernkontext=lernkontext(brand_id))
     termine = list(termine or [])
     for i in res:

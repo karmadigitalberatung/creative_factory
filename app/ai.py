@@ -101,7 +101,7 @@ def _marke_kontext(brand, mit_website=False):
 # ---------------------------------------------------------------- Ideen
 
 IDEEN_SCHEMA = _obj({"ideen": {"type": "array", "items": _obj({
-    "titel": S, "format": {"type": "string", "enum": marke.FORMATE}, "saeule": S, "aufhaenger": S, "warum": S,
+    "titel": S, "format": {"type": "string", "enum": marke.FORMATE + ["Blog"]}, "aufnahme": {"type": "boolean"}, "saeule": S, "aufhaenger": S, "warum": S,
     "slides": {"type": "array", "items": SLIDE},
     "caption_ig": S, "caption_li": S, "bildidee": S, "vorher_pruefen": S, "skript": S,
 })}})
@@ -112,9 +112,12 @@ Jeder Post ist individuell: Wähle Format und Aufbau nach dem Inhalt, nicht nach
 Formate:
 - Carousel: 4 bis 9 Slides. Erste Slide art=cover (a = Zeile 1, b = Zeile 2, c = Subline, kurz, | = Umbruch). Danach passende Arten.
 - Einzelbild: genau eine Slide (meist cover oder zitat oder zahl).
-- Talking Head: die Person spricht in die Kamera. slides = eine cover-Slide als Titelbild; skript = gesprochener Text (30 bis 60 Sekunden, natürlich gesprochen).
+- Reel mit eigener Aufnahme (aufnahme = true): die Person spricht in die Kamera, Motion Graphics kommen darüber. skript = gesprochener Text
+  (30 bis 60 Sekunden, natürlich gesprochen); slides = 2 bis 4 Szenen (Titel, Kernaussagen). Höchstens jede vierte Idee; sonst aufnahme = false.
 - Story: kurzes Hochformat für Instagram- oder Facebook-Storys (5 bis 15 Sekunden, Animation, mit oder ohne eigene Aufnahme), persönlich und direkt,
   gern mit einer Frage am Ende. slides = 1 bis 3 Szenen; skript = der eingeblendete Text, sehr knapp.
+- Blog (nur wenn erlaubt): Blogbeitrag für die Website. slides = eine cover-Slide mit dem Titel; aufhaenger = die These des Beitrags;
+  caption_ig leer; caption_li = 3 bis 5 Stichpunkte, was der Beitrag behandelt (daraus schreibt die App später den Text). Höchstens jede vierte Idee ein Blog.
 - Reel: Motion Graphics im Hochformat (animierte Schrift und Grafik als HTML-Animation), ohne Sprecherstimme; die Person kann später eine Aufnahme darunterlegen. slides = 3 bis 6 kurze Szenen (je eine Aussage); skript = der eingeblendete Text in Reihenfolge, knapp, 15 bis 40 Sekunden Lesezeit.
 
 Slide-Arten (Felder a, b, c, liste; ungenutzte Felder = leerer String bzw. leere Liste):
@@ -131,7 +134,7 @@ Erfinde keine Fakten über die Person, ihre Firma, Kunden oder Zahlen. Was best�
 
 def ideen(brand, anzahl=4, thema="", formate=None, lernkontext=""):
     a = json.loads(brand["auftreten"])
-    formate = [f for f in (formate or a.get("formate") or marke.FORMATE) if f in marke.FORMATE]
+    formate = [f for f in (formate or a.get("formate") or marke.FORMATE) if f in marke.FORMATE + ["Blog"]]
     user = (_marke_kontext(brand, mit_website=True) + (f"\n{lernkontext}\n" if lernkontext else "") +
             f"\nHeute ist {datetime.date.today().isoformat()}."
             f"\nErlaubte Formate: {', '.join(formate)}\nAufgabe: {anzahl} unterschiedliche Post-Ideen" + (f" zum Thema: {thema}" if thema else "") + ".")
@@ -139,6 +142,76 @@ def ideen(brand, anzahl=4, thema="", formate=None, lernkontext=""):
     for i in res:
         i["slides"] = [slide_aus_ki(s) for s in i["slides"]]
     return res
+
+
+# ---------------------------------------------------------------- Content Hub: Blog und Newsletter
+
+BLOG_SCHEMA = _obj({"titel": S, "teaser": S, "text": S, "seo_titel": S, "seo_beschreibung": S,
+                    "schlagworte": {"type": "array", "items": S}, "bildidee": S, "vorher_pruefen": S})
+
+BLOG_SYSTEM = """Du schreibst Blogbeiträge für die Website einer Personal Brand. Schreib im Schreibstil der Marke und nach ihren Leitlinien
+(Themen-Säulen, Haltung, Widerspruch, No-Gos). Der Beitrag soll Substanz haben und gut lesbar sein:
+- titel: klar und konkret, gern mit Nutzen oder Spannung, höchstens 70 Zeichen.
+- teaser: 1 bis 2 Sätze für Übersichten und als Einleitung.
+- text: Markdown, 900 bis 1500 Wörter. Kurzer Einstieg mit Hook (ein Erlebnis, eine These, eine Frage), dann 3 bis 5 Abschnitte mit
+  Zwischenüberschriften (##), konkrete Beispiele, kurze Absätze, wo sinnvoll Aufzählungen; am Ende ein Fazit und eine klare Einladung
+  (z. B. Termin, Kontakt), passend zum Angebot. Keine H1 im Text (der Titel ist die H1).
+- seo_titel (höchstens 60 Zeichen), seo_beschreibung (140 bis 160 Zeichen), schlagworte (3 bis 6).
+- bildidee: Beitragsbild als kurze Szene im Bildstil der Marke.
+Erfinde keine Fakten, Zahlen, Studien, Kunden oder Zitate. Was die Person bestätigen oder ergänzen muss, steht in vorher_pruefen.
+Gibt es schon einen Text, überarbeite ihn nach den Notizen, statt neu anzufangen."""
+
+
+def blog_schreiben(brand, post, alt, lernkontext=""):
+    user = (_marke_kontext(brand, mit_website=True) + (f"\n{lernkontext}\n" if lernkontext else "") +
+            f"\nArbeitstitel: {alt.get('titel') or post['titel']}\nTeaser bisher: {alt.get('teaser', '')}"
+            f"\nNotizen und Wünsche der Person: {alt.get('notizen', '') or '(keine)'}"
+            + (f"\n\nBisheriger Text:\n{alt['text']}" if alt.get("text") else "") + "\n\nSchreib den Blogbeitrag.")
+    return _claude(BLOG_SYSTEM, user, BLOG_SCHEMA, effort="high", max_tokens=32000)
+
+
+AUFTEIL_SYSTEM = IDEEN_SYSTEM + """
+
+Hier teilst du einen fertigen Blogbeitrag in Social-Posts auf. Jeder Post greift einen eigenen Gedanken des Beitrags auf und steht für sich
+(nicht einfach zusammenfassen), passend zum Format: Carousel für Schritte, Listen und Erklärungen, Reel für eine pointierte These,
+Einzelbild für ein starkes Zitat oder eine Zahl aus dem Text, Story für eine Frage an die Community. Mische die Formate.
+Captions verweisen am Ende auf den ganzen Beitrag („Mehr im Blog, Link in der Bio“ bzw. auf LinkedIn „Den ganzen Beitrag findest du auf meiner Website“).
+Nur Inhalte aus dem Beitrag, nichts hinzuerfinden."""
+
+
+def blog_aufteilen(brand, blog, anzahl, lernkontext=""):
+    a = json.loads(brand["auftreten"])
+    formate = [f for f in (a.get("formate") or marke.FORMATE) if f in marke.FORMATE]
+    user = (_marke_kontext(brand) + (f"\n{lernkontext}\n" if lernkontext else "") + f"\nErlaubte Formate: {', '.join(formate)}"
+            f"\n\nBlogbeitrag „{blog.get('titel', '')}“:\n{blog.get('text', '')[:20000]}\n\nAufgabe: {anzahl} Social-Posts aus diesem Beitrag.")
+    res = _claude(AUFTEIL_SYSTEM, user, IDEEN_SCHEMA, effort="high", max_tokens=32000)["ideen"]
+    return [dict(i, format=i["format"] if i["format"] in marke.FORMATE else "Carousel") for i in res][:anzahl]
+
+
+NEWSLETTER_SCHEMA = _obj({"betreff": S, "vorschautext": S, "anrede": S, "intro": S,
+                          "abschnitte": {"type": "array", "items": _obj({"titel": S, "text": S, "link_text": S, "link": S, "post_id": {"type": "integer"}})},
+                          "schluss": S, "vorher_pruefen": S})
+
+NEWSLETTER_SYSTEM = """Du schreibst einen Newsletter (E-Mail) für eine Personal Brand, im Schreibstil der Marke, persönlich und nahbar,
+wie ein Brief an Menschen, die sich bewusst eingetragen haben. Grundlage sind die gewählten Themen (Blogbeiträge und Posts) und ggf. ein Anlass.
+- betreff: höchstens 50 Zeichen, neugierig machend, kein Clickbait. vorschautext: 60 bis 110 Zeichen, ergänzt den Betreff.
+- anrede: kurz und passend zur Ansprache der Marke (du oder Sie). intro: 2 bis 4 Sätze, persönlicher Einstieg.
+- abschnitte: je Thema ein Abschnitt (der Blog als Aufmacher zuerst, ausführlicher), titel, text (2 bis 5 Sätze, Absätze mit Leerzeile),
+  link_text und link (nur wenn beim Thema ein Link angegeben ist, sonst leer), post_id des Themas.
+- schluss: Gruß und eine Einladung (Antwort auf die Mail, Termin, Frage). Unterschrift mit dem Namen der Person.
+Erfinde keine Fakten, Termine oder Angebote. Was zu prüfen ist, steht in vorher_pruefen."""
+
+
+NL_LAYOUT_HINWEIS = {"brief": "Layout Brief: persönlich und erzählend, Abschnitte dürfen 3 bis 5 Sätze haben.",
+                     "magazin": "Layout Magazin: der erste Abschnitt ist der Aufmacher (3 bis 4 Sätze), die übrigen sind kurze Kacheln (1 bis 2 Sätze).",
+                     "kompakt": "Layout Kompakt: jeder Abschnitt ein Satz Teaser (höchstens 200 Zeichen) mit Link, Einstieg und Schluss sehr kurz."}
+
+
+def newsletter_schreiben(brand, themen, anlass="", hinweis="", regeln=""):
+    user = (_marke_kontext(brand) + f"\n{NL_LAYOUT_HINWEIS.get(hinweis, hinweis)}" + (f"\nRegeln für den Newsletter: {regeln}" if regeln else "") +
+            f"\nAnlass oder Schwerpunkt: {anlass or '(keiner)'}\n\nGewählte Themen (JSON):\n{json.dumps(themen, ensure_ascii=False)[:30000]}"
+            "\n\nSchreib die Newsletter-Ausgabe.")
+    return _claude(NEWSLETTER_SYSTEM, user, NEWSLETTER_SCHEMA, effort="high", max_tokens=16000)
 
 
 # ---------------------------------------------------------------- Captions für fertig hochgeladene Posts
@@ -248,7 +321,7 @@ def swipe_analyse(brand, text="", url="", bilder=None):
 PLAN_SCHEMA = _obj({
     "antwort": S,
     "neue_ideen": {"type": "array", "items": _obj({
-        "titel": S, "format": {"type": "string", "enum": marke.FORMATE}, "saeule": S, "datum": S, "uhrzeit": S, "aufhaenger": S, "warum": S,
+        "titel": S, "format": {"type": "string", "enum": marke.FORMATE}, "aufnahme": {"type": "boolean"}, "saeule": S, "datum": S, "uhrzeit": S, "aufhaenger": S, "warum": S,
         "slides": {"type": "array", "items": SLIDE},
         "caption_ig": S, "caption_li": S, "bildidee": S, "vorher_pruefen": S, "skript": S})},
     "aenderungen": {"type": "array", "items": _obj({
@@ -355,7 +428,11 @@ def gestalten(brand, post, letzte_cover=None):
             f"\n\nInhalt (Slides):\n{json.dumps(inhalt.get('slides', []), ensure_ascii=False)}"
             f"\n\nBeispiel einer möglichen Umsetzung (nur als technische Vorlage, gestalte frei und passend):\n{json.dumps(beispiel, ensure_ascii=False)}"
             f"\n\nCover der letzten Posts (mach es bewusst anders):\n{json.dumps(letzte_cover or [], ensure_ascii=False)[:6000]}")
-    if brand["muster_design"]:
+    from . import vorlagen
+    block = vorlagen.fuer_claude(brand, post["format"])
+    if block:
+        user += "\n\n" + block
+    elif brand["muster_design"]:
         user += ("\n\nMusterseiten der Marke (Templates aus den Vorbildern; übernimm ihre Gestaltungslogik, Raster und Typo-Hierarchie, "
                  f"variiere aber passend zum Inhalt):\n{brand['muster_design'][:12000]}")
     from . import medien
@@ -464,7 +541,7 @@ def _transkript_text(brand, post):
     return " ".join(f"{i}:{w['w']}[{w['s']}-{w['e']}]" for i, w in enumerate(words))
 
 
-# ---------------------------------------------------------------- Schnitt (Talking Head)
+# ---------------------------------------------------------------- Schnitt (Reel oder Story mit eigener Aufnahme)
 
 SCHNITT_SCHEMA = _obj({
     "begruendung": S, "titel": S, "untertitel": {"type": "boolean"},
@@ -601,12 +678,22 @@ Gestalte die Szenen, die das Skript zeigen:
 - titel: kurzer Titel für die ersten Sekunden (höchstens 6 Wörter) oder leer, wenn die erste Szene schon der Titel ist."""
 
 
-def animation(brand, post, words, laenge, post_fotos=None):
-    """post_fotos: [(Name wie „foto1“, Titel)] eigens für den Post erzeugte oder ausgewählte Fotos."""
+def animation(brand, post, words, laenge, post_fotos=None, zusatz=""):
+    """post_fotos: [(Name wie „foto1“, Titel)] eigens für den Post erzeugte oder ausgewählte Fotos. zusatz: weitere Vorgaben (z. B. Wunsch für Vorlagen)."""
     t = " ".join(f"{i}:{w['w']}[{w['s']}-{w['e']}]" for i, w in enumerate(words))
     inhalt = json.loads(post["inhalt"])
     story = ("\nFormat: Story (Instagram/Facebook). 1 bis 3 Szenen, wirkt persönlich und direkt; oben 280 px und unten 520 px bleiben frei "
              "(Profilleiste und Antwortfeld der App), Ecken-Mikrotexte entfallen. Am Ende gern eine Frage." if post["format"] == "Story" else "")
+    from . import vorlagen
+    typ_regeln = vorlagen.regeln(json.loads(brand["auftreten"]), "Story" if post["format"] == "Story" else "Reel")
+    story += f"\nRegeln für {'Storys' if post['format'] == 'Story' else 'Reels'}: {typ_regeln}" if typ_regeln else ""
+    vs = vorlagen.liste(brand["id"], "Story" if post["format"] == "Story" else "Reel") if not zusatz.startswith("VORLAGEN") else []
+    if vs:
+        story += ("\nVorlagen-Szenen der Marke (HTML; übernimm Aufbau, Bausteine, Schriftgrößen, Hintergrundwechsel und Rhythmus, "
+                  "den Inhalt baust du neu aus dem Skript): " + json.dumps([{"name": v["name"], "grund": v["szene"].get("grund"), "html": v["szene"].get("html")}
+                                                                          for v in vs[:6]], ensure_ascii=False)[:10000])
+    if zusatz:
+        story += "\n" + zusatz.replace("VORLAGEN ", "", 1)
     user = (_marke_kontext(brand) + f"\nPost: {post['titel']}\nLänge: {laenge} s" + story +
             f"\nGeplante Szenen: {json.dumps(inhalt.get('slides') or [], ensure_ascii=False)}"
             f"\nBilder für Szenen: {', '.join(n for n, v in (('logo', brand['logo']), ('foto', brand['ref_photo'])) if v) or 'keine'}"
@@ -748,6 +835,138 @@ def muster_gestalten(brand, slides, vorbilder):
     return [x for x in (_valid_scene(s["szene_json"]) for s in res["slides"]) if x]
 
 
+VORLAGEN_HINWEIS = {
+    "Carousel": "Carousel-Vorlagen: die ersten drei Szenen sind drei deutlich unterschiedliche Cover-Varianten zum selben Inhalt "
+                "(z. B. großes Foto, reine Typo, Farbfläche mit Bild), danach je eine Innenseite pro weiterer Slide; Innenseiten untereinander stimmig.",
+    "Einzelbild": "Einzelbild-Vorlagen: jede Szene ist ein eigenständiger Post, der für sich allein wirkt (kein Seitenzähler, kein Weiterwischen-Hinweis); "
+                  "Foto mit Headline, Zitat, große Zahl, Statement jeweils klar unterschiedlich.",
+}
+
+
+def vorlagen_gestalten(brand, typ, slides, vorbilder, regeln="", wunsch=""):
+    fotos = _fotos_der_mediathek(brand, 10)
+    quellen = [n for n, _, _ in fotos] + (["referenz"] if brand["ref_photo"] else [])
+    text = (_marke_kontext(brand) + f"\nLogo vorhanden: {'ja' if brand['logo'] else 'nein'}"
+            f"\nFotos für die Szenen (als hintergrund.foto oder foto.quelle): {', '.join(quellen) or 'keine'}"
+            + ("\nNutze die Fotos, wo es zum Stil passt; je Szene ein anderes Foto, Gesichter nicht mit Text verdecken." if quellen else "")
+            + f"\n{VORLAGEN_HINWEIS.get(typ, '')}"
+            + (f"\nRegeln für diesen Typ: {regeln}" if regeln else "") + (f"\nWunsch der Person: {wunsch}" if wunsch else "")
+            + f"\n\nSlides (eine Szene je Slide, in dieser Reihenfolge):\n{json.dumps(slides, ensure_ascii=False)}")
+    content = _bilder_bloecke("Vorbild", vorbilder[:6], 600) + _foto_bloecke(fotos) + [{"type": "text", "text": text}]
+    system = MUSTER_SYSTEM.replace("Die ersten drei Szenen sind drei unterschiedliche Cover-Varianten zum selben Inhalt, danach je eine Innenseite pro weiterer Slide.\n", "")
+    res = _claude(system + scene_mod.__doc__, content, GESTALT_SCHEMA, effort="high", max_tokens=32000)
+    return [x for x in (_valid_scene(s["szene_json"]) for s in res["slides"]) if x]
+
+
+DESIGN_CHAT_SCHEMA = _obj({"antwort": S, "regeln": S, "aktion": {"type": "string", "enum": ["keine", "neu", "hinzufuegen", "aendern"]},
+                           "vorlagen": {"type": "array", "items": _obj({"vorlage_id": {"type": "integer"}, "name": S, "szene_json": S})}})
+
+DESIGN_CHAT_SYSTEM = """Du bist Art Director für einen Contenttyp einer Personal Brand ({typ}) und sprichst mit der Person über dessen Design.
+Antworte kurz auf Deutsch (du-Form, ohne Markdown). Die Person kann Beispielbilder schicken (Posts, die ihr gefallen, Pinterest-Screenshots):
+beschreib kurz, was sie ausmacht, und übertrage den Stil (nicht kopieren; Farben, Schriften und Logo der Marke bleiben).
+Was du tun kannst:
+- regeln: die Layout-Regeln nur für diesen Typ als vollständigen neuen Text (je Zeile eine Regel, „- “), wenn sie sich ändern sollen; sonst leerer String.
+- aktion „neu“: alle Vorlagen dieses Typs ersetzen; „hinzufuegen“: neue Vorlagen dazu; „aendern“: bestehende Vorlagen ändern
+  (vorlage_id angeben); „keine“: nur antworten oder nur Regeln ändern.
+- vorlagen: je Vorlage ein Name (kurz, z. B. „Cover mit Foto“) und die Szene als JSON-String für den Renderer (bei neuen vorlage_id = 0).
+  Texte sind Platzhalter wie in den bisherigen Vorlagen. {hinweis}
+Bei Reel und Story gibt es keine Szenen-Vorlagen: dann nur regeln (Motion Graphics, Untertitel, Übergänge, Typo im Video) und aktion „keine“.
+Behaupte nie, etwas anderes geändert zu haben als Regeln und Vorlagen dieses Typs.
+Renderer-Doku:
+"""
+
+
+def design_chat(brand, typ, nachricht, verlauf, neue_bilder, vorbilder, vorlagen_liste, regeln=""):
+    fotos = _fotos_der_mediathek(brand, 8) if typ in VORLAGEN_HINWEIS else []
+    quellen = [n for n, _, _ in fotos] + (["referenz"] if brand["ref_photo"] else [])
+    text = (_marke_kontext(brand) + f"\nLogo vorhanden: {'ja' if brand['logo'] else 'nein'}; Fotos für Szenen: {', '.join(quellen) or 'keine'}"
+            f"\nRegeln für {typ} bisher: {regeln or '(keine)'}"
+            f"\nBisherige Vorlagen (JSON): {json.dumps([{'vorlage_id': v['id'], 'name': v['name'], 'szene': v['szene']} for v in vorlagen_liste], ensure_ascii=False)[:16000]}"
+            f"\n\nBisheriger Chat:\n" + "\n".join(f"{h['role']}: {h['text']}" for h in verlauf[-10:]) + f"\n\nNeue Nachricht: {nachricht or '(nur Bilder)'}")
+    content = _bilder_bloecke("Früheres Beispielbild", vorbilder[:3], 500) + _bilder_bloecke("Neu geschicktes Beispielbild", neue_bilder[:6], 700) + _foto_bloecke(fotos)
+    system = DESIGN_CHAT_SYSTEM.replace("{typ}", typ).replace("{hinweis}", VORLAGEN_HINWEIS.get(typ, ""))
+    res = _claude(system + scene_mod.__doc__, content + [{"type": "text", "text": text}], DESIGN_CHAT_SCHEMA, effort="high", max_tokens=32000)
+    res["vorlagen"] = [dict(v, szene=_valid_scene(v["szene_json"])) for v in res["vorlagen"]]
+    res["vorlagen"] = [v for v in res["vorlagen"] if v["szene"]]
+    return res
+
+
+NL_DESIGN_SCHEMA = _obj({"antwort": S, "regeln": S, "layout": {"type": "string", "enum": ["", "brief", "magazin", "kompakt"]},
+                         "kopf_farbe": S, "knopf_farbe": S, "grund_farbe": S, "schrift": {"type": "string", "enum": ["", "sans", "serif"]},
+                         "logo": {"type": "string", "enum": ["", "ja", "nein"]}, "bilder": {"type": "string", "enum": ["", "ja", "nein"]}, "fusszeile": S})
+
+NL_DESIGN_SYSTEM = """Du bist Designer für den E-Mail-Newsletter einer Personal Brand und sprichst mit der Person über dessen Gestaltung.
+Antworte kurz auf Deutsch (du-Form, ohne Markdown). Möglich sind nur diese Einstellungen (leer bzw. "" = unverändert):
+layout (brief: persönlich, viel Text; magazin: Aufmacher mit Bild und Kacheln; kompakt: Liste mit kurzen Teasern),
+kopf_farbe, knopf_farbe, grund_farbe (Hex aus den Markenfarben, auf Kontrast achten), schrift (sans oder serif; in E-Mails nur sichere Schriften),
+logo und bilder (ja/nein), fusszeile (Impressum: Name, Adresse, ggf. Firmenbuch; nichts erfinden, nur übernehmen, was die Person sagt).
+regeln: Schreibregeln für den Newsletter als vollständiger neuer Text, wenn sie sich ändern sollen, sonst leer.
+Schickt die Person ein Beispielbild, übertrag Stil und Aufbau auf diese Einstellungen und sag ehrlich, was sich davon nicht umsetzen lässt."""
+
+
+def newsletter_design_chat(brand, nachricht, verlauf, neue_bilder, design):
+    text = (_marke_kontext(brand) + f"\nAktuelles Newsletter-Design (JSON): {json.dumps(design, ensure_ascii=False)}"
+            f"\n\nBisheriger Chat:\n" + "\n".join(f"{h['role']}: {h['text']}" for h in verlauf[-10:]) + f"\n\nNeue Nachricht: {nachricht or '(nur Bilder)'}")
+    content = _bilder_bloecke("Beispielbild", neue_bilder[:4], 700) + [{"type": "text", "text": text}]
+    return _claude(NL_DESIGN_SYSTEM, content, NL_DESIGN_SCHEMA, effort="medium")
+
+
+NL_VORLAGE_SCHEMA = _obj({"antwort": S, "aktion": {"type": "string", "enum": ["keine", "neu", "aendern"]}, "vorlage_id": {"type": "integer"},
+                          "name": S, "html": S, "hinweis": S, "als_standard": {"type": "boolean"}, "fusszeile": S, "regeln": S})
+
+NL_VORLAGE_SYSTEM = """Du bist E-Mail-Designer und baust die Newsletter-Vorlagen einer Personal Brand als HTML. Antworte kurz auf Deutsch (du-Form, ohne Markdown).
+- Schickt die Person ein Beispielbild (Screenshot oder Entwurf eines Newsletters), bau es so genau wie möglich nach: Aufbau und Reihenfolge, Proportionen,
+  Abstände, Farben (Hex aus dem Bild ablesen), Schriftcharakter (nächste sichere Schrift), Größen, Knöpfe, Linien, Rubriken, Bildformate, Kopf und Fuß.
+  Übernimm die Farben des Beispiels, außer die Person will ihre Markenfarben. Name und Logo im Kopf sind die der Marke ({{name}}, {{logo}}),
+  Beispieltexte aus dem Bild werden zu Platzhaltern; wiederkehrende Elemente des Beispiels (Rubrik-Labels, Ausgabenzeile) bleiben als feste Texte in der Sprache der Marke.
+  Wiederholen sich im Beispiel Themen-Blöcke, ist das der THEMA-Bereich; ist der erste anders gestaltet, der AUFMACHER.
+  Neue Vorlage: aktion "neu" mit kurzem Namen. Sag in antwort in zwei, drei Sätzen, was du übernommen hast und was in E-Mails nicht geht.
+- Wünsche zu einer bestehenden Vorlage: aktion "aendern" mit deren vorlage_id und dem vollständigen neuen HTML. Ändere nur, was gewünscht ist.
+- html: das vollständige HTML der Vorlage (leer bei aktion "keine"). hinweis: ein Satz, wie lang Einstieg und Themen sein sollen, damit sie ins Layout passen.
+- als_standard: true, wenn die Vorlage künftig Standard sein soll (die Person sagt es, oder es ist ihre erste eigene).
+- fusszeile: Impressum, nur wenn die Person Angaben dazu macht (nichts erfinden), sonst leer. regeln: neue Schreibregeln als vollständiger Text, sonst leer.
+
+"""
+
+
+def _streifen(im, verhaeltnis=1.25):
+    """Lange Screenshots (ganze E-Mails) in Streifen teilen, damit Claude die Details scharf sieht."""
+    w, hh = im.size
+    stueck = int(w * verhaeltnis)
+    if hh <= stueck * 1.3:
+        return [im]
+    schritt = int(stueck * 0.92)
+    return [im.crop((0, y, w, min(hh, y + stueck))) for y in range(0, hh - int(stueck * 0.08), schritt)]
+
+
+def newsletter_vorlage_chat(brand, nachricht, verlauf, neue_bilder, vorlagen_liste, fokus=None, fruehere_bilder=None, medien_liste=None):
+    from . import newsletter_layout as nll
+    haupt = next((v for v in vorlagen_liste if v["id"] == fokus), None) or (vorlagen_liste[0] if vorlagen_liste else None)
+    text = (_marke_kontext(brand) + f"\nLogo vorhanden: {'ja' if brand['logo'] else 'nein'}"
+            + f"\nVorlagen: {json.dumps([{'vorlage_id': v['id'], 'name': v['name']} for v in vorlagen_liste], ensure_ascii=False)}"
+            + (f"\nDie Person hat gerade die Vorlage {fokus} offen; Änderungswünsche beziehen sich auf sie, außer sie will ausdrücklich eine neue." if fokus else "")
+            + (f"\nHTML der Vorlage {haupt['id']} „{haupt['name']}“:\n{haupt['szene'].get('html', '')[:30000]}" if haupt else "")
+            + (f"\nBilder in der Mediathek (für {{{{medien:DATEINAME}}}}): " + ", ".join(f"{m['datei']} ({m['titel']})" for m in medien_liste[:20]) if medien_liste else "")
+            + "\n\nBisheriger Chat:\n" + "\n".join(f"{h['role']}: {h['text']}" for h in verlauf[-10:]) + f"\n\nNeue Nachricht: {nachricht or '(nur Bilder)'}")
+    streifen = [st for im in neue_bilder[:3] for st in _streifen(im)][:8]
+    if len(streifen) > len(neue_bilder[:3]):
+        text += "\n\n(Lange Beispielbilder kommen in Streifen von oben nach unten, mit etwas Überlappung; zusammen ergeben sie eine E-Mail.)"
+    content = _bilder_bloecke("Früheres Beispiel", (fruehere_bilder or [])[:2], 600) + _bilder_bloecke("Beispiel, Teil", streifen, 1100) + [{"type": "text", "text": text}]
+    res = _claude(NL_VORLAGE_SYSTEM + nll.DOKU, content, NL_VORLAGE_SCHEMA, effort="high", max_tokens=32000)
+    res["vorlage"] = None
+    if res["aktion"] != "keine" and res["html"].strip():
+        html = nll.bereinigen(res["html"])
+        fehler = nll.pruefen(html)
+        if fehler:   # einmal nachbessern lassen
+            content[-1] = {"type": "text", "text": text + f"\n\nDein HTML war so nicht verwendbar: {fehler} Gib die vollständige Vorlage noch einmal korrekt aus.\n{html[:30000]}"}
+            res = _claude(NL_VORLAGE_SYSTEM + nll.DOKU, content, NL_VORLAGE_SCHEMA, effort="high", max_tokens=32000)
+            html = nll.bereinigen(res["html"]); fehler = nll.pruefen(html) if res["aktion"] != "keine" else "x"
+            res["vorlage"] = None
+        if not fehler:
+            res["vorlage"] = {"html": html, "hinweis": res["hinweis"][:500]}
+    return res
+
+
 def auftreten_pruefen(alt, neu, schriften):
     """Neues Auftreten aus dem Chat absichern: Struktur, Farben, Schriften."""
     out = json.loads(json.dumps(alt))
@@ -772,7 +991,7 @@ def auftreten_pruefen(alt, neu, schriften):
     return out
 
 
-# ---------------------------------------------------------------- Aufnahme (Talking Head)
+# ---------------------------------------------------------------- Aufnahme (die Person spricht selbst)
 
 AUFNAHME_SCHEMA = _obj({"skript": S, "anleitung": S})
 

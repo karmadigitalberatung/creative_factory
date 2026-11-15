@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ v.name }} · Newsletter-Vorlage{% endblock %}
+{% block main %}
+<section class="nl-editor">
+  <a class="back" href="/design/newsletter">← Newsletter-Design</a>
+  <form method="post" action="/design/newsletter/vorlage/{{ v.id }}" id="nl-form"></form>
+  <div class="head">
+    <div class="kopf-text">
+      <span class="label">Newsletter-Vorlage{% if standard %} · <span class="chip gelb">Standard</span>{% endif %}</span>
+      <h1><input class="titel-feld" name="name" form="nl-form" value="{{ v.name }}" aria-label="Name der Vorlage" onchange="this.form.submit()"></h1>
+    </div>
+    <div class="kopf-aktionen">
+      {% if not standard %}<form method="post" action="/design/newsletter/vorlage/{{ v.id }}/standard"><button>Als Standard</button></form>{% endif %}
+      <button type="button" class="primary" data-chat-auf>Mit Claude gestalten</button>
+    </div>
+  </div>
+  <p class="lead">So sieht ein Newsletter mit dieser Vorlage aus (mit Beispieltext). Sag Claude im Chat, was anders werden soll, oder häng ein Beispiel an, das nachgebaut werden soll.</p>
+  <div class="nl-buehne"><iframe src="/design/newsletter/vorschau.html?vorlage={{ v.id }}&v={{ v.updated|int }}" title="Vorschau der Vorlage"></iframe></div>
+  <details class="nl-html">
+    <summary class="small muted">HTML ansehen oder selbst bearbeiten</summary>
+    <div class="stack">
+      <textarea name="html" form="nl-form" rows="18" spellcheck="false">{{ html }}</textarea>
+      <p class="hint">Platzhalter wie {{ '{{intro}}' }} und der Bereich &lt;!--THEMA--&gt; … &lt;!--/THEMA--&gt; müssen erhalten bleiben.</p>
+      <div class="row"><button class="small" form="nl-form">HTML speichern</button></div>
+    </div>
+  </details>
+</section>
+{% endblock %}

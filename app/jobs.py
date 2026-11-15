@@ -7,7 +7,7 @@ from .engine import layouts, render
 
 _pool = ThreadPoolExecutor(max_workers=2)
 
-LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "fertig": "Übernimmt die Dateien", "captions": "Schreibt Captions", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
+LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "vorlagen": "Gestaltet Vorlagen", "blog": "Schreibt den Blogbeitrag", "aufteilen": "Teilt in Posts auf", "newsletter": "Schreibt den Newsletter", "uebergabe": "Übergibt als Entwurf", "fertig": "Übernimmt die Dateien", "captions": "Schreibt Captions", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
           "schnitt": "Schneidet Video", "animation": "Animiert Reel",
           "muster": "Musterseiten", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
 
@@ -84,10 +84,15 @@ def gestalten(brand_id, post_id, neu=True):
         return
     db.run("UPDATE posts SET status='In Arbeit', updated=? WHERE id=?", db.now(), post_id)
 
-    if p["format"] == "Talking Head":
-        _input_anlegen(b, p)
+    if p["format"] in ("Blog", "Newsletter"):   # Content Hub: Text schreiben statt Visuals
+        from . import hub
+        db.run("UPDATE jobs SET kind=? WHERE post_id=? AND status='läuft'", "blog" if p["format"] == "Blog" else "newsletter", post_id)
+        (hub.blog_schreiben if p["format"] == "Blog" else hub.newsletter_schreiben)(brand_id, post_id)
         return
     if p["format"] in ("Reel", "Story"):   # Video: mit Aufnahme schneiden, ohne Aufnahme als reine Animation
+        if not p["video_roh"] and json.loads(p["inhalt"]).get("aufnahme"):   # die Person spricht selbst: Aufnahme anfragen
+            _input_anlegen(b, p)
+            return
         if p["video_roh"]:
             from . import schnitt
             schnitt.schneiden(brand_id, post_id, not os.path.exists(os.path.join(storage.post_dir(brand_id, post_id), "transkript.json")))
@@ -137,7 +142,7 @@ def hinweis(text, b, post_id):
 
 
 def _input_anlegen(b, p):
-    """Talking Head: Aufnahme beim Nutzer anfragen (Skript + Anleitung)."""
+    """Reel oder Story mit eigener Aufnahme: Aufnahme beim Nutzer anfragen (Skript + Anleitung)."""
     if db.one("SELECT id FROM inputs WHERE post_id=? AND status='offen'", p["id"]):
         db.run("UPDATE posts SET status='Wartet auf Input' WHERE id=?", p["id"])
         return
@@ -191,18 +196,30 @@ def musterseiten(brand_id):
             if len(szenen) >= 4:
                 _muster_speichern(d, [r.render(sz, 1 if i <= 3 else i - 2, len(szenen) - 2)[0] for i, sz in enumerate(szenen, start=1)])
                 db.run("UPDATE brands SET muster_at=?, muster_design=? WHERE id=?", db.now(), json.dumps(szenen, ensure_ascii=False), brand_id)
+                _als_vorlagen(brand_id, szenen)
                 video_stil_ableiten(brand_id, still=True)
                 return
         except Exception:
             traceback.print_exc()   # dann wie bisher mit den Rezepten
-    imgs = []
-    for v in range(3):
-        imgs.append(r.render(layouts.entwerfen(a, {"slides": muster["slides"][:1]}, v, bool(b["ref_photo"]))[0])[0])
-    specs = layouts.entwerfen(a, muster, 0, bool(b["ref_photo"]))
-    imgs += [r.render(s, i + 1, len(specs))[0] for i, s in enumerate(specs)][1:]
-    _muster_speichern(d, imgs)
+    szenen = [layouts.entwerfen(a, {"slides": muster["slides"][:1]}, v, bool(b["ref_photo"]))[0] for v in range(3)]
+    szenen += layouts.entwerfen(a, muster, 0, bool(b["ref_photo"]))[1:]
+    _muster_speichern(d, [r.render(s, 1 if i < 3 else i - 2, len(szenen) - 2)[0] for i, s in enumerate(szenen)])
     db.run("UPDATE brands SET muster_at=?, muster_design=NULL WHERE id=?", db.now(), brand_id)
+    _als_vorlagen(brand_id, szenen)
     video_stil_ableiten(brand_id, still=True)
+
+
+def _als_vorlagen(brand_id, szenen):
+    """Musterseiten werden die Carousel-Vorlagen (Design & Layout)."""
+    from . import vorlagen
+    try:
+        for v in vorlagen.liste(brand_id, "Carousel"):
+            vorlagen.loeschen(brand_id, v["id"])
+        namen = [n for n, _ in vorlagen.BEISPIELE["Carousel"]]
+        for i, sz in enumerate(szenen):
+            vorlagen.anlegen(brand_id, "Carousel", namen[i] if i < len(namen) else f"Vorlage {i + 1}", sz, i + 1)
+    except Exception:
+        traceback.print_exc()
 
 
 # ---------------------------------------------------------------- Video-Stil (Motion Graphics im Look der Marke)

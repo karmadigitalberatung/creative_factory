@@ -29,7 +29,7 @@
       </div>
       <div class="drop-art">
         <label class="check small"><input type="radio" name="art" value="foto" {{ 'checked' if art != 'vorbild' }}> als Foto</label>
-        <label class="check small"><input type="radio" name="art" value="vorbild" {{ 'checked' if art == 'vorbild' }}> als Vorbild für das Auftreten</label>
+        <label class="check small"><input type="radio" name="art" value="vorbild" {{ 'checked' if art == 'vorbild' }}> als allgemeines Vorbild (Design &amp; Layout)</label>
       </div>
     </form>
 
@@ -93,7 +93,7 @@
         <label>Generator <select name="generator"><option value="">Automatisch</option>{% for k, n in generatoren.items() %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></label>
         <button class="primary" {{ 'disabled' if not ki_bild }}>Erzeugen</button>
       </div>
-      <span class="hint">{% if ki_bild %}Im Bildstil deines Auftretens · ohne Text im Bild · landet in „Alle Assets“ · „Automatisch“ nimmt den nächsten Generator, wenn einer ausfällt{% else %}Braucht GEMINI_API_KEY oder SEEDREAM_API_KEY in .env.{% endif %}</span>
+      <span class="hint">{% if ki_bild %}Im Bildstil deiner Marke · ohne Text im Bild · landet in „Alle Assets“ · „Automatisch“ nimmt den nächsten Generator, wenn einer ausfällt{% else %}Braucht GEMINI_API_KEY oder SEEDREAM_API_KEY in .env.{% endif %}</span>
     </form>
     {% if medien %}
     <h3 class="section-title">Zuletzt erzeugt</h3>

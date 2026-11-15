@@ -197,7 +197,7 @@ def token_fuer(brand_id):
 # ---------------------------------------------------------------- Kanäle je Post
 
 PLATZ = {"post": "Feed-Post", "reel": "Reel", "story": "Story"}
-VIDEO = ("Reel", "Talking Head", "Story")
+VIDEO = ("Reel", "Story")
 
 
 def platzierungen(kanal, fmt):

@@ -463,4 +463,9 @@ def uebernehmen(brand_id, mit_muster=True, schreibstil_ersetzen=False):
            + " Die Musterseiten gestalte ich jetzt im Stil der Website.", db.now())
     if mit_muster:
         jobs.musterseiten(brand_id)
+        try:   # Einzelbild-Vorlagen gleich mit, im Stil der Website
+            from . import vorlagen
+            vorlagen.generieren(brand_id, "Einzelbild")
+        except Exception:
+            pass
 

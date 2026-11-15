@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ blog.titel or p.titel or 'Blogbeitrag' }} · Planen{% endblock %}
+{% block main %}
+<section class="post-detail hub-detail">
+  <a class="back" href="/planen">← Planen</a>
+  <div class="head">
+    <div class="kopf-text">
+      <h1>{{ blog.titel or p.titel or 'Neuer Blogbeitrag' }} <em class="status-word s-{{ p.status|lower|replace(' ', '-') }}">{{ p.status|status }}</em></h1>
+      <span class="muted">Blogbeitrag{% if p.datum %} · {{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{{ p.datum[:4] }}{% endif %}{% if ziel %} · {{ dienste[ziel.dienst] }}{% endif %}{% if blog.text %} · {{ blog.text.split()|length }} Wörter{% endif %}</span>
+    </div>
+  </div>
+  {% if p.vorher_pruefen %}<p class="note"><strong>Vorher prüfen:</strong> {{ p.vorher_pruefen }}</p>{% endif %}
+  {% if fehler and not laeuft %}<p class="error">Fehler: {{ fehler }}</p>{% endif %}
+
+  {% if ableitungen %}
+  <div class="familie">
+    <span class="label">Daraus entstanden</span>
+    {% for a in ableitungen %}<a class="familie-post" href="/planen/{{ a.id }}"><span class="chip">{{ a.format }}</span> {{ a.titel }}<span class="muted small">{% if a.datum %} · {{ a.datum[8:10] }}.{{ a.datum[5:7] }}.{% endif %} · {{ a.status|status }}</span></a>{% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/planen/{{ p.id }}/blog" id="blogform"></form>
+
+  <nav class="ansicht-tabs post-ansicht" aria-label="Ansicht" data-post-ansicht="{{ p.id }}">
+    <button type="button" class="on" data-ansicht-wechsel="vorschau" aria-current="page">Vorschau</button>
+    <button type="button" data-ansicht-wechsel="bearbeiten">Bearbeiten</button>
+  </nav>
+
+  <div data-ansicht="vorschau" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
+    <div class="hub-buehne">
+      <article class="blog-artikel">
+        {% if p.photo %}<img class="blog-bild" src="/media/{{ p.photo }}" alt="">{% endif %}
+        <span class="blog-meta">{% if p.datum %}{{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{{ p.datum[:4] }}{% else %}ohne Termin{% endif %}{% if auf.name %} · {{ auf.name }}{% endif %}</span>
+        <h1 class="blog-titel">{{ blog.titel or p.titel }}</h1>
+        {% if blog.teaser %}<p class="blog-teaser">{{ blog.teaser }}</p>{% endif %}
+        {% if blog.text %}<div class="blog-text">{{ blog_html|safe }}</div>
+        {% else %}<div class="ig-leer feed"><span>Noch kein Text</span><span class="small">{% if laeuft %}Claude schreibt gerade …{% else %}Unter „Bearbeiten“ Titel und Notizen eintragen, dann „Von Claude schreiben lassen“.{% endif %}</span></div>{% endif %}
+      </article>
+      <aside class="ig-info">
+        <span class="label">So sieht der Beitrag aus</span>
+        <span class="small muted">Im Look deiner Marke; auf der Website gilt deren Gestaltung.</span>
+        {% if blog.seo_titel %}<div class="seo-vorschau"><span class="seo-url">{{ (ziel.daten.url if ziel and ziel.daten.url else 'deine-website.at')|replace('https://', '')|replace('http://', '') }} › {{ blog.slug }}</span>
+          <span class="seo-titel">{{ blog.seo_titel }}</span><span class="seo-text">{{ blog.seo_beschreibung }}</span></div>{% endif %}
+        <div class="stack ig-info-knoepfe">
+          {% if ki_text %}<button class="{{ '' if blog.text else 'primary' }}" form="blogform" name="aktion" value="schreiben" {{ 'disabled' if laeuft }}>{{ 'Mit Claude überarbeiten' if blog.text else 'Von Claude schreiben lassen' }}</button>{% endif %}
+          {% if blog.text and ki_text %}
+          <div class="row wrapless"><select name="anzahl" form="blogform" aria-label="Anzahl Posts" style="width:auto">{% for n in [3, 4, 5, 6] %}<option {{ 'selected' if n == 4 }}>{{ n }}</option>{% endfor %}</select>
+            <button class="grow" form="blogform" name="aktion" value="aufteilen" {{ 'disabled' if laeuft }}>In Posts aufteilen</button></div>
+          {% endif %}
+          {% if blog.text and ziel and ziel.dienst != 'app' %}<button form="blogform" name="aktion" value="uebergeben" {{ 'disabled' if laeuft }}>{{ 'Erneut an ' if blog.extern else 'Als Entwurf an ' }}{{ dienste[ziel.dienst] }}</button>{% endif %}
+          {% if blog.extern %}<span class="small muted">Entwurf in {{ dienste[blog.extern.dienst] }} angelegt {{ blog.extern.zeit|zeit }}.{% if blog.extern.bearbeiten %} <a href="{{ blog.extern.bearbeiten }}" target="_blank" rel="noopener">Dort öffnen</a>{% endif %}</span>{% endif %}
+          {% if blog.text and p.status in ['Zur Abnahme', 'Freigegeben', 'In Arbeit'] %}<button class="primary" form="blogform" name="aktion" value="abnehmen">Abnehmen und einplanen</button>{% endif %}
+          <button type="button" data-ansicht-wechsel="bearbeiten">Bearbeiten</button>
+        </div>
+        {% if not ziel or ziel.dienst == 'app' %}<span class="hint">Verbinde unter <a href="/connectors#blog">Connectors</a> WordPress oder heykajo, dann geht der Beitrag mit einem Klick als Entwurf auf deine Website.</span>{% endif %}
+      </aside>
+    </div>
+  </div>
+
+  <div data-ansicht="bearbeiten" hidden>
+    <div class="card stack">
+      <input type="hidden" name="blog_form" value="1" form="blogform">
+      <label>Titel <input name="titel" value="{{ blog.titel or '' }}" form="blogform" data-max="70"></label>
+      <label>Teaser <span class="hint">1 bis 2 Sätze, für Übersichten und als Einleitung</span><textarea name="teaser" rows="2" form="blogform">{{ blog.teaser or '' }}</textarea></label>
+      <label>Text <span class="hint">Markdown: ## Zwischenüberschrift, **fett**, - Aufzählung, [Link](https://…)</span>
+        <textarea name="text" rows="24" form="blogform" class="blog-eingabe">{{ blog.text or '' }}</textarea></label>
+      <label>Notizen für Claude <span class="hint">Was rein soll, eigene Erlebnisse, Beispiele, Wünsche für die Überarbeitung</span>
+        <textarea name="notizen" rows="4" form="blogform" placeholder="z. B. Beispiel aus meinem Atelier einbauen, kürzer, mehr zu Herbstfarben">{{ blog.notizen or '' }}</textarea></label>
+    </div>
+    <div class="card stack">
+      <h2>Termin und Suchmaschinen</h2>
+      <div class="row"><label>Datum <input type="date" name="datum" value="{{ p.datum }}" form="blogform"></label><label>Uhrzeit <input type="time" name="uhrzeit" value="{{ p.uhrzeit or '08:30' }}" form="blogform"></label>
+        <label class="grow">Adresse (Slug) <input name="slug" value="{{ blog.slug or '' }}" form="blogform"></label></div>
+      <label>SEO-Titel <input name="seo_titel" value="{{ blog.seo_titel or '' }}" form="blogform" data-max="60"></label>
+      <label>SEO-Beschreibung <textarea name="seo_beschreibung" rows="2" form="blogform" data-max="160">{{ blog.seo_beschreibung or '' }}</textarea></label>
+      <label>Schlagworte <input name="schlagworte" value="{{ (blog.schlagworte or [])|join(', ') }}" form="blogform" placeholder="mit Komma getrennt"></label>
+      <label>Vorher prüfen <input name="vorher_pruefen" value="{{ p.vorher_pruefen }}" form="blogform"></label>
+    </div>
+    <div class="card stack">
+      <h2>Beitragsbild</h2>
+      <div class="row top">
+        {% if p.photo %}<img class="thumb" src="/media/{{ p.photo }}" alt="Beitragsbild">{% endif %}
+        <div class="stack grow">
+          <form method="post" action="/planen/{{ p.id }}/foto" enctype="multipart/form-data" class="row"><input type="file" name="foto" accept="image/*" required><button>Hochladen</button></form>
+          <form method="post" action="/planen/{{ p.id }}/foto-ki" class="row">
+            <label class="grow">Bildidee <input name="beschreibung" value="{{ p.bildidee }}" placeholder="Szene, Licht, Ort …"></label>
+            <button {{ 'disabled' if not ki_bild }}>Bild erzeugen</button></form>
+          <input type="hidden" name="bildidee" value="{{ p.bildidee }}" form="blogform">
+          {% if medien_auswahl %}<details><summary class="small">Aus der Mediathek wählen</summary>
+            <form method="post" action="/planen/{{ p.id }}/foto-medien" class="pick">{% for m in medien_auswahl %}<button name="medien_id" value="{{ m.id }}" class="pick-item {{ 'on' if m.datei == p.photo }}" title="{{ m.titel }}"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy"></button>{% endfor %}</form>
+          </details>{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="row sticky-actions">
+      <button form="blogform" name="aktion" value="speichern">Speichern</button>
+      {% if ki_text %}<button form="blogform" name="aktion" value="schreiben" {{ 'disabled' if laeuft }}>{{ 'Mit Claude überarbeiten' if blog.text else 'Von Claude schreiben lassen' }}</button>{% endif %}
+      {% if blog.text and p.status in ['Zur Abnahme', 'Freigegeben', 'In Arbeit'] %}<button class="primary" form="blogform" name="aktion" value="abnehmen">Abnehmen und einplanen</button>{% endif %}
+    </div>
+    <form method="post" action="/planen/{{ p.id }}/verwerfen" onsubmit="return confirm('Blogbeitrag wirklich löschen? Abgeleitete Posts bleiben.')"><button class="link danger">Beitrag löschen</button></form>
+  </div>
+</section>
+<style>
+@font-face { font-family: "markeTitel"; src: url("/schrift/titel"); }
+@font-face { font-family: "markeText"; src: url("/schrift/text"); }
+</style>
+{% endblock %}
