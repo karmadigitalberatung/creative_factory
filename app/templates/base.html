@@ -3,10 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Creative Factory{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <title>{% block title %}heykajo Studio{% endblock %}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 </head>
 <body>
@@ -21,9 +19,9 @@
 {% if b is defined and b and b.onboarded and not einrichtung %}
 <div class="app">
   <nav class="side" aria-label="Hauptmenü">
-    <a class="marke" href="/">Creative Factory</a>
+    <a class="marke" href="/" aria-label="heykajo Studio, zur Übersicht">{% with hell=False %}{% include "_logo.html" %}{% endwith %}</a>
     <div class="side-gruppe">
-      <a href="/" class="{{ 'on' if path == '/' }}" {% if path == '/' %}aria-current="page"{% endif %}>Dashboard</a>
+      <a href="/" class="{{ 'on' if path == '/' }}" {% if path == '/' %}aria-current="page"{% endif %}>Übersicht</a>
       <a href="/planen?ansicht=kalender" class="unterpunkt-kopf {{ 'on' if path.startswith('/ideen') or path.startswith('/planen') or path.startswith('/radar') or path.startswith('/leitlinien') or path.startswith('/input') }}">Planen</a>
       <a href="/planen?ansicht=kalender" class="unterpunkt {{ 'on' if path.startswith('/planen') }}" {% if path.startswith('/planen') %}aria-current="page"{% endif %}>Redaktionsplan{% if nav_entwuerfe %}<span class="zahl">{{ nav_entwuerfe }}</span>{% endif %}</a>
       <a href="/ideen" class="unterpunkt {{ 'on' if path.startswith('/ideen') or path.startswith('/radar') }}" {% if path.startswith('/ideen') %}aria-current="page"{% endif %}>Ideen{% if nav_ideen %}<span class="zahl alarm">{{ nav_ideen }}</span>{% endif %}</a>
@@ -66,7 +64,7 @@
 {% endif %}
 {% else %}
 <div class="einstieg">
-  <a class="marke dunkel" href="/">Creative Factory</a>
+  <a class="marke dunkel" href="/" aria-label="heykajo Studio">{% with hell=True %}{% include "_logo.html" %}{% endwith %}</a>
   {% if b is defined and b %}<form method="post" action="/logout" class="aus"><button class="link">Abmelden</button></form>{% endif %}
   {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
   <main>{{ self.main() }}</main>

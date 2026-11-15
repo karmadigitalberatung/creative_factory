@@ -1,4 +1,4 @@
-# Creative Factory · Web-App (MVP)
+# heykajo Studio (vormals Creative Factory) · Web-App (MVP)
 
 Web-Oberfläche für Personal-Brand-Carousels: Konto anlegen, Foto hochladen, Layout wählen, Posts schreiben oder vorschlagen lassen, rendern, als ZIP und LinkedIn-PDF herunterladen. Änderungen per Chat (Claude) am Post oder an der Marke.
 
@@ -217,6 +217,10 @@ Offen:
 3. **Server:** läuft auf dem VPS (siehe „Betrieb“); bei vielen Konten Postgres und eigener Worker.
 4. **Konto:** Passwort vergessen, E-Mail-Bestätigung, Löschen, AGB und Datenschutz, Abrechnung.
 5. Mehr Google Fonts mitliefern (heute Inter und Instrument Serif; eigene Schriften kann man hochladen).
+
+## Designsprache
+
+Designsprache F („Leicht“) für alle heykajo-Backends (Entwürfe im Canvas „Creative Factory · Redesign“): schwebende dunkle Sidebar mit dem Original-Logo von heykajo.ai und „STUDIO“ auf der Grundlinie (`app/templates/_logo.html`), warmes Off-White, Haarlinien, Radien 3 bis 8 px, Überschriften in Inter Light mit einem Akzentwort in Instrument Serif kursiv (`<em>`). heykajo-Gelb nur als Punkt und Zähler, nie als Rand oder Fläche. Schriften liefert die App selbst aus (`app/static/fonts`), nichts lädt von Google.
 
 ## Betrieb (VPS)
 

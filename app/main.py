@@ -16,7 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import ai, buffer, config, db, fertig, hub, ideen, jobs, layout_editor, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-app = FastAPI(title="Creative Factory")
+app = FastAPI(title="heykajo Studio")
 app.add_middleware(SessionMiddleware, secret_key=config.secret_key(), same_site="lax", max_age=60 * 60 * 24 * 30)
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 tpl = Jinja2Templates(directory=os.path.join(HERE, "templates"))

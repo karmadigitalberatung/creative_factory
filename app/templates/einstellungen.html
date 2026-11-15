@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Einstellungen · Creative Factory{% endblock %}
+{% block title %}Einstellungen · heykajo Studio{% endblock %}
 {% block main %}
 <section class="einstellungen">
   <div class="head">
@@ -32,7 +32,7 @@
       <ol class="small">
         <li>Öffne in Claude Desktop <em>Einstellungen → Entwickler → Konfiguration bearbeiten</em> (Datei <code>claude_desktop_config.json</code>).</li>
         <li>Füge den Eintrag unter <code>mcpServers</code> ein (gibt es schon andere Server, nur den Block <code>creative-factory-{{ mcp_slug }}</code> ergänzen).</li>
-        <li>Claude Desktop neu starten. Die Creative Factory muss dabei laufen.</li>
+        <li>Claude Desktop neu starten. heykajo Studio muss dabei erreichbar sein.</li>
       </ol>
       <textarea class="mcp-konfig" rows="12" readonly data-kopieren>{{ mcp_konfig }}</textarea>
       <div class="row"><button type="button" class="small" data-kopieren-knopf>Kopieren</button><span class="hint">Gib den Schlüssel nicht weiter: Wer ihn hat, kann in diesem Account planen.</span></div>
