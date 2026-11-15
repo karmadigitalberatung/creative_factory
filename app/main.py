@@ -4,7 +4,7 @@ Bereiche: Dashboard (Kalender), Planen (Ideen -> Freigabe -> Visuals, mit Chat),
 Auftreten (Social Corporate Design mit Chat).
 Start: ~/.venvs/creative-factory-app/bin/uvicorn app.main:app --port 8040
 """
-import calendar, datetime, json, os, re, sys, urllib.parse
+import calendar, datetime, hmac, json, os, re, sys, urllib.parse
 sys.dont_write_bytecode = True
 from typing import List, Optional
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
@@ -2269,6 +2269,20 @@ def chat(request: Request, nachricht: str = Form(""), bereich: str = Form("post"
 
 
 # ---------------------------------------------------------------- Dateien
+
+@app.get("/o/{bid}/{sig}/{rel:path}")
+def media_oeffentlich(bid: int, sig: str, rel: str):
+    """Signierte öffentliche Bild-Links (Newsletter, später Buffer): nur Dateien, die die App selbst verlinkt hat."""
+    if not hmac.compare_digest(sig, storage.signatur(bid, rel)):
+        raise HTTPException(404)
+    try:
+        path = storage.abs_path(bid, rel)
+    except ValueError:
+        raise HTTPException(404)
+    if not os.path.isfile(path):
+        raise HTTPException(404)
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
 
 @app.get("/media/{rel:path}")
 def media(request: Request, rel: str):

@@ -330,15 +330,20 @@ def newsletter_html_aus(brand, nl, fuer_email=True, vorlage_id=None, vorlage=Non
     a = json.loads(brand["auftreten"])
     d = nl_design(a)
     v = vorlage or nl_vorlage(brand["id"], vorlage_id)["szene"]
-    basis = (config.OEFFENTLICHE_URL.rstrip("/") + "/media/") if fuer_email and config.OEFFENTLICHE_URL else ("" if fuer_email else "/media/")
+    from . import storage
+    oeffentlich = fuer_email and config.OEFFENTLICHE_URL
+
+    def url(rel):
+        if not rel:
+            return ""
+        if oeffentlich:
+            return f"{config.OEFFENTLICHE_URL.rstrip('/')}/o/{brand['id']}/{storage.signatur(brand['id'], rel)}/{rel}"
+        return "" if fuer_email else "/media/" + rel
 
     def bild_url(x):
-        if not basis:
-            return ""
-        rel = x if isinstance(x, str) else (x.get("bild") or (_bild_des_posts(brand["id"], x["post_id"]) if x.get("post_id") else None))
-        return basis + rel if rel else ""
+        return url(x if isinstance(x, str) else (x.get("bild") or (_bild_des_posts(brand["id"], x["post_id"]) if x.get("post_id") else None)))
 
-    return nll.rendern(v, nl, a.get("label") or a.get("name") or "", (basis + brand["logo"]) if brand["logo"] and basis else "",
+    return nll.rendern(v, nl, a.get("label") or a.get("name") or "", url(brand["logo"]) if brand["logo"] else "",
                        bild_url, d.get("fusszeile", ""), fuer_email)
 
 

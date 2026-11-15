@@ -56,3 +56,10 @@ def zip_post(brand_id, post_id, name):
             if n.startswith("slide-") or n.endswith(".pdf"):
                 z.write(os.path.join(d, n), f"{name}_{n}")
     return out
+
+
+def signatur(brand_id, rel):
+    """Signatur für öffentliche Bild-Links (/o/...), aus dem Sitzungs-Schlüssel."""
+    import hashlib, hmac
+    from . import config
+    return hmac.new(config.secret_key().encode(), f"{brand_id}/{rel}".encode(), hashlib.sha256).hexdigest()[:24]
