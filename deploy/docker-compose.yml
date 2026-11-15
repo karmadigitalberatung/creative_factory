@@ -1,0 +1,19 @@
+# Produktion auf dem VPS (/opt/creative-factory): App hinter dem vorhandenen Caddy (Netz kopfkino_default).
+# Einstellungen in /opt/creative-factory/.env (nicht im Repo), Daten in /opt/creative-factory/data.
+name: creative-factory
+services:
+  app:
+    build: ..
+    image: creative-factory:latest
+    container_name: creative-factory-app
+    restart: unless-stopped
+    env_file: ../.env
+    volumes:
+      - ../data:/data
+    networks: [caddy]
+    mem_limit: 2g
+
+networks:
+  caddy:
+    external: true
+    name: kopfkino_default

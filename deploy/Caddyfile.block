@@ -1,0 +1,12 @@
+# In /opt/kopfkino/deploy/Caddyfile ergänzen (gemeinsamer Caddy auf dem VPS)
+contenthub.karma.at {
+	encode zstd gzip
+	request_body {
+		max_size 300MB
+	}
+	reverse_proxy creative-factory-app:8040 {
+		transport http {
+			read_timeout 10m
+		}
+	}
+}

@@ -33,7 +33,8 @@ class Chrome:
              "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", "--mute-audio",
              "--force-color-profile=srgb", "--font-render-hinting=none", "--disable-gpu",
              "--disable-extensions", "--disable-background-networking", "--disable-sync",
-             f"--window-size={w},{h}", "about:blank"],
+             f"--window-size={w},{h}"] + (["--no-sandbox", "--disable-dev-shm-usage"] if hasattr(os, "geteuid") and os.geteuid() == 0 else [])
+            + ["about:blank"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         port_file = os.path.join(self.profil, "DevToolsActivePort")
         for _ in range(200):

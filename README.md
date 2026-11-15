@@ -210,9 +210,19 @@ Mit Schlüsseln getestet (13.11.2026): Chat zum Auftreten (ca. 55 s), Ideen (3 S
 Offen:
 1. **Buffer:** Verbinden und Kanalauswahl stehen unter „Connectors“ (`app/buffer.py`, GraphQL-API api.buffer.com): per persönlichem API-Schlüssel oder, mit `BUFFER_CLIENT_ID` in `.env`, per OAuth mit PKCE. Offen: Posts übergeben (`createPost`), dafür brauchen Bilder öffentliche HTTPS-URLs.
 2. **Motion-Graphics-Reels** (Szenen animiert rendern). Videoschnitt: Untertitel-Stil (Größe, Position, Box) nur über `auftreten.video`, noch nicht in der Oberfläche; Gesichtserkennung für den Bildausschnitt fehlt (Ausschnitt mittig, leicht oben).
-3. **Server:** VPS mit HTTPS, Postgres, eigener Worker, Backups.
+3. **Server:** läuft auf dem VPS (siehe „Betrieb“); bei vielen Konten Postgres und eigener Worker.
 4. **Konto:** Passwort vergessen, E-Mail-Bestätigung, Löschen, AGB und Datenschutz, Abrechnung.
 5. Mehr Google Fonts mitliefern (heute Inter und Instrument Serif; eigene Schriften kann man hochladen).
+
+## Betrieb (VPS)
+
+Live unter https://contenthub.karma.at auf dem gemeinsamen VPS (186.241.26.77, auch Kopfkino und byKristina).
+- Eigenes Docker-Image `creative-factory` (Dockerfile: Python, Chromium, ffmpeg), Container `creative-factory-app`, Ordner `/opt/creative-factory`.
+- HTTPS über den vorhandenen Caddy von Kopfkino: Block für contenthub.karma.at in `/opt/kopfkino/deploy/Caddyfile` (Vorlage `deploy/Caddyfile.block`), Netz `kopfkino_default`.
+- Einstellungen in `/opt/creative-factory/.env` (API-Schlüssel, `OEFFENTLICHE_URL`), Daten in `/opt/creative-factory/data` (SQLite und Medien). Beides nie im Repo.
+- Neuen Stand ausrollen (vom Mac): `deploy/deploy.sh` – spielt den Code per rsync auf und baut neu; Daten und .env bleiben.
+- Logs: `ssh root@186.241.26.77 "docker logs creative-factory-app --tail 100"`.
+- Sicherung: `deploy/backup.sh` (SQLite-Backup und Medien, 14 Tage), als cron um 3:45 einzutragen.
 
 ## Vorlage (Stufe 1)
 
