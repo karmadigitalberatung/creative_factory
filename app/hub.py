@@ -308,6 +308,38 @@ def nl_vorlagen(brand_id):
     return vs
 
 
+NL_WEBSITE_WUNSCH = ("Gestalte eine neue, sehr hochwertige Newsletter-Vorlage, die wie ein Teil dieser Website wirkt (Screenshots anbei, das sind KEINE Newsletter): "
+                     "dieselben Farben, derselbe Schriftcharakter, dieselbe Art von Weißraum, Kanten, Linien, Labels und Bildsprache. "
+                     "Kein generisches Standardlayout: ein eigener, durchdachter Aufbau mit Kopf, persönlichem Einstieg, Themen (gern ein Aufmacher), "
+                     "Schluss und Fußzeile, wie ihn ein gutes Studio für diese Marke entwerfen würde. Nimm die Schrift der Website als Webfont, wenn es eine Google-Schrift ist. "
+                     "aktion neu, kurzer Name, als_standard true.")
+
+
+def nl_vorlage_gestalten(brand_id, wunsch=""):
+    """Claude gestaltet eine Newsletter-Vorlage im Look der Website (Screenshots) oder, ohne Website, der Musterseiten; wird Standard."""
+    import os
+    from PIL import Image
+    from . import medien, storage, vorlagen, website
+    b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
+    bilder = [medien.bild_von(brand_id, m).convert("RGB") for m in
+              db.q("SELECT * FROM medien WHERE brand_id=? AND art='vorbild' AND beschreibung=? ORDER BY id LIMIT 4", brand_id, website.MARKER)]
+    if not bilder:
+        d = storage.brand_dir(brand_id, "muster")
+        bilder = [Image.open(os.path.join(d, f)).convert("RGB") for f in sorted(os.listdir(d))[:4] if f.endswith(".jpg")]
+    nachricht = NL_WEBSITE_WUNSCH + (f" Zusätzlicher Wunsch: {wunsch}" if wunsch else "")
+    if not db.one("SELECT id FROM medien WHERE brand_id=? AND art='vorbild' AND beschreibung=? LIMIT 1", brand_id, website.MARKER):
+        nachricht = nachricht.replace("Screenshots anbei, das sind KEINE Newsletter", "Musterseiten der Marke anbei, das sind KEINE Newsletter")
+    res = ai.newsletter_vorlage_chat(b, nachricht, [], bilder, [], None, None,
+                                     [m for m in medien.liste(brand_id) if m["art"] in ("foto", "generiert")])
+    if not res["vorlage"]:
+        raise ValueError("Claude hat keine verwendbare Newsletter-Vorlage geliefert.")
+    vid = vorlagen.anlegen(brand_id, "Newsletter", res["name"] or "Newsletter", res["vorlage"])
+    nl_design_setzen(brand_id, {"standard": vid})
+    db.run("INSERT INTO chats (brand_id, post_id, bereich, role, text, created) VALUES (?,?,?,?,?,?)",
+           brand_id, None, "design-newsletter", "claude", res["antwort"], db.now())
+    return vid
+
+
 def nl_vorlage(brand_id, vid=None):
     vs = nl_vorlagen(brand_id)
     a = json.loads(db.one("SELECT auftreten FROM brands WHERE id=?", brand_id)["auftreten"])

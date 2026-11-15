@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Einrichtung · Creative Factory{% endblock %}
+{% block main %}
+<section class="auth wide einrichtung" data-einrichtung>
+  <h1>Wir richten <em>alles ein.</em></h1>
+  <p class="lead">{% if mit_website %}Claude liest deine Website und baut daraus dein Design: Farben, Schriften, Fotos, Leitlinien und Vorlagen für Posts und Newsletter.{% else %}Claude gestaltet deine ersten Vorlagen für Posts und Newsletter.{% endif %}
+    Das dauert etwa fünf bis zehn Minuten. Du kannst die Seite offen lassen oder später wiederkommen.</p>
+  <div class="card stack">
+    <ol class="einrichtung-schritte">
+      {% set schritte = (['Liest deine Website', 'Übernimmt Farben, Schriften und Stil', 'Holt Fotos von der Website', 'Schreibt deine Leitlinien'] if mit_website else [])
+                        + ['Gestaltet deine Carousel-Vorlagen'] + (['Gestaltet deine Einzelbild-Vorlagen'] if mit_website else []) + ['Gestaltet deinen Newsletter'] %}
+      {% for s in schritte %}<li data-schritt="{{ s }}">{{ s }}</li>{% endfor %}
+    </ol>
+  </div>
+</section>
+<script>
+(() => {
+  const liste = [...document.querySelectorAll("[data-schritt]")];
+  function zeigen(aktuell) {
+    const i = liste.findIndex(li => li.dataset.schritt === aktuell);
+    liste.forEach((li, k) => { li.classList.toggle("fertig", i >= 0 && k < i); li.classList.toggle("aktiv", k === i); });
+  }
+  zeigen({{ schritt|tojson }});
+  async function pruefen() {
+    try {
+      const r = await fetch("/einrichtung/status", {cache: "no-store"});
+      const s = await r.json();
+      if (!s.laeuft) { location.href = "/einrichtung?fertig=1"; return; }
+      zeigen(s.schritt);
+    } catch (e) {}
+    setTimeout(pruefen, 4000);
+  }
+  setTimeout(pruefen, 4000);
+})();
+</script>
+{% endblock %}

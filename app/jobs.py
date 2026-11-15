@@ -9,7 +9,7 @@ _pool = ThreadPoolExecutor(max_workers=2)
 
 LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "vorlagen": "Gestaltet Vorlagen", "blog": "Schreibt den Blogbeitrag", "aufteilen": "Teilt in Posts auf", "newsletter": "Schreibt den Newsletter", "uebergabe": "Übergibt als Entwurf", "fertig": "Übernimmt die Dateien", "captions": "Schreibt Captions", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
           "schnitt": "Schneidet Video", "animation": "Animiert Reel",
-          "muster": "Musterseiten", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
+          "muster": "Musterseiten", "einrichtung": "Richtet dein Konto ein", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
 
 
 def start(brand_id, post_id, kind, fn, *args):
@@ -28,6 +28,17 @@ def start(brand_id, post_id, kind, fn, *args):
 
     _pool.submit(wrapper)
     return jid
+
+
+def schritt(brand_id, text):
+    """Fortschritt der Einrichtung (Seite /einrichtung); außerhalb der Einrichtung ohne Wirkung."""
+    db.run("UPDATE jobs SET schritt=? WHERE brand_id=? AND kind='einrichtung' AND status='läuft'", text, brand_id)
+
+
+def einrichtung(brand_id):
+    """Laufende Einrichtung des Kontos (erste Anmeldung), höchstens 45 Minuten alt; sonst None."""
+    return db.one("SELECT * FROM jobs WHERE brand_id=? AND kind='einrichtung' AND status='läuft' AND created>? ORDER BY id DESC LIMIT 1",
+                  brand_id, db.now() - 45 * 60)
 
 
 def running(brand_id, post_id=None):

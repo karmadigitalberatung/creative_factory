@@ -92,6 +92,10 @@ Ist beim Einrichten eine Website angegeben, übernimmt `app/website.py` daraus d
 
 Auf der Seite Auftreten lässt sich das mit „Von der Website neu übernehmen“ wiederholen; „Letzte Änderung zurücknehmen“ macht es rückgängig.
 
+## Erste Einrichtung
+
+Nach „Start“ läuft die Einrichtung als ein Job (`einrichtung`): Website lesen, Farben, Schriften und Stil übernehmen, Fotos holen, Leitlinien entwerfen, Carousel- und Einzelbild-Vorlagen, eigene Newsletter-Vorlage. Solange sie läuft (höchstens 45 Minuten), ist die App für das Konto gesperrt: jede Seite leitet auf `/einrichtung` mit dem Fortschritt; danach geht es zu Design & Layout.
+
 ## Einstellungen und Nutzerverwaltung
 
 Unten links in der Seitenleiste:
@@ -135,7 +139,7 @@ Futter für die Ideenwerkstatt, in `app/radar.py`. Trends und Swipe-Datei sind R
 - Die bisherigen Musterseiten wurden einmalig die Carousel-Vorlagen. Die Website-Übernahme gestaltet Carousel- und Einzelbild-Vorlagen.
 - Farben, Schriften oder Logo ändern frischt nur die Vorschaubilder auf und überschreibt keine Vorlagen.
 - Die Karte „Vorbilder“ ist entfallen.
-- **Newsletter** (`app/newsletter_layout.py`): Vorlagen sind E-Mail-HTML, das Claude gestaltet; die App füllt bei jeder Ausgabe nur Platzhalter ({{intro}}, {{schluss}}, je Thema {{titel}}, {{text}}, {{bild}}, {{link}} im Bereich `<!--THEMA-->`, optional `<!--AUFMACHER-->`). Jeder Account startet mit Brief, Magazin und Kompakt in den Markenfarben. Ein Beispielbild im Chat („Mit Claude gestalten“) baut Claude als neue Vorlage nach, Farben inklusive; Änderungswünsche gehen auf der Seite einer Vorlage an genau diese. Das HTML lässt sich dort auch selbst bearbeiten. Skripte und Event-Handler werden entfernt. Eine Vorlage ist Standard; beim Erstellen wählt man sie je Ausgabe. Impressum und Schreibregeln gelten für alle. Logo und Bilder kommen in die echte E-Mail erst mit einer öffentlichen Adresse (`OEFFENTLICHE_URL` in `.env`).
+- **Newsletter** (`app/newsletter_layout.py`): Vorlagen sind E-Mail-HTML, das Claude gestaltet; die App füllt bei jeder Ausgabe nur Platzhalter ({{intro}}, {{schluss}}, je Thema {{titel}}, {{text}}, {{bild}}, {{link}} im Bereich `<!--THEMA-->`, optional `<!--AUFMACHER-->`). Jeder Account startet mit Brief, Magazin und Kompakt in den Markenfarben. Ein Beispielbild im Chat („Mit Claude gestalten“) baut Claude als neue Vorlage nach, Farben inklusive; Änderungswünsche gehen auf der Seite einer Vorlage an genau diese. Das HTML lässt sich dort auch selbst bearbeiten. Skripte und Event-Handler werden entfernt. Eine Vorlage ist Standard; beim Erstellen wählt man sie je Ausgabe. Impressum und Schreibregeln gelten für alle. Logo und Bilder kommen in die echte E-Mail erst mit einer öffentlichen Adresse (`OEFFENTLICHE_URL` in `.env`). Bei der ersten Einrichtung gestaltet Claude eine eigene Vorlage im Look der Website (Screenshots, Farben, Schriften, Google-Webfonts mit Ausweichschrift); „Neue Vorlage im Look meiner Website“ macht das für bestehende Konten. Brief, Magazin und Kompakt gibt es nur noch als Rückfall.
 
 ## Content Hub: Blog und Newsletter
 

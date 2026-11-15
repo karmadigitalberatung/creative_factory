@@ -4,7 +4,7 @@ Bereiche: Dashboard (Kalender), Planen (Ideen -> Freigabe -> Visuals, mit Chat),
 Auftreten (Social Corporate Design mit Chat).
 Start: ~/.venvs/creative-factory-app/bin/uvicorn app.main:app --port 8040
 """
-import calendar, datetime, hmac, json, os, re, sys, urllib.parse
+import calendar, datetime, hmac, json, os, re, sys, traceback, urllib.parse
 sys.dont_write_bytecode = True
 from typing import List, Optional
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
@@ -85,7 +85,7 @@ def go(url):
     return RedirectResponse(url, status_code=303)
 
 
-def brand_of(request, onboarding_ok=False):
+def brand_of(request, onboarding_ok=False, einrichtung_ok=False):
     uid = request.session.get("uid")
     if not uid:
         raise Redirect("/login")
@@ -99,6 +99,8 @@ def brand_of(request, onboarding_ok=False):
         raise Redirect("/login")
     if not onboarding_ok and not b["onboarded"]:
         raise Redirect("/start")
+    if not einrichtung_ok and b["onboarded"] and jobs.einrichtung(b["id"]):   # erste Einrichtung läuft: App gesperrt, bis Design und Vorlagen stehen
+        raise Redirect("/einrichtung")
     return b
 
 
@@ -442,13 +444,49 @@ async def start(request: Request, name: str = Form(...), website: str = Form("")
             return go("/start")
     db.run("UPDATE brands SET auftreten=?, ref_photo=?, consent_at=CASE WHEN ? IS NOT NULL THEN ? ELSE consent_at END, onboarded=1 WHERE id=?",
            json.dumps(a, ensure_ascii=False), ref, einwilligung, db.now(), b["id"])
-    if a["website"] and config.ANTHROPIC_API_KEY:   # Website ist der Benchmark: Farben, Schriften, Layout und Musterseiten von dort
-        jobs.start(b["id"], None, "website", _website_job, b["id"])
-        flash(request, "Willkommen! Ich lese gerade deine Website und übernehme Farben, Schriften und Layout. Das dauert zwei bis drei Minuten.")
+    if not jobs.einrichtung(b["id"]):
+        jobs.start(b["id"], None, "einrichtung", _einrichtung_job, b["id"], bool(a["website"] and config.ANTHROPIC_API_KEY))
+    return go("/einrichtung")
+
+
+def _einrichtung_job(brand_id, mit_website):
+    """Erste Einrichtung: Website übernehmen (Farben, Schriften, Fotos, Leitlinien, Vorlagen), dann eine eigene Newsletter-Vorlage.
+    Solange sie läuft, ist die App für das Konto gesperrt (brand_of → /einrichtung)."""
+    if mit_website:
+        try:
+            website.uebernehmen(brand_id)
+        except Exception:
+            traceback.print_exc()
+            jobs.schritt(brand_id, "Gestaltet deine Carousel-Vorlagen")
+            jobs.musterseiten(brand_id)
     else:
-        jobs.start(b["id"], None, "muster", jobs.musterseiten, b["id"])
-        flash(request, "Willkommen! Leg jetzt Design und Layout fest: Farben, Schriften, Logo und Vorlagen. Der Chat rechts hilft dir dabei.")
-    return go("/auftreten")
+        jobs.schritt(brand_id, "Gestaltet deine Carousel-Vorlagen")
+        jobs.musterseiten(brand_id)
+    if config.ANTHROPIC_API_KEY:
+        jobs.schritt(brand_id, "Gestaltet deinen Newsletter")
+        try:
+            hub.nl_vorlage_gestalten(brand_id)
+        except Exception:
+            traceback.print_exc()   # dann gibt es die Startvorlagen
+    jobs.schritt(brand_id, "Fertig")
+
+
+@app.get("/einrichtung", response_class=HTMLResponse)
+def einrichtung_seite(request: Request, fertig: int = 0):
+    b = brand_of(request, einrichtung_ok=True)
+    j = jobs.einrichtung(b["id"])
+    if not j:
+        if fertig:
+            flash(request, "Fertig! Hier ist dein Design: Farben, Schriften, Vorlagen für Posts und Newsletter, alles im Stil deiner Website. Ändern kannst du alles per Chat.")
+        return go("/design")
+    return page(request, "einrichtung.html", b=b, einrichtung=True, schritt=j["schritt"] or "Startet", mit_website=bool(json.loads(b["auftreten"]).get("website")))
+
+
+@app.get("/einrichtung/status")
+def einrichtung_status(request: Request):
+    b = brand_of(request, einrichtung_ok=True)
+    j = jobs.einrichtung(b["id"])
+    return {"laeuft": bool(j), "schritt": (j["schritt"] if j else None) or ""}
 
 
 def _website_job(brand_id, schreibstil_ersetzen=False):
@@ -1718,6 +1756,15 @@ def design_newsletter_vorschau(request: Request, vorlage: int = 0):
     return HTMLResponse(hub.newsletter_html_aus(b, _nl_beispiel(b), fuer_email=False, vorlage_id=vorlage or None))
 
 
+@app.post("/design/newsletter/gestalten")
+def design_newsletter_gestalten(request: Request, wunsch: str = Form("")):
+    b = brand_of(request)
+    if not any(j["kind"] == "vorlagen" for j in jobs.running(b["id"])):
+        jobs.start(b["id"], None, "vorlagen", hub.nl_vorlage_gestalten, b["id"], wunsch.strip()[:1000])
+        flash(request, "Claude gestaltet eine neue Newsletter-Vorlage im Look deiner Website. Das dauert zwei bis vier Minuten; sie wird dein Standard.")
+    return go("/design/newsletter")
+
+
 @app.post("/design/newsletter/vorlage/{vid}/standard")
 def design_newsletter_standard(request: Request, vid: int):
     b = brand_of(request)
@@ -2295,7 +2342,7 @@ def media_oeffentlich(bid: int, sig: str, rel: str):
 
 @app.get("/media/{rel:path}")
 def media(request: Request, rel: str):
-    b = brand_of(request, onboarding_ok=True)
+    b = brand_of(request, onboarding_ok=True, einrichtung_ok=True)
     try:
         path = storage.abs_path(b["id"], rel)
     except ValueError:

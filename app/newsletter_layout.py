@@ -9,8 +9,9 @@ DOKU = """Newsletter-Vorlage = vollständiges E-Mail-HTML (<!doctype html> bis <
 
 Technik (E-Mail-tauglich, sonst sieht es in Outlook und Gmail kaputt aus):
 - Layout mit verschachtelten <table role="presentation" cellpadding="0" cellspacing="0">, Inhaltsbreite 600 px (width="600" plus style max-width:600px;width:100%).
-- Alle Styles inline (style="…"); höchstens ein kleiner <style>-Block für @media (max-width:620px). Kein JavaScript, keine externen CSS-Dateien, keine Webfonts:
-  nur sichere Schriften (Helvetica/Arial, Georgia/Times, Verdana, Trebuchet MS), z. B. font-family:Georgia,'Times New Roman',serif.
+- Alle Styles inline (style="…"); höchstens ein kleiner <style>-Block für @media (max-width:620px). Kein JavaScript, keine externen CSS-Dateien.
+- Schrift: sichere Schriften (Helvetica/Arial, Georgia/Times, Verdana, Trebuchet MS). Eine Google-Schrift darf per <link href="https://fonts.googleapis.com/css2?family=…" rel="stylesheet">
+  im <head> dazu, aber immer mit sicherer Ausweichschrift, z. B. font-family:'Inter',Helvetica,Arial,sans-serif (Apple Mail zeigt sie, Gmail und Outlook die Ausweichschrift).
 - Mehrspaltig: im wiederholten Themen-Bereich Spalten als <div style="display:inline-block;width:100%;max-width:270px;vertical-align:top">, dann stehen sie nebeneinander und auf dem Handy untereinander.
 - Bilder: <img src="{{bild}}" width="…" style="display:block;width:100%;height:auto;border:0">. Hintergrundbilder vermeiden.
 

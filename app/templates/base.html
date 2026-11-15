@@ -18,7 +18,7 @@
 </div>
 <script>(() => { const l = document.querySelector('.admin-leiste'); const s = () => document.documentElement.style.setProperty('--admin-h', l.offsetHeight + 'px'); s(); addEventListener('resize', s); })();</script>
 {% endif %}
-{% if b is defined and b and b.onboarded %}
+{% if b is defined and b and b.onboarded and not einrichtung %}
 <div class="app">
   <nav class="side" aria-label="Hauptmenü">
     <a class="marke" href="/">Creative Factory</a>

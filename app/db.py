@@ -57,7 +57,8 @@ def conn():
 MIGRATION = [("posts", "video_roh", "TEXT"), ("posts", "video", "TEXT"), ("posts", "schnitt", "TEXT"),
              ("chats", "bilder", "TEXT"), ("brands", "muster_design", "TEXT"),
              ("posts", "kanaele", "TEXT"),
-             ("users", "rolle", "TEXT NOT NULL DEFAULT 'nutzer'"),   # nutzer | admin
+             ("users", "rolle", "TEXT NOT NULL DEFAULT 'nutzer'"),
+             ("jobs", "schritt", "TEXT"),   # nutzer | admin
              ("users", "aktiv", "INTEGER NOT NULL DEFAULT 1"), ("users", "letzter_login", "REAL"),
              ("posts", "quelle_id", "INTEGER")]   # Ableitung: Social-Post aus einem Blogbeitrag   # {Buffer-Kanal-ID: ["post" | "reel" | "story", …]}
 

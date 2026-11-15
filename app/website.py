@@ -391,6 +391,7 @@ def uebernehmen(brand_id, mit_muster=True, schreibstil_ersetzen=False):
         raise ValueError("Keine Website im Auftreten eingetragen.")
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+    jobs.schritt(brand_id, "Liest deine Website")
     erfasst = erfassen(url)
     m = erfasst["messung"]
     faces = _font_faces(m, url)
@@ -399,6 +400,7 @@ def uebernehmen(brand_id, mit_muster=True, schreibstil_ersetzen=False):
     lizenz = sorted(faces.pop("_lizenz"))
     messwerte["schriftdateien_frei"] = sorted(faces)[:30]
     messwerte["schriften_nur_mit_lizenz"] = lizenz   # z. B. Adobe Fonts: dürfen wir nicht herunterladen
+    jobs.schritt(brand_id, "Übernimmt Farben, Schriften und Stil")
     res = ai.website_stil(b, bilder, messwerte)
 
     # Schriften holen
@@ -442,10 +444,12 @@ def uebernehmen(brand_id, mit_muster=True, schreibstil_ersetzen=False):
         db.run("DELETE FROM medien WHERE id=?", alt["id"])
     for titel, raw in erfasst["bilder"][:4] + erfasst["bilder"][-1:]:
         medien.speichern(brand_id, raw, "vorbild", f"Website · {titel}", MARKER)
+    jobs.schritt(brand_id, "Holt Fotos von der Website")
     try:
         n_bilder = bilder_laden(brand_id, erfasst.get("bild_kandidaten") or [], url)
     except Exception:
         n_bilder = 0
+    jobs.schritt(brand_id, "Schreibt deine Leitlinien")
     try:   # Leitlinien (Themen-Säulen, Haltung, No-Gos …) aus Website und Auftreten vorausfüllen; Eingetragenes bleibt
         from . import leitlinien
         leitlinien.entwurf(brand_id)
@@ -462,7 +466,9 @@ def uebernehmen(brand_id, mit_muster=True, schreibstil_ersetzen=False):
            + (" Unter Planen → Leitlinien habe ich deine Themen-Säulen, Haltung und No-Gos als Entwurf vorausgefüllt; schau sie dir an und pass sie an." if mit_leitlinien else "")
            + " Die Musterseiten gestalte ich jetzt im Stil der Website.", db.now())
     if mit_muster:
+        jobs.schritt(brand_id, "Gestaltet deine Carousel-Vorlagen")
         jobs.musterseiten(brand_id)
+        jobs.schritt(brand_id, "Gestaltet deine Einzelbild-Vorlagen")
         try:   # Einzelbild-Vorlagen gleich mit, im Stil der Website
             from . import vorlagen
             vorlagen.generieren(brand_id, "Einzelbild")

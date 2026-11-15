@@ -15,7 +15,7 @@
   {% if fehler %}<p class="error">Beim letzten Gestalten ging etwas schief: {{ fehler.error }}</p>{% endif %}
 
   {% if info.art == 'newsletter' %}
-  <div class="card stack">
+  <div class="card stack" {% if laeuft %}data-arbeitet="Claude gestaltet eine Newsletter-Vorlage" data-poll="/jobs"{% endif %}>
     <div class="row"><h2 class="grow">Vorlagen</h2><span class="small muted">{{ nl_vorlagen|length }}</span></div>
     <div class="nl-vorlagen">
       {% for v in nl_vorlagen %}
@@ -35,6 +35,12 @@
       {% endfor %}
     </div>
     <p class="hint">Die Standard-Vorlage nimmt jeder neue Newsletter; beim Erstellen kannst du eine andere wählen. Ein Beispiel, das dir gefällt (Screenshot einer E-Mail), schickst du über „Mit Claude gestalten“: Claude baut daraus eine neue Vorlage.</p>
+    {% if ki_text %}
+    <form method="post" action="/design/newsletter/gestalten" class="row" data-busy="Claude gestaltet …">
+      <label class="grow">Wunsch (optional) <input name="wunsch" placeholder="z. B. ruhiger, mehr Weißraum, großes Bild oben"></label>
+      <button {{ 'disabled' if laeuft }}>Neue Vorlage im Look meiner Website</button>
+    </form>
+    {% endif %}
   </div>
   <form method="post" action="/design/newsletter/einstellungen" class="card stack">
     <h2>Fußzeile und Regeln</h2>
