@@ -11,7 +11,7 @@ services:
     volumes:
       - ../data:/data
     networks: [caddy]
-    mem_limit: 2g
+    mem_limit: 4g
 
 networks:
   caddy:
