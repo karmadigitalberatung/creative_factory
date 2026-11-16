@@ -936,3 +936,19 @@ document.querySelectorAll("[data-html-kopieren]").forEach((k) => k.addEventListe
     });
   });
 })();
+
+// Sidebar: Planen auf- und zuklappen; auf Planen-Seiten offen, sonst die letzte Wahl
+(() => {
+  document.querySelectorAll("[data-nav-gruppe]").forEach((g) => {
+    const knopf = g.querySelector(".unterpunkt-kopf"), schluessel = "nav-" + g.dataset.navGruppe;
+    let gemerkt = null;
+    try { gemerkt = localStorage.getItem(schluessel); } catch (e) {}
+    const setzen = (offen) => { g.classList.toggle("offen", offen); knopf.setAttribute("aria-expanded", offen ? "true" : "false"); };
+    if (g.dataset.aktiv !== "1" && gemerkt !== null) setzen(gemerkt === "1");
+    knopf.addEventListener("click", () => {
+      const offen = !g.classList.contains("offen");
+      setzen(offen);
+      try { localStorage.setItem(schluessel, offen ? "1" : "0"); } catch (e) {}
+    });
+  });
+})();
