@@ -222,6 +222,10 @@ Offen:
 4. **Konto:** Passwort vergessen, E-Mail-Bestätigung, Löschen, AGB und Datenschutz, Abrechnung.
 5. Mehr Google Fonts mitliefern (heute Inter und Instrument Serif; eigene Schriften kann man hochladen).
 
+## Auswertung
+
+Hauptmenü „Auswertung“ (`app/auswertung.py`): Kennzahlen veröffentlichter Posts aus Buffer (Aufrufe bzw. bei LinkedIn Impressionen, Reichweite, Likes, Kommentare, Shares, Saves, Wiedergabezeit, Engagement), nur lesend, alle 6 Stunden und auf Knopfdruck, die letzten 120 Tage; unabhängig vom Buffer-Sync. Zuordnung zu Posts der App über die Buffer-ID aus dem Sync, sonst über Kanal und Tag. Seite mit Summen, Vergleich nach Format, Kanal und Wochentag (Median, damit ein viraler Post nicht alles verzerrt), den besten Posts und einer sortierbaren Liste; Kennzahlen auch am Post und als Aufrufe im Kalender. Claude bekommt eine Zusammenfassung bei Ideen, Redaktion und Trendradar (`ideen.lernkontext`), per MCP gibt es `auswertung_lesen`.
+
 ## Designsprache
 
 Designsprache H für alle heykajo-Backends (Entwürfe im Canvas „Creative Factory · Redesign“): schwebende Sidebar im heykajo-Beige `#CFC9BC` mit Menü-Icons, aktiver Punkt als gelbe Fläche, Zähler gelb; oben das Original-Logo von heykajo.ai mit „STUDIO“ auf der Grundlinie (`app/templates/_logo.html`). Inhalt in warmem Off-White mit weißen Karten, Haarlinien, Radien 3 bis 8 px. Nur Inter (Überschriften leicht), keine Serifenschrift. Im Inhalt ist Gelb nur Punkt oder Zähler, nie Rand. Schriften liefert die App selbst aus (`app/static/fonts`), nichts lädt von Google.

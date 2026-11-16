@@ -468,6 +468,19 @@ def dateien_hochladen(b, a):
                               "bitten, sie in der Web-App unter Planen → „Fertigen Post hochladen“ hochzuladen."})]
 
 
+def auswertung_lesen(b, a):
+    """Kennzahlen veröffentlichter Posts aus Buffer: Summen, Formate, Wochentage, beste und schwächste Posts, Liste."""
+    from . import auswertung
+    tage = int(a.get("tage") or 30)
+    posts = auswertung.liste(b["id"], tage, str(a.get("kanal") or ""))
+    z = auswertung.zusammenfassen(posts)
+    knapp = lambda p: {k: p[k] for k in ("post_id", "titel", "kanal", "art", "gesendet", "aufrufe", "reichweite", "likes", "kommentare", "shares", "saves", "engagement")}
+    return [_text({"tage": tage, "summe": {k: z[k] for k in ("anzahl", "aufrufe", "reichweite", "likes", "kommentare", "shares", "saves", "engagement")},
+                   "formate": z["formate"], "kanaele": z["kanaele"], "wochentage": z["wochentage"], "uhrzeiten": z["uhrzeiten"],
+                   "top": [knapp(p) for p in z["top"]], "flop": [knapp(p) for p in z["flop"]], "posts": [knapp(p) for p in posts[:60]],
+                   "hinweis": "Zahlen aus Buffer (alle 6 Stunden). Bei LinkedIn zählen Impressionen als Aufrufe."})]
+
+
 def post_loeschen(b, a):
     """Post, Blog oder Newsletter endgültig löschen, wie „Post löschen“ in der Web-App. Nur mit bestaetigt=true."""
     p = _post(b, a.get("post_id"))
@@ -590,6 +603,9 @@ WERKZEUGE = [
      _o({"pfade": {"type": "array", "items": STR, "description": "Vollständige lokale Dateipfade"},
          "urls": {"type": "array", "items": STR, "description": "Öffentliche Links zu Bildern oder Videos"},
          "post_id": INT, "titel": STR, "datum": STR, "uhrzeit": STR, "format": STR, "captions": BOOL}), dateien_hochladen),
+    ("auswertung_lesen", "Auswertung: Aufrufe, Reichweite, Likes, Kommentare, Shares, Saves und Engagement der veröffentlichten Posts (aus Buffer), "
+     "mit Vergleich nach Format, Kanal, Wochentag und Uhrzeit sowie den besten und schwächsten Posts. tage: 7, 30, 90 oder 0 für alles; kanal: instagram, linkedin …",
+     _o({"tage": INT, "kanal": STR}), auswertung_lesen),
     ("post_loeschen", "Post, Blogbeitrag oder Newsletter endgültig löschen (wie „Post löschen“ in der App). Nicht rückgängig zu machen: vorher die Person "
      "fragen und erst dann mit bestaetigt=true aufrufen.",
      _o({"post_id": INT, "bestaetigt": BOOL}, ["post_id"]), post_loeschen),

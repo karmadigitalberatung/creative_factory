@@ -118,6 +118,9 @@ def lernkontext(brand_id):
     from . import radar
     if radar.kontext(brand_id):
         teile.append(radar.kontext(brand_id))
+    from . import auswertung
+    if auswertung.fuer_claude(brand_id):
+        teile.append(auswertung.fuer_claude(brand_id))
     return "\n".join(teile)
 
 

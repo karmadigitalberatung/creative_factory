@@ -269,6 +269,15 @@
         {% endfor %}
       </div>
       <span class="hint">{% if video %}Reel und Story gleichzeitig: einfach beides anhaken – es ist dasselbe 9:16-Video.{% else %}Story nimmt die erste Slide.{% endif %} Wird mit „Speichern“ gesichert.</span>
+      {% if kennzahlen %}
+      <div class="kennzahlen-post">{% for k in kennzahlen %}
+        <div class="kennzahl-zeile"><span class="small"><strong>{{ k.kanal }}</strong> · {{ k.art }} · {{ k.gesendet[8:10] }}.{{ k.gesendet[5:7] }}. {{ k.gesendet[11:] }}{% if k.link %} · <a href="{{ k.link }}" target="_blank" rel="noopener">ansehen</a>{% endif %}</span>
+          <span class="kennzahl-werte">
+            <span><b>{{ k.aufrufe }}</b> {{ 'Impressionen' if k.dienst == 'linkedin' else 'Aufrufe' }}</span><span><b>{{ k.reichweite }}</b> Reichweite</span>
+            <span><b>{{ k.likes }}</b> Likes</span><span><b>{{ k.kommentare }}</b> Kommentare</span>{% if k.saves %}<span><b>{{ k.saves }}</b> Saves</span>{% endif %}
+            <span><b>{{ k.engagement }} %</b> Engagement</span></span></div>
+      {% endfor %}<a class="small" href="/auswertung">Zur Auswertung</a></div>
+      {% endif %}
       {% if buffer_sendungen %}
       <ul class="buffer-post">{% for s in buffer_sendungen if s.status != 'geloescht' %}
         <li><span class="buffer-stand s-{{ s.status }}">{{ {'geplant': 'Bei Buffer eingeplant', 'wartet': 'Wartet auf freien Platz bei Buffer', 'gesendet': 'Veröffentlicht', 'fehler': 'Fehler bei Buffer'}[s.status] }}</span>

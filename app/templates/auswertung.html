@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Auswertung · heykajo Studio{% endblock %}
+{% block main %}
+<section class="auswertung">
+  <div class="head">
+    <div class="kopf-text">
+      <span class="label">Auswertung{% if stand.letzter_lauf %} · Stand {{ stand.letzter_lauf|zeit }}{% endif %}</span>
+      <h1>Wie deine Posts <em>ankommen.</em></h1>
+    </div>
+    <div class="kopf-aktionen">
+      <nav class="status-pillen" aria-label="Zeitraum">
+        {% for t, n in [(7, '7 Tage'), (30, '30 Tage'), (90, '90 Tage'), (0, 'Alles')] %}<a href="/auswertung?tage={{ t }}&kanal={{ kanal }}&sort={{ sort }}" class="{{ 'on' if tage == t }}" {% if tage == t %}aria-current="page"{% endif %}>{{ n }}</a>{% endfor %}
+      </nav>
+      {% if dienste|length > 1 %}
+      <nav class="status-pillen" aria-label="Kanal">
+        <a href="/auswertung?tage={{ tage }}&sort={{ sort }}" class="{{ 'on' if not kanal }}">Alle Kanäle</a>
+        {% for d, n in dienste %}<a href="/auswertung?tage={{ tage }}&kanal={{ d }}&sort={{ sort }}" class="{{ 'on' if kanal == d }}">{{ n }}</a>{% endfor %}
+      </nav>
+      {% endif %}
+      {% if verbunden %}<form method="post" action="/auswertung/aktualisieren" data-busy="Holt Zahlen von Buffer …"><button>Jetzt aktualisieren</button></form>{% endif %}
+    </div>
+  </div>
+
+  {% if not verbunden %}
+  <div class="card"><p class="muted">Die Zahlen kommen aus Buffer. Verbinde unter <a href="/connectors">Connectors</a> dein Buffer-Konto, dann siehst du hier Aufrufe, Reichweite, Likes, Kommentare und Engagement deiner Posts.</p></div>
+  {% elif not posts %}
+  <div class="card"><p class="muted">{% if stand.letzter_lauf %}Im gewählten Zeitraum gibt es keine veröffentlichten Posts mit Zahlen.{% else %}Noch keine Zahlen geholt. „Jetzt aktualisieren“ holt sie von Buffer; danach geschieht das alle 6 Stunden von selbst.{% endif %}</p>
+    {% if stand.meldung %}<p class="small muted">{{ stand.meldung }}</p>{% endif %}</div>
+  {% else %}
+
+  <div class="stats auswertung-zahlen">
+    <div class="stat"><b>{{ z.anzahl }}</b><span>Posts</span></div>
+    <div class="stat"><b>{{ '{:,}'.format(z.aufrufe).replace(',', '.') }}</b><span>Aufrufe und Impressionen</span></div>
+    <div class="stat"><b>{{ '{:,}'.format(z.reichweite).replace(',', '.') }}</b><span>Reichweite</span></div>
+    <div class="stat"><b>{{ z.likes }}</b><span>Likes</span></div>
+    <div class="stat"><b>{{ z.kommentare }}</b><span>Kommentare</span></div>
+    <div class="stat"><b>{{ z.engagement }} %</b><span>Engagement (Median)</span></div>
+  </div>
+
+  <div class="auswertung-raster">
+    {% for titel, gruppe in [('Formate', z.formate), ('Kanäle', z.kanaele), ('Wochentage', z.wochentage)] if gruppe %}
+    {% set maximum = (gruppe|map(attribute='aufrufe')|max) or 1 %}
+    <div class="card stack">
+      <h2>{{ titel }}</h2>
+      <span class="small muted">Typischer Post (Median): Aufrufe · Engagement</span>
+      <ul class="balken">{% for g in gruppe %}
+        <li><span class="balken-name">{{ g.name }} <span class="muted small">{{ g.anzahl }}×</span></span>
+          <span class="balken-spur"><span class="balken-wert" style="width: {{ (g.aufrufe / maximum * 100)|round(1) }}%"></span></span>
+          <span class="balken-zahl">{{ g.aufrufe|round|int }}</span><span class="balken-zahl muted">{{ g.engagement }} %</span></li>
+      {% endfor %}</ul>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if z.top %}
+  <div class="card stack">
+    <div class="row"><h2 class="grow">Am besten gelaufen</h2><span class="small muted">nach Aufrufen, ohne Stories</span></div>
+    <div class="top-posts">{% for p in z.top %}
+      <a class="top-post" href="{{ '/planen/' ~ p.post_id if p.post_id else (p.link or '#') }}" {% if not p.post_id and p.link %}target="_blank" rel="noopener"{% endif %}>
+        {% if p.bild %}<img src="{{ p.bild }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="top-leer">{{ p.art }}</span>{% endif %}
+        <span class="cal-info"><span class="zeit">{{ p.kanal }} · {{ p.art }} · {{ p.gesendet[8:10] }}.{{ p.gesendet[5:7] }}.</span>
+          <span class="titel">{{ p.titel }}</span><span class="zeit">{{ p.aufrufe }} Aufrufe · {{ p.likes }} Likes · {{ p.engagement }} %</span></span>
+      </a>{% endfor %}</div>
+  </div>
+  {% endif %}
+
+  <div class="card tabelle-karte">
+    <table class="tabelle auswertung-tabelle">
+      <thead><tr>
+        {% for key, name in [('gesendet', 'Datum'), ('', 'Post'), ('', 'Kanal'), ('aufrufe', 'Aufrufe'), ('reichweite', 'Reichweite'), ('likes', 'Likes'), ('kommentare', 'Kommentare'), ('saves', 'Saves'), ('engagement', 'Engagement')] %}
+        <th>{% if key %}<a href="/auswertung?tage={{ tage }}&kanal={{ kanal }}&sort={{ key }}" class="{{ 'on' if sort == key }}">{{ name }}</a>{% else %}{{ name }}{% endif %}</th>
+        {% endfor %}
+      </tr></thead>
+      <tbody>{% for p in posts %}
+        <tr>
+          <td class="small">{{ p.gesendet[8:10] }}.{{ p.gesendet[5:7] }}. {{ p.gesendet[11:] }}<br><span class="muted">{{ p.wochentag[:2] }}</span></td>
+          <td class="auswertung-post">{% if p.bild %}<img src="{{ p.bild }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+            <span>{% if p.post_id %}<a href="/planen/{{ p.post_id }}">{{ p.titel }}</a>{% else %}{{ p.titel }}{% endif %}<br><span class="small muted">{{ p.art }}{% if p.link %} · <a href="{{ p.link }}" target="_blank" rel="noopener">ansehen</a>{% endif %}</span></span></td>
+          <td class="small">{{ p.kanal }}</td>
+          <td>{{ p.aufrufe }}</td><td>{{ p.reichweite }}</td><td>{{ p.likes }}</td><td>{{ p.kommentare }}</td><td>{{ p.saves or '–' }}</td><td>{{ p.engagement }} %</td>
+        </tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <p class="hint">Zahlen aus Buffer, alle 6 Stunden aktualisiert. Bei LinkedIn zählen Impressionen als Aufrufe. Story-Antworten meldet Instagram für Europa immer als 0; Kommentare gibt es nur als Anzahl. Claude berücksichtigt diese Auswertung bei Ideen, Redaktion und Trendradar.</p>
+  {% endif %}
+</section>
+{% endblock %}

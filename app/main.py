@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
+from . import ai, auswertung, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI(title="heykajo Studio")
@@ -61,6 +61,7 @@ def _verwaiste_jobs():
             db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), b["id"])
     for b in db.q("SELECT id FROM brands"):
         vorlagen.uebernehmen_aus_muster(b["id"])
+    auswertung.starten()   # Kennzahlen aus Buffer alle 6 Stunden (nur lesend)
     buffer_sync.starten()   # Buffer-Sync: alle 10 Minuten, nur für Marken mit eingeschaltetem Sync
     redaktion.starten()   # proaktive Redaktion: prüft alle 10 Minuten, ob ein täglicher Lauf fällig ist
 
@@ -615,10 +616,12 @@ def werkstatt(request: Request, ansicht: str = "", m: str = "", gepostet: int = 
         wochen = calendar.Calendar(0).monthdatescalendar(erster.year, erster.month)
         tage = {}
         bei_buffer = buffer_sync.uebertragen(b["id"])
+        aufrufe = auswertung.aufrufe_je_post(b["id"])
         for r in db.q("SELECT * FROM posts WHERE brand_id=? AND datum BETWEEN ? AND ? ORDER BY datum, uhrzeit", b["id"],
                       wochen[0][0].isoformat(), wochen[-1][-1].isoformat()):
             v = post_view(r, laufende)
             v["bei_buffer"] = r["id"] in bei_buffer
+            v["aufrufe"] = aufrufe.get(r["id"])
             v["verschiebbar"] = not v["bei_buffer"] and r["status"] != "Gepostet" and not v["laeuft"]
             tage.setdefault(r["datum"], []).append(v)
         vor = (erster - datetime.timedelta(days=1)).replace(day=1)
@@ -925,7 +928,7 @@ def post_edit(request: Request, pid: int):
                 design_n=len(json.loads(p["design"] or "[]")), manuell=layout_editor.hat_manuelle(p),
                 kanaele=buffer.kanaele_fuer_post(b["id"], p), buffer_da=bool(buffer.verbindung(b["id"])),
                 buffer_sync_an=bool(buffer_sync.einstellungen(b["id"])["aktiv"]), buffer_sendungen=buffer_sync.sendungen(b["id"], pid),
-                buffer_grund=buffer_sync.bereit(b["id"], p),
+                buffer_grund=buffer_sync.bereit(b["id"], p), kennzahlen=auswertung.je_post(b["id"], pid),
                 reel_fotos=[(n, dict(m)) for n, m in medien.post_fotos(b["id"], p)],
                 ig=_ig_profil(b))
 
@@ -1178,6 +1181,25 @@ def connectors_buffer_abgleichen(request: Request):
     b = brand_of(request)
     flash(request, buffer_sync.abgleichen(b["id"]))
     return go("/connectors#buffer")
+
+
+@app.get("/auswertung", response_class=HTMLResponse)
+def auswertung_seite(request: Request, tage: int = 30, kanal: str = "", sort: str = "gesendet"):
+    b = brand_of(request)
+    tage = tage if tage in (7, 30, 90, 0) else 30
+    posts = auswertung.liste(b["id"], tage, kanal)
+    if sort in ("aufrufe", "reichweite", "likes", "kommentare", "saves", "engagement"):
+        posts = sorted(posts, key=lambda p: p[sort], reverse=True)
+    return page(request, "auswertung.html", b=b, posts=posts, z=auswertung.zusammenfassen(posts), tage=tage, kanal=kanal, sort=sort,
+                stand=auswertung.stand(b["id"]), verbunden=bool(buffer.verbindung(b["id"])),
+                dienste=sorted({k["dienst"]: k["dienst_name"] for k in buffer.ausgewaehlte_kanaele(b["id"])}.items()))
+
+
+@app.post("/auswertung/aktualisieren")
+def auswertung_aktualisieren(request: Request):
+    b = brand_of(request)
+    flash(request, auswertung.abholen(b["id"]))
+    return go("/auswertung")
 
 
 @app.post("/planen/{pid}/termin")

@@ -113,7 +113,7 @@
                {% if p.verschiebbar %}draggable="true" data-verschieben="{{ p.id }}"{% endif %}>
               {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy" draggable="false">{% endif %}
               <span class="cal-info">
-                <span class="zeit">{{ p.uhrzeit }} · {{ p.format }}{% if p.bei_buffer %} · <span class="buffer-marke">Buffer</span>{% endif %}</span>
+                <span class="zeit">{{ p.uhrzeit }} · {{ p.format }}{% if p.bei_buffer %} · <span class="buffer-marke">Buffer</span>{% endif %}{% if p.aufrufe %} · {{ p.aufrufe }} Aufrufe{% endif %}</span>
                 <span class="titel">{{ p.kurz }}</span>
               </span>
             </a>

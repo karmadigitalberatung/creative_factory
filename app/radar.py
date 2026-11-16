@@ -82,7 +82,8 @@ def scannen(brand_id):
     bekannt = [r["titel"] for r in db.q("SELECT titel FROM radar WHERE brand_id=? AND art='trend' ORDER BY id DESC LIMIT 30", brand_id)]
     from . import leitlinien
     a = json.loads(b["auftreten"])
-    res = ai.trend_scan(b, leitlinien.themen(a) or e["themen"], bekannt, leitlinien.text(brand_id, a))
+    from . import auswertung
+    res = ai.trend_scan(b, leitlinien.themen(a) or e["themen"], bekannt, "\n".join(x for x in (leitlinien.text(brand_id, a), auswertung.fuer_claude(brand_id)) if x))
     n = 0
     for t in res["trends"]:
         t["quellen"] = [q for q in t.get("quellen") or [] if str(q.get("url", "")).startswith(("http://", "https://"))]
