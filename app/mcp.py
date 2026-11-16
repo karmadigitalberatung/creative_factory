@@ -1,7 +1,7 @@
 """MCP-Server: die Planung eines Accounts direkt aus Claude Desktop (oder jedem MCP-Client) steuern.
 
 Transport: JSON-RPC 2.0 über HTTP (POST /mcp, Streamable HTTP ohne Server-Events). Anmeldung je Account mit einem Zugangsschlüssel
-(Authorization: Bearer cf_…), angelegt unter Einstellungen → Claude Desktop. Für Claude Desktop gibt es eine kleine lokale Brücke
+(Authorization: Bearer cf_…), angelegt unter Einstellungen → Claude. Claude Code verbindet sich direkt (claude mcp add --transport http). Für den Chat in Claude Desktop gibt es eine kleine lokale Brücke
 (app/mcp_bridge.py, nur Standardbibliothek), die stdio auf diesen Endpunkt umsetzt und lokale Dateien für dateien_hochladen einliest.
 
 Die Werkzeuge rufen dieselben Funktionen auf wie die Weboberfläche (Jobs laufen im Serverprozess).
@@ -373,7 +373,8 @@ def dateien_hochladen(b, a):
             raise Fehler("Zusammen größer als 500 MB.")
         liste.append((name, fertig.ablegen(b["id"], name, raw)))
     if not liste:
-        raise Fehler("Keine Dateien bekommen. Gib in pfade die vollständigen Pfade der Dateien an.")
+        raise Fehler("Keine Dateien bekommen. Über die direkte Verbindung (ohne lokale Brücke) kann heykajo Studio keine Dateien von diesem "
+                     "Computer lesen: Bitte die Person, sie in der Web-App unter Planen → Redaktionsplan → „Fertigen Post hochladen“ hochzuladen.")
     art = "video" if any(fertig.art_von(n) == "video" for n, _ in liste) else "bild"
     if a.get("post_id"):
         pid = _post(b, a["post_id"])["id"]

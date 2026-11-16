@@ -854,9 +854,9 @@ window.addEventListener("hashchange", redaktionAuf);
   zeigen();
 })();
 
-// Einstellungen: MCP-Konfiguration kopieren
+// Einstellungen: Prompt bzw. MCP-Konfiguration kopieren (jeweils das Feld im selben Block)
 document.querySelectorAll("[data-kopieren-knopf]").forEach((k) => k.addEventListener("click", async () => {
-  const feld = k.closest(".mcp-neu").querySelector("[data-kopieren]");
+  const feld = (k.closest("[data-kopier-block]") || k.closest(".mcp-neu")).querySelector("[data-kopieren]");
   try { await navigator.clipboard.writeText(feld.value); } catch (e) { feld.select(); document.execCommand("copy"); }
   k.textContent = "Kopiert";
 }));

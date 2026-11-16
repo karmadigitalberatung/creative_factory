@@ -23,19 +23,32 @@
   </section>
 
   <section class="card" id="claude">
-    <div class="bereich-zeile"><h2>Claude Desktop</h2><span class="small muted">MCP-Zugang für {{ auf.label or auf.name or 'diesen Account' }}</span></div>
-    <p class="small muted">Damit planst du direkt in Claude Desktop: Plan lesen, Posts anlegen und ändern, Slides und Reels gestalten lassen, Ideen und Trends,
-      Fotos erzeugen und fertige Dateien hochladen. Claude arbeitet dabei immer nur in diesem Account.</p>
-    {% if mcp_konfig %}
+    <div class="bereich-zeile"><h2>Claude</h2><span class="small muted">Verbindung für {{ auf.label or auf.name or 'diesen Account' }}</span></div>
+    <p class="small muted">Damit planst du direkt mit Claude: Plan lesen, Posts anlegen und ändern, Slides und Reels gestalten lassen, Ideen und Trends,
+      Fotos erzeugen. Claude arbeitet dabei immer nur in diesem Account. Installieren musst du nichts: Du legst unten einen Zugang an,
+      kopierst den Text und fügst ihn in Claude ein.</p>
+    {% if mcp_prompt %}
     <div class="mcp-neu stack">
-      <strong>Neuer Zugang angelegt. Der Schlüssel wird nur jetzt angezeigt.</strong>
+      <strong>Neuer Zugang angelegt. Der Text enthält deinen Schlüssel und wird nur jetzt angezeigt.</strong>
       <ol class="small">
-        <li>Öffne in Claude Desktop <em>Einstellungen → Entwickler → Konfiguration bearbeiten</em> (Datei <code>claude_desktop_config.json</code>).</li>
-        <li>Füge den Eintrag unter <code>mcpServers</code> ein (gibt es schon andere Server, nur den Block <code>creative-factory-{{ mcp_slug }}</code> ergänzen).</li>
-        <li>Claude Desktop neu starten. heykajo Studio muss dabei erreichbar sein.</li>
+        <li>Text kopieren.</li>
+        <li>In Claude Code einfügen: im Terminal (<code>claude</code>) oder im Code-Tab der Claude-App. Claude richtet die Verbindung selbst ein.</li>
+        <li>Eine neue Sitzung starten. Ab dann kennt Claude heykajo Studio.</li>
       </ol>
-      <textarea class="mcp-konfig" rows="12" readonly data-kopieren>{{ mcp_konfig }}</textarea>
-      <div class="row"><button type="button" class="small" data-kopieren-knopf>Kopieren</button><span class="hint">Gib den Schlüssel nicht weiter: Wer ihn hat, kann in diesem Account planen.</span></div>
+      <div class="stack" data-kopier-block>
+        <textarea class="mcp-konfig" rows="14" readonly data-kopieren>{{ mcp_prompt }}</textarea>
+        <div class="row"><button type="button" class="small primary" data-kopieren-knopf>Text kopieren</button><span class="hint">Gib den Schlüssel nicht weiter: Wer ihn hat, kann in diesem Account planen.</span></div>
+      </div>
+      {% if mcp_konfig %}
+      <details class="small">
+        <summary>Chat in Claude Desktop (nur wenn heykajo Studio auf diesem Rechner läuft)</summary>
+        <div class="stack" data-kopier-block>
+          <p>In Claude Desktop <em>Einstellungen → Entwickler → Konfiguration bearbeiten</em> öffnen, den Block <code>heykajo-{{ mcp_slug }}</code> unter <code>mcpServers</code> ergänzen und Claude Desktop neu starten.</p>
+          <textarea class="mcp-konfig" rows="12" readonly data-kopieren>{{ mcp_konfig }}</textarea>
+          <div class="row"><button type="button" class="small" data-kopieren-knopf>Kopieren</button></div>
+        </div>
+      </details>
+      {% endif %}
     </div>
     {% endif %}
     {% if zugaenge %}
@@ -43,13 +56,13 @@
       <thead><tr><th>Name</th><th>Schlüssel</th><th>Angelegt</th><th>Zuletzt benutzt</th><th></th></tr></thead>
       <tbody>{% for z in zugaenge %}
         <tr><td>{{ z.name }}</td><td><code>{{ z.praefix }}…</code></td><td>{{ z.created|zeit }}</td><td>{{ z.zuletzt|zeit if z.zuletzt else 'noch nie' }}</td>
-          <td class="aktionen"><form method="post" action="/einstellungen/mcp/{{ z.id }}/loeschen"><button class="small link danger" data-warnen="Zugang „{{ z.name }}“ löschen? Claude Desktop kommt damit nicht mehr hinein.">Löschen</button></form></td></tr>
+          <td class="aktionen"><form method="post" action="/einstellungen/mcp/{{ z.id }}/loeschen"><button class="small link danger" data-warnen="Zugang „{{ z.name }}“ löschen? Claude kommt damit nicht mehr hinein.">Löschen</button></form></td></tr>
       {% endfor %}</tbody>
     </table>
     {% endif %}
     <form method="post" action="/einstellungen/mcp" class="row">
-      <label class="grow">Name des Zugangs <input name="name" placeholder="z. B. Claude Desktop MacBook"></label>
-      <button class="primary">Zugang für Claude Desktop anlegen</button>
+      <label class="grow">Name des Zugangs <input name="name" placeholder="z. B. Claude MacBook"></label>
+      <button class="primary">Mit Claude verbinden</button>
     </form>
   </section>
 

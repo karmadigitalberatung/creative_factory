@@ -165,9 +165,11 @@ Ein Post öffnet in der **Vorschau**: Feed-Post mit Wischen durch das Carousel (
 
 `app/fertig.py`. Im Redaktionsplan „Fertigen Post hochladen“ (ein Video wird ein Reel, ein Bild ein Einzelbild, mehrere Bilder ein Carousel), am Post „Fertige Slides hochladen“ bzw. „Fertiges Video hochladen“. Fertige Posts werden nicht gestaltet, geschnitten oder animiert (`inhalt.fertig`); Hochformat wird auf 4:5 beschnitten, MOV/WebM in MP4 umgewandelt, das Titelbild aus Sekunde 1 genommen. Optional schreibt Claude Titel und Captions aus den Bildern bzw. Standbildern des Videos. „Doch gestalten lassen“ macht daraus wieder einen normalen Entwurf.
 
-## Claude Desktop (MCP)
+## Claude (MCP)
 
-`app/mcp.py`, Endpunkt `POST /mcp` (JSON-RPC 2.0, MCP-Protokoll 2025-06-18). Unter Einstellungen → Claude Desktop legt man je Account einen Zugang an (Schlüssel `cf_…`, gespeichert ist nur der Hash) und bekommt den Block für `claude_desktop_config.json`. Claude Desktop startet dann `app/mcp_bridge.py` (nur Standardbibliothek), die stdio auf den Endpunkt umsetzt und für `dateien_hochladen` lokale Dateien einliest. Die App muss dabei laufen.
+`app/mcp.py`, Endpunkt `POST /mcp` (JSON-RPC 2.0, Streamable HTTP, MCP-Protokoll 2025-06-18). Unter Einstellungen → Claude legt man je Account einen Zugang an (Schlüssel `cf_…`, gespeichert ist nur der Hash) und bekommt einen Prompt zum Kopieren. In Claude Code eingefügt, verbindet Claude sich selbst: mit `claude mcp add --transport http … --header "Authorization: Bearer cf_…"` oder, wenn der Befehl fehlt (nur Claude-App installiert), per Eintrag in `~/.claude.json`. Installiert wird nichts.
+
+Läuft die App auf `localhost`, gibt es zusätzlich den Block für `claude_desktop_config.json` (Chat in Claude Desktop): Claude Desktop startet dann `app/mcp_bridge.py` (nur Standardbibliothek), die stdio auf den Endpunkt umsetzt und für `dateien_hochladen` lokale Dateien einliest. Über die direkte HTTP-Verbindung kann `dateien_hochladen` keine lokalen Dateien lesen. Für claude.ai und den Chat in Claude Desktop als Custom Connector fehlt noch OAuth am Endpunkt.
 
 Werkzeuge: `marke_lesen`, `plan_lesen`, `post_lesen` (mit Bildern der Slides bzw. Standbildern), `post_anlegen`, `post_aendern`, `post_gestalten` (Slides oder Reel-Animation), `post_design_wunsch` (Art Director der App), `post_status`, `post_einplanen`, `post_fotos_erzeugen`, `post_fotos_waehlen`, `medien_lesen`, `bild_erzeugen`, `dateien_hochladen`, `blog_anlegen`, `blog_aendern`, `blog_aufteilen`, `blog_uebergeben`, `newsletter_erstellen`, `newsletter_an_mailerlite`, `ideen_lesen`, `ideen_vorschlagen`, `idee_anlegen`, `ideen_entscheiden`, `trends_lesen`, `trendradar_starten`, `leitlinien_aendern`.
 

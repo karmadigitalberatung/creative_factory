@@ -283,13 +283,29 @@ def einstellungen(request: Request):
     token = request.session.pop("mcp_neu", None)
     a = json.loads(b["auftreten"])
     slug = re.sub(r"[^a-z0-9]+", "-", (a.get("label") or a.get("name") or "account").lower()).strip("-") or "account"
-    konfig = None
+    konfig = prompt = None
     if token:
-        konfig = json.dumps({"mcpServers": {f"creative-factory-{slug}": {
-            "command": sys.executable, "args": [os.path.join(HERE, "mcp_bridge.py")],
-            "env": {"CF_URL": str(request.base_url).rstrip("/"), "CF_TOKEN": token}}}}, ensure_ascii=False, indent=2)
+        basis = str(request.base_url).rstrip("/")
+        name = a.get("label") or a.get("name")
+        # Claude Code spricht MCP direkt über HTTP: kein Script, nichts zu installieren. Der Prompt lässt Claude den Befehl selbst ausführen.
+        # Fehlt der Befehl claude (nur die Desktop-App ist installiert), trägt Claude den Server selbst in ~/.claude.json ein.
+        eintrag = json.dumps({f"heykajo-{slug}": {"type": "http", "url": f"{basis}/mcp", "headers": {"Authorization": f"Bearer {token}"}}},
+                             ensure_ascii=False, indent=2)
+        prompt = (f"Bitte verbinde dich mit heykajo Studio{f' ({name})' if name else ''}. Führe dazu diesen Befehl aus:\n\n"
+                  f"claude mcp add --transport http --scope user heykajo-{slug} {basis}/mcp --header \"Authorization: Bearer {token}\"\n\n"
+                  "Falls es den Befehl claude hier nicht gibt (zum Beispiel, weil nur die Claude-App installiert ist), ergänze stattdessen in der Datei "
+                  "~/.claude.json unter „mcpServers“ (gibt es das noch nicht, lege es an) diesen Eintrag und lass alles andere in der Datei unverändert:\n\n"
+                  f"{eintrag}\n\n"
+                  f"Prüfe danach, ob die Verbindung steht (claude mcp get heykajo-{slug}, oder per /mcp), und sag mir, ob es geklappt hat. "
+                  "Die Werkzeuge von heykajo Studio stehen ab der nächsten Sitzung bereit; lies dann zuerst marke_lesen und plan_lesen.")
+        # Die lokale Brücke für den Chat in Claude Desktop nur anbieten, wenn die App auf diesem Rechner läuft (sonst zeigen die Pfade in den Server).
+        if request.url.hostname in ("localhost", "127.0.0.1", "::1"):
+            konfig = json.dumps({"mcpServers": {f"heykajo-{slug}": {
+                "command": sys.executable, "args": [os.path.join(HERE, "mcp_bridge.py")],
+                "env": {"CF_URL": basis, "CF_TOKEN": token}}}}, ensure_ascii=False, indent=2)
     import secrets
-    return page(request, "einstellungen.html", b=b, admin=admin, nutzer=nutzer, pw_vorschlag=secrets.token_urlsafe(9), zugaenge=mcp.zugaenge(b["id"]), mcp_konfig=konfig, mcp_slug=slug)
+    return page(request, "einstellungen.html", b=b, admin=admin, nutzer=nutzer, pw_vorschlag=secrets.token_urlsafe(9), zugaenge=mcp.zugaenge(b["id"]),
+                mcp_prompt=prompt, mcp_konfig=konfig, mcp_slug=slug)
 
 
 @app.post("/einstellungen/passwort")
@@ -368,7 +384,7 @@ def admin_zurueck(request: Request):
     return go("/einstellungen#nutzer")
 
 
-# ---------------------------------------------------------------- MCP (Claude Desktop)
+# ---------------------------------------------------------------- MCP (Claude Code, Claude Desktop)
 
 @app.post("/mcp")
 async def mcp_endpunkt(request: Request):
@@ -399,7 +415,7 @@ def mcp_get():
 @app.post("/einstellungen/mcp")
 def einstellungen_mcp(request: Request, name: str = Form("")):
     b = brand_of(request, onboarding_ok=True)
-    token = mcp.zugang_anlegen(b["id"], request.session["uid"], name.strip() or "Claude Desktop")
+    token = mcp.zugang_anlegen(b["id"], request.session["uid"], name.strip() or "Claude")
     request.session["mcp_neu"] = token   # nur einmal anzeigen
     return go("/einstellungen#claude")
 
@@ -408,7 +424,7 @@ def einstellungen_mcp(request: Request, name: str = Form("")):
 def einstellungen_mcp_loeschen(request: Request, zid: int):
     b = brand_of(request, onboarding_ok=True)
     mcp.zugang_loeschen(b["id"], zid)
-    flash(request, "Zugang gelöscht. Claude Desktop kommt mit diesem Schlüssel nicht mehr hinein.")
+    flash(request, "Zugang gelöscht. Claude kommt mit diesem Schlüssel nicht mehr hinein.")
     return go("/einstellungen#claude")
 
 

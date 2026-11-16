@@ -774,7 +774,7 @@ details[open] summary { margin-bottom: 14px; }
 .planen .kopf-aktionen { display: flex; gap: 8px; align-items: flex-start; }
 .planen .kopf-aktionen .aufklapp-panel { width: min(420px, 92vw); }
 
-/* ---------- Einstellungen: Claude Desktop */
+/* ---------- Einstellungen: Claude */
 .mcp-neu { padding: 14px; border: 1px solid var(--tinte); border-radius: var(--rund); background: var(--flaeche); }
 .mcp-neu ol { margin: 0; padding-left: 18px; }
 .mcp-konfig { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; width: 100%; }
