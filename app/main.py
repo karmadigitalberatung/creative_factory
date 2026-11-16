@@ -120,7 +120,7 @@ def page(request, name, **ctx):
     ctx["ich"] = db.one("SELECT id, email, rolle FROM users WHERE id=?", uid) if uid else None
     admin_uid = request.session.get("admin_uid")
     ctx["als_admin"] = db.one("SELECT id, email FROM users WHERE id=?", admin_uid) if admin_uid else None   # Admin sieht gerade ein fremdes Konto
-    ctx["darf_admin"] = bool(db.one("SELECT id FROM users WHERE id=? AND rolle='admin' AND aktiv=1", admin_uid or uid)) if (admin_uid or uid) else False
+    ctx["darf_admin"] = bool(not admin_uid and uid and db.one("SELECT id FROM users WHERE id=? AND rolle='admin' AND aktiv=1", uid))   # nie im fremden Konto
     ctx["ki_text"] = bool(config.ANTHROPIC_API_KEY)
     ctx["ki_bild"] = bool(config.generatoren())
     ctx["generatoren"] = {g: config.GENERATOREN[g] for g in config.generatoren()}
@@ -257,8 +257,11 @@ def register(request: Request, email: str = Form(...), passwort: str = Form(...)
 # ---------------------------------------------------------------- Einstellungen und Nutzerverwaltung
 
 def admin_of(request):
-    """Der echte Admin hinter der Sitzung (auch während er ein fremdes Konto ansieht); sonst 403."""
-    aid = request.session.get("admin_uid") or request.session.get("uid")
+    """Der angemeldete Admin; sonst 403. Während ein Admin ein fremdes Konto ansieht, gibt es dort keine Admin-Rechte:
+    das Konto sieht und verhält sich genau wie für die Person. Zurück geht es nur über „Zurück zum Admin-Account“."""
+    if request.session.get("admin_uid"):
+        raise HTTPException(403)
+    aid = request.session.get("uid")
     u = db.one("SELECT * FROM users WHERE id=?", aid) if aid else None
     if not u or u["rolle"] != "admin" or not u["aktiv"]:
         raise HTTPException(403)
@@ -293,8 +296,8 @@ def admin_konsole(request: Request):
 @app.get("/einstellungen", response_class=HTMLResponse)
 def einstellungen(request: Request):
     b = brand_of(request, onboarding_ok=True)
-    aid = request.session.get("admin_uid") or request.session.get("uid")
-    admin = db.one("SELECT * FROM users WHERE id=? AND rolle='admin' AND aktiv=1", aid)
+    aid = None if request.session.get("admin_uid") else request.session.get("uid")   # im fremden Konto: keine Admin-Hinweise
+    admin = db.one("SELECT * FROM users WHERE id=? AND rolle='admin' AND aktiv=1", aid) if aid else None
     nutzer = []
     token = request.session.pop("mcp_neu", None)
     a = json.loads(b["auftreten"])
