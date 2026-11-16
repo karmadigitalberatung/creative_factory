@@ -11,7 +11,7 @@ from PIL import Image
 from . import config, db, fertig, hub, ideen, jobs, leitlinien, marke, medien, radar, redaktion, storage
 
 PROTOKOLL = "2025-06-18"
-VERSION = "1.0"
+VERSION = "1.1"
 
 
 # ---------------------------------------------------------------- Zugänge (je Account)
@@ -20,6 +20,9 @@ def _schema():
     db.conn().execute("""CREATE TABLE IF NOT EXISTS mcp_zugaenge (
       id INTEGER PRIMARY KEY, brand_id INTEGER NOT NULL, user_id INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '',
       hash TEXT NOT NULL UNIQUE, praefix TEXT NOT NULL, created REAL NOT NULL, zuletzt REAL)""")
+    db.conn().execute("""CREATE TABLE IF NOT EXISTS mcp_uploads (
+      id INTEGER PRIMARY KEY, brand_id INTEGER NOT NULL, hash TEXT NOT NULL UNIQUE, args TEXT NOT NULL,
+      created REAL NOT NULL, bis REAL NOT NULL, benutzt REAL)""")
     db.conn().commit()
 
 
@@ -360,21 +363,12 @@ def leitlinien_aendern(b, a):
     return [_text({"leitlinien": leitlinien.laden(json.loads(db.one("SELECT auftreten FROM brands WHERE id=?", b["id"])["auftreten"]))})]
 
 
-def dateien_hochladen(b, a):
-    """dateien: [{name, base64}] (die lokale Brücke liest sie aus pfade ein)."""
-    liste, gesamt = [], 0
-    for d in a.get("dateien") or []:
-        name = os.path.basename(str(d.get("name") or ""))
-        if not fertig.art_von(name):
-            raise Fehler(f"„{name}“ ist weder Bild noch Video.")
-        raw = base64.b64decode(d.get("base64") or "")
-        gesamt += len(raw)
-        if gesamt > 500 * 1024 * 1024:
-            raise Fehler("Zusammen größer als 500 MB.")
-        liste.append((name, fertig.ablegen(b["id"], name, raw)))
-    if not liste:
-        raise Fehler("Keine Dateien bekommen. Über die direkte Verbindung (ohne lokale Brücke) kann heykajo Studio keine Dateien von diesem "
-                     "Computer lesen: Bitte die Person, sie in der Web-App unter Planen → Redaktionsplan → „Fertigen Post hochladen“ hochzuladen.")
+UPLOAD_MINUTEN = 30
+URL_MB = 200
+
+
+def _uebernehmen(b, liste, a):
+    """Abgelegte Dateien [(name, rel)] als neuen Post oder in post_id übernehmen (Job). Gibt das Ergebnis für Claude zurück."""
     art = "video" if any(fertig.art_von(n) == "video" for n, _ in liste) else "bild"
     if a.get("post_id"):
         pid = _post(b, a["post_id"])["id"]
@@ -383,9 +377,109 @@ def dateien_hochladen(b, a):
     else:
         pid = fertig.neuer_post(b["id"], str(a.get("titel") or "")[:200], _datum(a.get("datum")), str(a.get("uhrzeit") or "08:30"),
                                 a.get("format"), art, len(liste))
-    jobs.start(b["id"], pid, "fertig", fertig.uebernehmen, b["id"], pid, liste, bool(a.get("captions", True)) and bool(config.ANTHROPIC_API_KEY))
-    return [_text({"post_id": pid, "hinweis": "Wird übernommen" + (" und Claude schreibt die Captions" if a.get("captions", True) else "") +
-                   ". Mit post_lesen ansehen."})]
+    captions = bool(a.get("captions", True)) and bool(config.ANTHROPIC_API_KEY)
+    jobs.start(b["id"], pid, "fertig", fertig.uebernehmen, b["id"], pid, liste, captions)
+    return {"post_id": pid, "dateien": [n for n, _ in liste],
+            "hinweis": "Wird übernommen" + (" und Claude schreibt die Captions" if captions else "") + ". Mit post_status und post_lesen ansehen."}
+
+
+def _ablegen(b, roh):
+    """[(name, bytes)] prüfen und in der Mediathek ablegen."""
+    liste, gesamt = [], 0
+    for name, raw in roh:
+        name = os.path.basename(str(name or ""))
+        if not fertig.art_von(name):
+            raise Fehler(f"„{name}“ ist weder Bild noch Video.")
+        gesamt += len(raw)
+        if gesamt > 500 * 1024 * 1024:
+            raise Fehler("Zusammen größer als 500 MB.")
+        liste.append((name, fertig.ablegen(b["id"], name, raw)))
+    return liste
+
+
+def _von_urls(urls):
+    import httpx
+    roh = []
+    for u in urls[:20]:
+        u = str(u)
+        if not u.startswith(("https://", "http://")):
+            raise Fehler(f"„{u}“ ist keine Web-Adresse.")
+        try:
+            with httpx.stream("GET", u, timeout=60, follow_redirects=True) as r:
+                r.raise_for_status()
+                daten = b""
+                for teil in r.iter_bytes():
+                    daten += teil
+                    if len(daten) > URL_MB * 1024 * 1024:
+                        raise Fehler(f"„{u}“ ist größer als {URL_MB} MB.")
+        except httpx.HTTPError as e:
+            raise Fehler(f"„{u}“ ließ sich nicht laden ({e.__class__.__name__}).")
+        name = os.path.basename(u.split("?")[0]) or "datei"
+        if not fertig.art_von(name):   # Endung aus dem Inhaltstyp ergänzen
+            typ = (r.headers.get("content-type") or "").split(";")[0]
+            name += {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "video/mp4": ".mp4", "video/quicktime": ".mov"}.get(typ, "")
+        roh.append((name, daten))
+    return roh
+
+
+def upload_link(b, a):
+    """Einmaliger Upload-Link (30 Minuten) für Dateien, die der Server nicht selbst lesen kann."""
+    _schema()
+    token = "up_" + secrets.token_urlsafe(32)
+    felder = {k: a[k] for k in ("post_id", "titel", "datum", "uhrzeit", "format", "captions") if a.get(k) not in (None, "")}
+    db.run("INSERT INTO mcp_uploads (brand_id, hash, args, created, bis) VALUES (?,?,?,?,?)",
+           b["id"], _hash(token), json.dumps(felder, ensure_ascii=False), db.now(), db.now() + UPLOAD_MINUTEN * 60)
+    return (config.OEFFENTLICHE_URL or "http://localhost:8040").rstrip("/") + "/upload/" + token
+
+
+def upload_einloesen(token, dateien):
+    """POST /upload/<token>: Dateien [(name, bytes)] übernehmen; der Link gilt einmal."""
+    _schema()
+    u = db.one("SELECT * FROM mcp_uploads WHERE hash=?", _hash(token or ""))
+    if not u or u["benutzt"] or u["bis"] < db.now():
+        raise Fehler("Dieser Upload-Link ist ungültig, abgelaufen oder schon benutzt. Bitte mit dateien_hochladen einen neuen holen.")
+    b = db.one("SELECT * FROM brands WHERE id=?", u["brand_id"])
+    liste = _ablegen(b, dateien)
+    if not liste:
+        raise Fehler("Keine Dateien bekommen (Feld „datei“).")
+    db.run("UPDATE mcp_uploads SET benutzt=? WHERE id=?", db.now(), u["id"])
+    return _uebernehmen(b, liste, json.loads(u["args"]))
+
+
+def dateien_hochladen(b, a):
+    """Drei Wege: dateien (base64, kommt von der lokalen Brücke), urls (öffentliche Links, der Server lädt sie) oder,
+    über die direkte Verbindung, ein fertiger curl-Befehl mit einmaligem Upload-Link für die lokalen pfade."""
+    roh = [(d.get("name"), base64.b64decode(d.get("base64") or "")) for d in a.get("dateien") or []]
+    if a.get("urls"):
+        roh += _von_urls(a["urls"])
+    if roh:
+        return [_text(_uebernehmen(b, _ablegen(b, roh), a))]
+    pfade = [str(x) for x in a.get("pfade") or []]
+    for x in pfade:
+        if not fertig.art_von(x):
+            raise Fehler(f"„{os.path.basename(x)}“ ist weder Bild noch Video.")
+    url = upload_link(b, a)
+    teile = " ".join("-F " + json.dumps("datei=@" + x) for x in pfade) if pfade else "-F datei=@/pfad/zur/datei.png"
+    befehl = f"curl -sS --fail-with-body {teile} {url}"
+    return [_text({"upload_befehl": befehl, "gueltig_minuten": UPLOAD_MINUTEN, "einmalig": True,
+                   "hinweis": "heykajo Studio kann über die direkte Verbindung keine Dateien von diesem Computer lesen. Führe diesen Befehl im Terminal "
+                              "aus (Reihenfolge der Dateien = Reihenfolge der Slides). Die Antwort enthält die post_id; danach mit post_status und "
+                              "post_lesen nachsehen. Gibt es kein Terminal, die Dateien als öffentliche Links über urls übergeben oder die Person "
+                              "bitten, sie in der Web-App unter Planen → „Fertigen Post hochladen“ hochzuladen."})]
+
+
+def post_loeschen(b, a):
+    """Post, Blog oder Newsletter endgültig löschen, wie „Post löschen“ in der Web-App. Nur mit bestaetigt=true."""
+    p = _post(b, a.get("post_id"))
+    if a.get("bestaetigt") is not True:
+        raise Fehler(f"Löschen ist endgültig. Frag die Person, ob „{p['titel'] or 'Ohne Titel'}“ (id {p['id']}) wirklich gelöscht werden soll, "
+                     "und ruf das Werkzeug dann mit bestaetigt=true auf.")
+    if jobs.running(b["id"], p["id"]):
+        raise Fehler("An diesem Post läuft gerade etwas. Bitte warten, bis es fertig ist.")
+    db.run("DELETE FROM chats WHERE post_id=? AND brand_id=?", p["id"], b["id"])
+    db.run("DELETE FROM inputs WHERE post_id=? AND brand_id=?", p["id"], b["id"])
+    db.run("DELETE FROM posts WHERE id=? AND brand_id=?", p["id"], b["id"])
+    return [_text({"geloescht": p["id"], "titel": p["titel"], "format": p["format"]})]
 
 
 def blog_anlegen(b, a):
@@ -489,10 +583,16 @@ WERKZEUGE = [
      _o({"art": STR, "anzahl": INT, "bilder": BOOL}), medien_lesen),
     ("bild_erzeugen", "Ein Bild im Bildstil der Marke erzeugen und in die Mediathek legen. Personen mit @Name erwähnen.",
      _o({"beschreibung": STR, "format": {"type": "string", "enum": ["4:5", "9:16", "1:1", "16:9"]}}, ["beschreibung"]), bild_erzeugen),
-    ("dateien_hochladen", "Fertige Dateien (Bilder oder ein Video) von diesem Computer hochladen: als neuer Post oder in post_id. Ein Video wird ein Reel, "
-     "ein Bild ein Einzelbild, mehrere Bilder ein Carousel. Sie werden so gepostet, wie sie sind; captions=true lässt Claude in der App Captions schreiben.",
-     _o({"pfade": {"type": "array", "items": STR, "description": "Vollständige lokale Dateipfade"}, "post_id": INT, "titel": STR, "datum": STR,
-         "uhrzeit": STR, "format": STR, "captions": BOOL}, ["pfade"]), dateien_hochladen),
+    ("dateien_hochladen", "Fertige Dateien (Bilder oder ein Video) hochladen: als neuer Post oder in post_id. Ein Video wird ein Reel, ein Bild ein "
+     "Einzelbild, mehrere Bilder ein Carousel (Reihenfolge = Slides). Sie werden so gepostet, wie sie sind; captions=true lässt Claude in der App Captions "
+     "schreiben. Lokale Dateien: pfade angeben; ohne lokale Brücke kommt ein fertiger curl-Befehl mit einmaligem Upload-Link zurück, den du im Terminal "
+     "ausführst. Dateien im Netz: urls angeben, der Server lädt sie selbst.",
+     _o({"pfade": {"type": "array", "items": STR, "description": "Vollständige lokale Dateipfade"},
+         "urls": {"type": "array", "items": STR, "description": "Öffentliche Links zu Bildern oder Videos"},
+         "post_id": INT, "titel": STR, "datum": STR, "uhrzeit": STR, "format": STR, "captions": BOOL}), dateien_hochladen),
+    ("post_loeschen", "Post, Blogbeitrag oder Newsletter endgültig löschen (wie „Post löschen“ in der App). Nicht rückgängig zu machen: vorher die Person "
+     "fragen und erst dann mit bestaetigt=true aufrufen.",
+     _o({"post_id": INT, "bestaetigt": BOOL}, ["post_id"]), post_loeschen),
     ("blog_anlegen", "Blogbeitrag anlegen (nur wenn ein Blog eingerichtet ist). Ohne text schreibt die App ihn aus titel und notizen nach Schreibstil und Leitlinien.",
      _o({"titel": STR, "notizen": STR, "teaser": STR, "text": {"type": "string", "description": "Markdown, optional"}, "datum": STR, "schreiben": BOOL}, ["titel"]), blog_anlegen),
     ("blog_aendern", "Blogbeitrag ändern (Titel, Teaser, Text als Markdown, Notizen, SEO). ueberarbeiten=true lässt die App ihn nach den Notizen überarbeiten.",
@@ -519,10 +619,10 @@ WERKZEUGE = [
          "vorbilder": {"type": "array", "items": {"type": "object"}}, "sonstiges": STR}), leitlinien_aendern),
 ]
 
-ANLEITUNG = ("Creative Factory: Content Hub dieses Accounts (Instagram, LinkedIn, Blog, Newsletter). Lies zuerst marke_lesen und plan_lesen. "
+ANLEITUNG = ("heykajo Studio: Content Hub dieses Accounts (Instagram, LinkedIn, Blog, Newsletter). Lies zuerst marke_lesen und plan_lesen. "
              "Blogbeiträge lassen sich mit blog_aufteilen in Social-Posts zerlegen; Newsletter entstehen aus gewählten Beiträgen. "
              "Posts entstehen als Entwurf (post_anlegen), post_gestalten erzeugt Slides oder die Reel-Animation, post_lesen zeigt das Ergebnis als Bilder. "
-             "Fertige eigene Dateien lädt dateien_hochladen hoch. Längere Arbeiten laufen im Hintergrund: mit post_status nachsehen. "
+             "Fertige eigene Dateien lädt dateien_hochladen hoch, post_loeschen löscht (nur nach Rückfrage). Längere Arbeiten laufen im Hintergrund: mit post_status nachsehen. "
              "Halte dich an Schreibstil und Leitlinien der Marke und erfinde keine Fakten über die Person.")
 
 
@@ -536,7 +636,7 @@ def handle(msg, b, helfer):
             ver = (msg.get("params") or {}).get("protocolVersion") or PROTOKOLL
             name = json.loads(b["auftreten"]).get("name") or "Account"
             res = {"protocolVersion": ver, "capabilities": {"tools": {"listChanged": False}},
-                   "serverInfo": {"name": "creative-factory", "title": f"Creative Factory · {name}", "version": VERSION}, "instructions": ANLEITUNG}
+                   "serverInfo": {"name": "heykajo-studio", "title": f"heykajo Studio · {name}", "version": VERSION}, "instructions": ANLEITUNG}
         elif methode == "ping":
             res = {}
         elif methode == "tools/list":

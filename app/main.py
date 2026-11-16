@@ -412,6 +412,17 @@ def mcp_get():
     return Response(status_code=405, headers={"Allow": "POST"})
 
 
+@app.post("/upload/{token}")
+async def mcp_upload(token: str, datei: List[UploadFile] = File(...)):
+    """Einmaliger Upload-Link aus dateien_hochladen (MCP über die direkte Verbindung): curl -F datei=@… <link>."""
+    import anyio
+    dateien = [(d.filename, await d.read()) for d in datei if d.filename]
+    try:
+        return JSONResponse(await anyio.to_thread.run_sync(mcp.upload_einloesen, token, dateien))
+    except mcp.Fehler as e:
+        return JSONResponse({"fehler": str(e)}, status_code=400)
+
+
 @app.post("/einstellungen/mcp")
 def einstellungen_mcp(request: Request, name: str = Form("")):
     b = brand_of(request, onboarding_ok=True)
