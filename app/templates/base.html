@@ -47,9 +47,13 @@
       </a>
       {% endif %}
       <div class="profil">
-        <span>{{ auf.label or auf.name }}</span>
-        <a class="profil-link {{ 'on' if path.startswith('/einstellungen') }}" href="/einstellungen">Einstellungen</a>
-        <form method="post" action="/logout"><button class="link">Abmelden</button></form>
+        <span class="profil-avatar" aria-hidden="true">{{ ((auf.label or auf.name or (ich.email if ich else '?'))[:2])|upper }}</span>
+        <span class="profil-name ellipsis">{{ auf.label or auf.name }}<span class="small">{{ 'Admin' if darf_admin else 'Konto' }}</span></span>
+        <span class="profil-knoepfe">
+          <a class="profil-knopf {{ 'on' if path.startswith('/einstellungen') }}" href="/einstellungen" aria-label="Einstellungen" title="Einstellungen"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></a>
+          {% if darf_admin %}<a class="profil-knopf {{ 'on' if path.startswith('/admin') }}" href="/admin" aria-label="Admin-Konsole" title="Admin-Konsole"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg></a>{% endif %}
+          <form method="post" action="/logout"><button class="profil-knopf" aria-label="Abmelden" title="Abmelden"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3"/></svg></button></form>
+        </span>
       </div>
     </div>
   </nav>

@@ -120,6 +120,7 @@ def page(request, name, **ctx):
     ctx["ich"] = db.one("SELECT id, email, rolle FROM users WHERE id=?", uid) if uid else None
     admin_uid = request.session.get("admin_uid")
     ctx["als_admin"] = db.one("SELECT id, email FROM users WHERE id=?", admin_uid) if admin_uid else None   # Admin sieht gerade ein fremdes Konto
+    ctx["darf_admin"] = bool(db.one("SELECT id FROM users WHERE id=? AND rolle='admin' AND aktiv=1", admin_uid or uid)) if (admin_uid or uid) else False
     ctx["ki_text"] = bool(config.ANTHROPIC_API_KEY)
     ctx["ki_bild"] = bool(config.generatoren())
     ctx["generatoren"] = {g: config.GENERATOREN[g] for g in config.generatoren()}
@@ -270,18 +271,31 @@ def _nutzer_neu(email, passwort, rolle="nutzer"):
     return uid
 
 
+def _nutzer_liste():
+    nutzer = []
+    for u in db.q("SELECT id, email, rolle, aktiv, created, letzter_login FROM users ORDER BY id"):
+        br = db.one("SELECT id, auftreten, onboarded FROM brands WHERE user_id=?", u["id"])
+        a = json.loads(br["auftreten"]) if br else {}
+        n = db.one("SELECT COUNT(*) n FROM posts WHERE brand_id=?", br["id"])["n"] if br else 0
+        nutzer.append(dict(u, marke=a.get("label") or a.get("name") or "", onboarded=bool(br and br["onboarded"]), posts=n))
+    return nutzer
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_konsole(request: Request):
+    """Admin-Konsole: alle Konten anlegen, öffnen, sperren, Rollen und Passwörter."""
+    admin = admin_of(request)
+    b = brand_of(request, onboarding_ok=True, einrichtung_ok=True)
+    import secrets
+    return page(request, "admin.html", b=b, admin=admin, nutzer=_nutzer_liste(), pw_vorschlag=secrets.token_urlsafe(9))
+
+
 @app.get("/einstellungen", response_class=HTMLResponse)
 def einstellungen(request: Request):
     b = brand_of(request, onboarding_ok=True)
     aid = request.session.get("admin_uid") or request.session.get("uid")
     admin = db.one("SELECT * FROM users WHERE id=? AND rolle='admin' AND aktiv=1", aid)
     nutzer = []
-    if admin:
-        for u in db.q("SELECT id, email, rolle, aktiv, created, letzter_login FROM users ORDER BY id"):
-            br = db.one("SELECT id, auftreten, onboarded FROM brands WHERE user_id=?", u["id"])
-            a = json.loads(br["auftreten"]) if br else {}
-            n = db.one("SELECT COUNT(*) n FROM posts WHERE brand_id=?", br["id"])["n"] if br else 0
-            nutzer.append(dict(u, marke=a.get("label") or a.get("name") or "", onboarded=bool(br and br["onboarded"]), posts=n))
     token = request.session.pop("mcp_neu", None)
     a = json.loads(b["auftreten"])
     slug = re.sub(r"[^a-z0-9]+", "-", (a.get("label") or a.get("name") or "account").lower()).strip("-") or "account"
@@ -337,7 +351,7 @@ def admin_nutzer_neu(request: Request, email: str = Form(...), passwort: str = F
     else:
         _nutzer_neu(email, passwort, "admin" if rolle == "admin" else "nutzer")
         flash(request, f"Konto für {email} angelegt. Gib der Person E-Mail und Passwort weiter; beim ersten Login startet die Einrichtung.")
-    return go("/einstellungen#nutzer")
+    return go("/admin")
 
 
 @app.post("/admin/nutzer/{uid}/aktion")
@@ -360,7 +374,7 @@ def admin_nutzer_aktion(request: Request, uid: int, aktion: str = Form(...), pas
         else:
             db.run("UPDATE users SET pw=? WHERE id=?", db.hash_pw(passwort), uid)
             flash(request, f"Neues Passwort für {u['email']} gesetzt.")
-    return go("/einstellungen#nutzer")
+    return go("/admin")
 
 
 @app.post("/admin/nutzer/{uid}/oeffnen")
@@ -383,7 +397,7 @@ def admin_zurueck(request: Request):
         return go("/")
     request.session.clear()
     request.session["uid"] = aid
-    return go("/einstellungen#nutzer")
+    return go("/admin")
 
 
 # ---------------------------------------------------------------- MCP (Claude Code, Claude Desktop)

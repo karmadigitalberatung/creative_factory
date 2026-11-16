@@ -96,9 +96,9 @@ Auf der Seite Auftreten lässt sich das mit „Von der Website neu übernehmen�
 
 Nach „Start“ läuft die Einrichtung als ein Job (`einrichtung`): Website lesen, Farben, Schriften und Stil übernehmen, Fotos holen, Leitlinien entwerfen, Carousel- und Einzelbild-Vorlagen, eigene Newsletter-Vorlage. Solange sie läuft (höchstens 45 Minuten), ist die App für das Konto gesperrt: jede Seite leitet auf `/einrichtung` mit dem Fortschritt; danach geht es zu Design & Layout.
 
-## Einstellungen und Nutzerverwaltung
+## Einstellungen und Admin-Konsole
 
-Unten links in der Seitenleiste:
+Unten links in der Seitenleiste ein kleiner Profilbereich mit Knöpfen für Einstellungen, Admin-Konsole (`/admin`, nur für Admins) und Abmelden:
 
 - **Mein Konto**: das eigene Passwort ändern.
 - **Nutzer** (nur für Admins): alle Konten mit Marke, Rolle, Anzahl Posts und letztem Login.

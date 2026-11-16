@@ -67,56 +67,7 @@
   </section>
 
   {% if admin %}
-  <section class="card" id="nutzer">
-    <div class="bereich-zeile"><h2>Nutzer</h2><span class="small muted">{{ nutzer|length }} Konten</span></div>
-    <p class="small muted"><strong>Öffnen</strong> zeigt dir ein Konto so, wie die Person es sieht. Oben erscheint dann „Zurück zum Admin-Account“.</p>
-    <div class="tabelle-karte">
-      <table class="tabelle nutzer-tabelle">
-        <thead><tr><th>E-Mail</th><th>Marke</th><th>Rolle</th><th>Posts</th><th>Angelegt</th><th>Letzter Login</th><th></th></tr></thead>
-        <tbody>
-          {% for u in nutzer %}
-          <tr class="{{ 'gesperrt' if not u.aktiv }}">
-            <td><strong>{{ u.email }}</strong>{% if u.id == admin.id %} <span class="chip">du</span>{% endif %}{% if not u.aktiv %} <span class="chip hinweis">gesperrt</span>{% endif %}</td>
-            <td>{{ u.marke or '—' }}{% if not u.onboarded %} <span class="chip">Einrichtung offen</span>{% endif %}</td>
-            <td>{{ 'Admin' if u.rolle == 'admin' else 'Nutzer' }}</td>
-            <td>{{ u.posts }}</td>
-            <td>{{ u.created|zeit }}</td>
-            <td>{{ u.letzter_login|zeit if u.letzter_login else '—' }}</td>
-            <td>
-              <div class="aktionen">
-                {% if u.id != admin.id %}
-                <form method="post" action="/admin/nutzer/{{ u.id }}/oeffnen"><button class="small primary">Öffnen</button></form>
-                {% endif %}
-                <details>
-                  <summary>Mehr</summary>
-                  <form method="post" action="/admin/nutzer/{{ u.id }}/aktion">
-                    <input type="password" name="passwort" placeholder="Neues Passwort" minlength="10" autocomplete="new-password" aria-label="Neues Passwort für {{ u.email }}">
-                    <button class="small" name="aktion" value="passwort">Setzen</button>
-                  </form>
-                  {% if u.id != admin.id %}
-                  <form method="post" action="/admin/nutzer/{{ u.id }}/aktion">
-                    {% if u.rolle == 'admin' %}<button class="small" name="aktion" value="nutzer">Zum Nutzer machen</button>
-                    {% else %}<button class="small" name="aktion" value="admin" data-warnen="{{ u.email }} zum Admin machen? Admins sehen alle Konten.">Zum Admin machen</button>{% endif %}
-                    {% if u.aktiv %}<button class="small link danger" name="aktion" value="sperren" data-warnen="{{ u.email }} sperren? Die Person kann sich dann nicht mehr anmelden.">Sperren</button>
-                    {% else %}<button class="small" name="aktion" value="entsperren">Entsperren</button>{% endif %}
-                  </form>
-                  {% endif %}
-                </details>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <form method="post" action="/admin/nutzer/neu" class="row nutzer-neu">
-      <label class="grow">E-Mail <input type="email" name="email" required autocomplete="off"></label>
-      <label>Startpasswort <input type="text" name="passwort" minlength="10" required autocomplete="off" value="{{ pw_vorschlag }}" spellcheck="false"></label>
-      <label>Rolle <select name="rolle"><option value="nutzer">Nutzer</option><option value="admin">Admin</option></select></label>
-      <button class="primary">Nutzer anlegen</button>
-    </form>
-  </section>
+  <p class="small muted">Nutzer anlegen, öffnen und sperren: <a href="/admin">Admin-Konsole</a>.</p>
   {% endif %}
 </section>
 {% endblock %}
