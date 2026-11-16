@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, buffer, config, db, fertig, hub, ideen, jobs, layout_editor, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
+from . import ai, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI(title="heykajo Studio")
@@ -61,6 +61,7 @@ def _verwaiste_jobs():
             db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), b["id"])
     for b in db.q("SELECT id FROM brands"):
         vorlagen.uebernehmen_aus_muster(b["id"])
+    buffer_sync.starten()   # Buffer-Sync: alle 10 Minuten, nur für Marken mit eingeschaltetem Sync
     redaktion.starten()   # proaktive Redaktion: prüft alle 10 Minuten, ob ein täglicher Lauf fällig ist
 
 WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -919,6 +920,8 @@ def post_edit(request: Request, pid: int):
                 laeuft=jobs.LABELS.get(laufende[0]["kind"]) if laufende else None, fehler=jobs.last_error(b["id"], pid),
                 design_n=len(json.loads(p["design"] or "[]")), manuell=layout_editor.hat_manuelle(p),
                 kanaele=buffer.kanaele_fuer_post(b["id"], p), buffer_da=bool(buffer.verbindung(b["id"])),
+                buffer_sync_an=bool(buffer_sync.einstellungen(b["id"])["aktiv"]), buffer_sendungen=buffer_sync.sendungen(b["id"], pid),
+                buffer_grund=buffer_sync.bereit(b["id"], p),
                 reel_fotos=[(n, dict(m)) for n, m in medien.post_fotos(b["id"], p)],
                 ig=_ig_profil(b))
 
@@ -1082,7 +1085,13 @@ def connectors(request: Request):
     gruppen = {}
     for k in (v["kanaele"] if v else []):
         gruppen.setdefault(k["org"] or "Buffer", []).append(k)
-    return page(request, "connectors.html", b=b, buf=v, gruppen=gruppen, oauth=buffer.oauth_moeglich(),
+    sync = buffer_sync.einstellungen(b["id"])
+    namen = {k["id"]: k["dienst_name"] for k in (v["kanaele"] if v else [])}
+    titel = {p["id"]: p["titel"] for p in db.q("SELECT id, titel FROM posts WHERE brand_id=?", b["id"])}
+    liste = [dict(s, kanal=namen.get(s["kanal_id"], "?"), titel=titel.get(s["post_id"], "(gelöscht)")) for s in buffer_sync.sendungen(b["id"])
+             if s["status"] in ("geplant", "wartet", "fehler")]
+    return page(request, "connectors.html", b=b, buf=v, gruppen=gruppen, oauth=buffer.oauth_moeglich(), sync=sync, sendungen=liste,
+                oeffentlich=bool(config.OEFFENTLICHE_URL), sync_max=buffer_sync.BUFFER_LIMIT,
                 blog_ziel=hub.ziel(b["id"], "blog"), nl_ziel=hub.ziel(b["id"], "newsletter"), blog_dienste=hub.BLOG_DIENSTE,
                 redirect_uri=_buffer_redirect(request))
 
@@ -1144,6 +1153,36 @@ async def connectors_buffer_channels(request: Request):
     buffer.auswahl_setzen(b["id"], [str(x) for x in form.getlist("kanal")])
     flash(request, "Auswahl gespeichert.")
     return go("/connectors")
+
+
+@app.post("/connectors/buffer/sync")
+def connectors_buffer_sync(request: Request, aktiv: str = Form(""), max_je_kanal: int = Form(buffer_sync.STANDARD_MAX)):
+    b = brand_of(request)
+    an = aktiv == "1"
+    buffer_sync.setzen(b["id"], an, max_je_kanal)
+    if an:
+        if not any(j["kind"] == "buffer" for j in jobs.running(b["id"])):
+            jobs.start(b["id"], None, "buffer", buffer_sync.abgleichen, b["id"])
+        flash(request, "Buffer-Sync ist an. Abgenommene Posts mit Termin in der Zukunft gehen jetzt an Buffer, vergangene nie.")
+    else:
+        flash(request, "Buffer-Sync ist aus. Bereits an Buffer geschickte Posts bleiben dort eingeplant.")
+    return go("/connectors#buffer")
+
+
+@app.post("/connectors/buffer/abgleichen")
+def connectors_buffer_abgleichen(request: Request):
+    b = brand_of(request)
+    flash(request, buffer_sync.abgleichen(b["id"]))
+    return go("/connectors#buffer")
+
+
+@app.post("/planen/{pid}/buffer/erneut")
+def post_buffer_erneut(request: Request, pid: int):
+    b = brand_of(request)
+    post_of(b, pid)
+    buffer_sync.erneut_versuchen(b["id"], pid)
+    flash(request, buffer_sync.abgleichen(b["id"]))
+    return go(f"/planen/{pid}")
 
 
 @app.post("/connectors/buffer/trennen")

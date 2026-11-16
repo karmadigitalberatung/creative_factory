@@ -932,3 +932,15 @@ details[open] summary { margin-bottom: 14px; }
 .einrichtung-schritte li.aktiv::before { background: var(--akzent); border-color: rgba(17,17,17,.25); animation: offen-puls-klein 1.4s ease-in-out infinite; }
 @keyframes offen-puls-klein { 50% { transform: scale(1.25); } }
 @media (prefers-reduced-motion: reduce) { .einrichtung-schritte li.aktiv::before { animation: none; } }
+
+.buffer-sync { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--linie); }
+.buffer-liste { width: 100%; border-collapse: collapse; font-size: 13px; }
+.buffer-liste th { text-align: left; font: 500 11px/1.4 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--linie); }
+.buffer-liste td { padding: 8px; border-bottom: 1px solid var(--linie); vertical-align: top; }
+.buffer-post { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.buffer-stand { font-weight: 500; }
+.buffer-stand::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--linie-2); }
+.buffer-stand.s-geplant::before { background: var(--akzent); box-shadow: var(--punkt-rand); }
+.buffer-stand.s-gesendet::before { background: var(--tinte); }
+.buffer-stand.s-fehler { color: var(--bad); }
+.buffer-stand.s-fehler::before { background: var(--bad); }

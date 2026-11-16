@@ -9,7 +9,7 @@ _pool = ThreadPoolExecutor(max_workers=2)
 
 LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "vorlagen": "Gestaltet Vorlagen", "blog": "Schreibt den Blogbeitrag", "aufteilen": "Teilt in Posts auf", "newsletter": "Schreibt den Newsletter", "uebergabe": "Übergibt als Entwurf", "fertig": "Übernimmt die Dateien", "captions": "Schreibt Captions", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
           "schnitt": "Schneidet Video", "animation": "Animiert Reel",
-          "muster": "Musterseiten", "einrichtung": "Richtet dein Konto ein", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
+          "muster": "Musterseiten", "buffer": "Gleicht mit Buffer ab", "einrichtung": "Richtet dein Konto ein", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
 
 
 def start(brand_id, post_id, kind, fn, *args):
