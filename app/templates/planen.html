@@ -105,13 +105,17 @@
           {% for t in ['Mo','Di','Mi','Do','Fr','Sa','So'] %}<div class="dow">{{ t }}</div>{% endfor %}
           {% for woche in wochen %}{% for tag in woche %}
           {% set key = tag.isoformat() %}{% set posts = tage.get(key, []) %}
-          <div class="day {{ 'other' if tag.month != erster.month }} {{ 'today' if tag == heute }} {{ 'rhythmus' if tag.weekday() in rhythmus and tag > heute and not posts }}">
+          <div class="day {{ 'other' if tag.month != erster.month }} {{ 'today' if tag == heute }} {{ 'rhythmus' if tag.weekday() in rhythmus and tag > heute and not posts }} {{ 'vorbei' if tag < heute }}" data-datum="{{ key }}">
             <span class="dn">{{ tag.day }}</span>
             {% for p in posts %}
-            <a class="cal-post s-{{ p.status|lower|replace(' ', '-') }}" href="/planen/{{ p.id }}" title="{{ p.kurz }} · {{ p.status|status }}" data-format="{{ p.format }}" data-status="{{ p.status }}" data-titel="{{ p.kurz|lower }}">
-              {% if p.thumb and loop.first %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="">{% endif %}
-              <span class="zeit">{{ p.uhrzeit }} · {{ p.format }}</span>
-              <span class="titel">{{ p.kurz }}</span>
+            <a class="cal-post s-{{ p.status|lower|replace(' ', '-') }} {{ 'mit-bild' if p.thumb }}" href="/planen/{{ p.id }}" data-format="{{ p.format }}" data-status="{{ p.status }}" data-titel="{{ p.kurz|lower }}"
+               title="{{ p.kurz }} · {{ p.status|status }}{{ ' · bei Buffer eingeplant, Termin im Post ändern' if p.bei_buffer else (' · zum Verschieben auf einen anderen Tag ziehen' if p.verschiebbar else '') }}"
+               {% if p.verschiebbar %}draggable="true" data-verschieben="{{ p.id }}"{% endif %}>
+              {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy" draggable="false">{% endif %}
+              <span class="cal-info">
+                <span class="zeit">{{ p.uhrzeit }} · {{ p.format }}{% if p.bei_buffer %} · <span class="buffer-marke">Buffer</span>{% endif %}</span>
+                <span class="titel">{{ p.kurz }}</span>
+              </span>
             </a>
             {% endfor %}
           </div>

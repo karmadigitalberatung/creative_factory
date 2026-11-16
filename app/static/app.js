@@ -911,3 +911,28 @@ document.querySelectorAll("[data-html-kopieren]").forEach((k) => k.addEventListe
   const html = await (await fetch(k.dataset.htmlKopieren, { credentials: "same-origin" })).text();
   try { await navigator.clipboard.writeText(html); k.textContent = "Kopiert"; } catch (e) { k.textContent = "Kopieren nicht erlaubt"; }
 }));
+
+// Kalender: Post auf einen anderen Tag ziehen (nur solange er nicht an Buffer übertragen ist; nie in die Vergangenheit)
+(() => {
+  let ziehend = null;
+  document.querySelectorAll(".cal-post[data-verschieben]").forEach((k) => {
+    k.addEventListener("dragstart", (e) => { ziehend = k; k.classList.add("zieht"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", k.dataset.verschieben); });
+    k.addEventListener("dragend", () => { k.classList.remove("zieht"); ziehend = null; document.querySelectorAll(".day.drop-ziel").forEach((d) => d.classList.remove("drop-ziel")); });
+  });
+  document.querySelectorAll(".cal .day[data-datum]").forEach((tag) => {
+    const erlaubt = () => ziehend && !tag.classList.contains("vorbei") && ziehend.closest(".day") !== tag;
+    tag.addEventListener("dragover", (e) => { if (erlaubt()) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; tag.classList.add("drop-ziel"); } });
+    tag.addEventListener("dragleave", (e) => { if (!tag.contains(e.relatedTarget)) tag.classList.remove("drop-ziel"); });
+    tag.addEventListener("drop", async (e) => {
+      e.preventDefault(); tag.classList.remove("drop-ziel");
+      if (!erlaubt()) return;
+      const k = ziehend, alt = k.closest(".day");
+      tag.appendChild(k);   // sofort zeigen, bei Fehler zurück
+      try {
+        const r = await fetch(`/planen/${k.dataset.verschieben}/termin`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ datum: tag.dataset.datum }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.fehler || "Verschieben ging nicht.");
+      } catch (f) { alt.appendChild(k); alert(f.message); }
+    });
+  });
+})();

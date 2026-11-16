@@ -614,9 +614,13 @@ def werkstatt(request: Request, ansicht: str = "", m: str = "", gepostet: int = 
             erster = heute.replace(day=1)
         wochen = calendar.Calendar(0).monthdatescalendar(erster.year, erster.month)
         tage = {}
+        bei_buffer = buffer_sync.uebertragen(b["id"])
         for r in db.q("SELECT * FROM posts WHERE brand_id=? AND datum BETWEEN ? AND ? ORDER BY datum, uhrzeit", b["id"],
                       wochen[0][0].isoformat(), wochen[-1][-1].isoformat()):
-            tage.setdefault(r["datum"], []).append(post_view(r, laufende))
+            v = post_view(r, laufende)
+            v["bei_buffer"] = r["id"] in bei_buffer
+            v["verschiebbar"] = not v["bei_buffer"] and r["status"] != "Gepostet" and not v["laeuft"]
+            tage.setdefault(r["datum"], []).append(v)
         vor = (erster - datetime.timedelta(days=1)).replace(day=1)
         nach = (erster + datetime.timedelta(days=32)).replace(day=1)
         ctx.update(wochen=wochen, tage=tage, erster=erster, heute=heute, monat=f"{MONATE[erster.month - 1]} {erster.year}",
@@ -1174,6 +1178,26 @@ def connectors_buffer_abgleichen(request: Request):
     b = brand_of(request)
     flash(request, buffer_sync.abgleichen(b["id"]))
     return go("/connectors#buffer")
+
+
+@app.post("/planen/{pid}/termin")
+async def post_termin(request: Request, pid: int):
+    """Kalender: Post per Ziehen auf einen anderen Tag legen (Uhrzeit bleibt). Gesperrt, sobald er bei Buffer liegt."""
+    b = brand_of(request)
+    p = post_of(b, pid)
+    d = await request.json()
+    try:
+        neu = datetime.date.fromisoformat(str(d.get("datum") or ""))
+    except ValueError:
+        return JSONResponse({"fehler": "Ungültiges Datum."}, status_code=400)
+    if pid in buffer_sync.uebertragen(b["id"]):
+        return JSONResponse({"fehler": "Dieser Post ist schon an Buffer übertragen. Den Termin bitte im Post ändern; der Sync zieht ihn bei Buffer nach."}, status_code=409)
+    if p["status"] == "Gepostet":
+        return JSONResponse({"fehler": "Dieser Post ist schon gepostet."}, status_code=409)
+    if neu < datetime.date.today():
+        return JSONResponse({"fehler": "In die Vergangenheit lässt sich nichts verschieben."}, status_code=400)
+    db.run("UPDATE posts SET datum=?, updated=? WHERE id=? AND brand_id=?", neu.isoformat(), db.now(), pid, b["id"])
+    return JSONResponse({"ok": True, "datum": neu.isoformat()})
 
 
 @app.post("/planen/{pid}/buffer/erneut")

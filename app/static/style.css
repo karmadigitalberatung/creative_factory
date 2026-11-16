@@ -944,3 +944,23 @@ details[open] summary { margin-bottom: 14px; }
 .buffer-stand.s-gesendet::before { background: var(--tinte); }
 .buffer-stand.s-fehler { color: var(--bad); }
 .buffer-stand.s-fehler::before { background: var(--bad); }
+
+/* Kalender: Kacheln im Instagram-Hochformat 4:5, Infos als Overlay; ziehen zum Verschieben */
+.day { min-height: 120px; }
+.cal-post.mit-bild { position: relative; display: block; padding: 0; aspect-ratio: 4 / 5; overflow: hidden; border: 1px solid var(--linie); background: var(--flaeche-2); color: #FFF; }
+.cal-post.mit-bild img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0; }
+.cal-post.mit-bild .cal-info { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 2px; padding: 18px 6px 6px;
+  background: linear-gradient(to top, rgba(17, 25, 12, 0.88) 0%, rgba(17, 25, 12, 0.6) 55%, rgba(17, 25, 12, 0) 100%); }
+.cal-post.mit-bild .zeit { color: rgba(255, 255, 255, 0.82); }
+.cal-post.mit-bild .titel { color: #FFF; }
+.cal-post:not(.mit-bild) .cal-info { display: flex; flex-direction: column; gap: 3px; }
+.cal-post.mit-bild.s-geplant, .cal-post.mit-bild.s-gepostet, .cal-post.mit-bild.s-zur-abnahme, .cal-post.mit-bild.s-wartet-auf-input,
+.cal-post.mit-bild.s-in-arbeit, .cal-post.mit-bild.s-freigegeben { background: var(--flaeche-2); border: 1px solid var(--linie); color: #FFF; }
+.cal-post.mit-bild::before { position: absolute; top: 6px; left: 6px; z-index: 1; margin: 0; }
+.cal-post.mit-bild.s-geplant::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #FFF; box-shadow: 0 0 0 1px rgba(17, 25, 12, 0.5); }
+.cal-post.mit-bild.s-gepostet { opacity: 0.6; }
+.buffer-marke { font-weight: 600; }
+.cal-post[draggable="true"] { cursor: grab; }
+.cal-post.zieht { opacity: 0.4; }
+.day.drop-ziel { outline: 2px dashed var(--tinte); outline-offset: -2px; background: var(--karte); }
+.day.vorbei.drop-nein { cursor: not-allowed; }

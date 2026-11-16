@@ -325,6 +325,12 @@ def _durchlauf(brand_id, e):
     return "Abgeglichen: " + (", ".join(teile) if teile else "nichts zu tun") + "."
 
 
+def uebertragen(brand_id):
+    """IDs der Posts, die bei Buffer eingeplant sind oder dort schon veröffentlicht wurden (im Kalender nicht mehr verschiebbar)."""
+    _schema()
+    return {r["post_id"] for r in db.q("SELECT DISTINCT post_id FROM buffer_sendungen WHERE brand_id=? AND status IN ('geplant','gesendet')", brand_id)}
+
+
 def erneut_versuchen(brand_id, post_id):
     """Fehler-Sendungen eines Posts zurücksetzen, damit der nächste Abgleich es noch einmal versucht."""
     _schema()
