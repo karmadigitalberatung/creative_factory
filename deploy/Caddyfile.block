@@ -1,5 +1,5 @@
 # In /opt/kopfkino/deploy/Caddyfile ergänzen (gemeinsamer Caddy auf dem VPS)
-contenthub.karma.at {
+heykajo.studio {
 	encode zstd gzip
 	request_body {
 		max_size 300MB
@@ -8,5 +8,24 @@ contenthub.karma.at {
 		transport http {
 			read_timeout 10m
 		}
+	}
+}
+
+# Alte Adresse: Claude-Verbindungen (/mcp) und Bildlinks in verschickten Newslettern (/o/...) laufen weiter, alles andere zieht um.
+contenthub.karma.at {
+	encode zstd gzip
+	request_body {
+		max_size 300MB
+	}
+	@weiter path /mcp /o/*
+	handle @weiter {
+		reverse_proxy creative-factory-app:8040 {
+			transport http {
+				read_timeout 10m
+			}
+		}
+	}
+	handle {
+		redir https://heykajo.studio{uri} 308
 	}
 }

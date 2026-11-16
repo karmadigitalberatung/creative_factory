@@ -226,11 +226,11 @@ Designsprache H für alle heykajo-Backends (Entwürfe im Canvas „Creative Fact
 
 ## Betrieb (VPS)
 
-Live unter https://contenthub.karma.at auf dem gemeinsamen VPS (186.241.26.77, auch Kopfkino und byKristina).
+Live unter https://heykajo.studio auf dem gemeinsamen VPS (186.241.26.77, auch Kopfkino und byKristina). Die alte Adresse https://contenthub.karma.at leitet dauerhaft (308) dorthin um; nur `/mcp` (bestehende Claude-Verbindungen) und `/o/…` (Bilder in verschickten Newslettern) liefert sie weiter direkt aus.
 - Eigenes Docker-Image `creative-factory` (Dockerfile: Python, Chromium, ffmpeg), Container `creative-factory-app`, Ordner `/opt/creative-factory`.
-- HTTPS über den vorhandenen Caddy von Kopfkino: Block für contenthub.karma.at in `/opt/kopfkino/deploy/Caddyfile` (Vorlage `deploy/Caddyfile.block`), Netz `kopfkino_default`.
+- HTTPS über den vorhandenen Caddy von Kopfkino: Blöcke für heykajo.studio und contenthub.karma.at in `/opt/kopfkino/deploy/Caddyfile` (Vorlage `deploy/Caddyfile.block`), Netz `kopfkino_default`.
 - Einstellungen in `/opt/creative-factory/.env` (API-Schlüssel, `OEFFENTLICHE_URL`), Daten in `/opt/creative-factory/data` (SQLite und Medien). Beides nie im Repo.
-- Neuen Stand ausrollen (vom Mac): `deploy/deploy.sh` – spielt den Code per rsync auf und baut neu; Daten und .env bleiben.
+- Neuen Stand ausrollen (vom Mac): `deploy/deploy.sh` (SSH-Schlüssel `~/.ssh/karma_deploy`, in hPanel beim VPS hinterlegt) – spielt den Code per rsync auf und baut neu; Daten und .env bleiben.
 - Logs: `ssh root@186.241.26.77 "docker logs creative-factory-app --tail 100"`.
 - Sicherung: `deploy/backup.sh` (SQLite-Backup und Medien, 14 Tage), als cron um 3:45 einzutragen.
 
