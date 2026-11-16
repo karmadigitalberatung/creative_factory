@@ -11,6 +11,13 @@ heykajo.studio {
 	}
 }
 
+# www läuft über den Cloudflare-Proxy: Let's Encrypt kommt dort nicht durch, darum ein eigenes Zertifikat von Caddy
+# (reicht für den Cloudflare-SSL-Modus „Full“, nicht für „Full (strict)“). Besucher sehen das Zertifikat von Cloudflare.
+www.heykajo.studio {
+	tls internal
+	redir https://heykajo.studio{uri} 308
+}
+
 # Alte Adresse: Claude-Verbindungen (/mcp) und Bildlinks in verschickten Newslettern (/o/...) laufen weiter, alles andere zieht um.
 contenthub.karma.at {
 	encode zstd gzip
