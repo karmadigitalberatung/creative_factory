@@ -242,7 +242,7 @@ details[open] summary { margin-bottom: 14px; }
 .planen .col-side .messages { flex: 1; }
 
 /* ---------- Post */
-.status-word { font: 500 11px/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; vertical-align: middle; padding: 6px 10px; border: 1px solid var(--tinte); border-radius: var(--rund-klein); margin-left: 10px; font-style: normal; }
+.status-word { font: 500 11px/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; vertical-align: middle; padding: 6px 10px; border: 1px solid var(--tinte); border-radius: var(--rund-klein); margin-left: 10px; font-style: normal; display: inline-block; white-space: nowrap; }
 .slides { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px; scroll-snap-type: x mandatory; }
 .slides a { flex: 0 0 auto; scroll-snap-align: start; }
 .slides img { height: 320px; aspect-ratio: 4 / 5; border-radius: var(--rund-klein); display: block; }
@@ -350,14 +350,30 @@ details[open] summary { margin-bottom: 14px; }
   .inhalt main { padding: 32px 28px 56px; }
   .flash { margin: 16px 28px 0; }
 }
+/* Handy und Tablet: Kopfleiste mit Menüknopf, die Sidebar fährt als Schublade von links herein (mit Einstellungen und Abmelden) */
+.mobil-leiste, .menue-schleier { display: none; }
 @media (max-width: 900px) {
-  .side { flex: 1 1 100%; position: static; height: auto; padding: 18px 0 8px; gap: 12px; }
-  .side-gruppe { flex-direction: row; overflow-x: auto; }
-  .side-gruppe a { padding: 10px 16px; white-space: nowrap; }
-  .side-gruppe a.unterpunkt, .side-gruppe a.unterpunkt.on { padding: 10px 16px; margin-left: 0; }
-  .side-fuss { display: none; }
-  .marke { padding: 0 16px; }
-  .inhalt main { padding: 24px 16px 48px; }
+  .app { display: block; padding: 0; }
+  .mobil-leiste { display: flex; align-items: center; gap: 12px; position: sticky; top: var(--admin-h, 0px); z-index: 35; height: calc(56px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) max(8px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); background: var(--beige); }
+  .mobil-leiste .marke { padding: 0; flex: 1; }
+  .mobil-leiste .marke .logo-svg { height: 24px; }
+  .menue-knopf { width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--tinte); position: relative; }
+  .menue-knopf:hover { border: 0; background: rgba(17, 25, 12, 0.06); }
+  .menue-knopf svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+  .menue-knopf .zahl { position: absolute; top: 6px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 3px; background: var(--akzent); color: var(--tinte); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+  .side { position: fixed; z-index: 50; top: var(--admin-h, 0px); left: 0; bottom: 0; height: auto; width: min(300px, 86vw); border-radius: 0 var(--rund-gross) var(--rund-gross) 0;
+    padding: calc(22px + env(safe-area-inset-top, 0px)) 12px calc(16px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+    transform: translateX(-104%); visibility: hidden; transition: transform .22s ease, visibility 0s linear .22s; box-shadow: 12px 0 40px rgba(0,0,0,.18); overscroll-behavior: contain; }
+  .menue-offen .side { transform: none; visibility: visible; transition: transform .22s ease; }
+  .menue-schleier { display: block; position: fixed; inset: 0; z-index: 49; background: rgba(20, 24, 15, .32); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .menue-offen .menue-schleier { opacity: 1; pointer-events: auto; }
+  .menue-offen { overflow: hidden; }
+  .menue-offen .chat-fab { display: none; }
+  .side-gruppe a, .side-gruppe button.unterpunkt-kopf { min-height: 44px; }
+  .side-gruppe a.unterpunkt { min-height: 40px; }
+  .profil-knopf { width: 40px; height: 40px; }
+  .inhalt main { padding: 24px 16px calc(96px + env(safe-area-inset-bottom, 0px)); }
   .flash { margin: 12px 16px 0; }
   h1 { font-size: 40px; }
   .split, .split2, .files, .mediathek { grid-template-columns: 1fr; }
@@ -366,6 +382,11 @@ details[open] summary { margin-bottom: 14px; }
   .day { min-height: 60px; }
   .cal-post .titel, .cal-post img { display: none; }
   .slides img { height: 240px; }
+  .chat-fab { right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .chat-schublade { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .speicher-leiste { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  /* Breite Tabellen scrollen in sich statt die Seite zu verbreitern */
+  .einstellungen .tabelle, .admin .tabelle, .card > .tabelle { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .row.top { flex-wrap: wrap; }
   .color-row { grid-template-columns: 48px 1fr; }
   .reel { flex-direction: column; } .reel video { width: 100%; max-width: 360px; }
@@ -1009,3 +1030,67 @@ details[open] summary { margin-bottom: 14px; }
 .side-gruppe .nav-gruppe:not(.offen) button.unterpunkt-kopf .kopf-zahl + .pfeil { margin-left: 8px; }
 .nav-gruppe .unterpunkte { display: none; flex-direction: column; gap: 2px; }
 .nav-gruppe.offen .unterpunkte { display: flex; }
+
+/* ---------- iPhone und andere Handys */
+.dn .wt { display: none; }
+@media (max-width: 900px) {
+  /* iOS zoomt in Felder unter 16 px hinein: auf Touch-Geräten daher 16 px */
+  input, select, textarea { font-size: 16px; }
+  button, .button { min-height: 40px; }
+  button.small, .button.small { height: 36px; min-height: 36px; }
+  button.link { min-height: 0; }
+  /* Leiste über Kalender/Tabelle/Board: Reiter in eigener Zeile, Knöpfe darunter, Aufklapp-Panels über volle Breite */
+  .ansicht-leiste { flex-wrap: wrap; align-items: center; row-gap: 0; position: relative; }
+  .ansicht-leiste .ansicht-tabs { flex: 1 1 100%; overflow-x: auto; border-bottom: 1px solid var(--linie); }
+  .ansicht-tabs a { padding: 12px 14px; white-space: nowrap; }
+  .ansicht-leiste .leisten-knoepfe { padding: 10px 0; }
+  .ansicht-leiste .aufklapp { position: static; }
+  .ansicht-leiste .aufklapp-panel { left: 0; right: 0; width: auto; max-height: 70vh; overflow-y: auto; }
+  .ansicht-leiste { border-bottom: 0; }
+}
+@media (max-width: 640px) {
+  h1 { font-size: 34px; }
+  .card { padding: 16px; }
+  .head { margin-bottom: 20px; }
+  /* Kalender als Agenda: nur Tage mit Posts, heute und freie Rhythmus-Tage, je Zeile ein Tag */
+  .kalender { padding: 16px; }
+  .cal-head h2 { font-size: 24px; }
+  .cal-head .button.quadrat { width: 44px; height: 44px; }
+  .cal { grid-template-columns: 1fr; gap: 8px; }
+  .cal .dow, .cal .day.other { display: none; }
+  .cal .day:not(.today):not(.rhythmus):not(:has(.cal-post)) { display: none; }
+  .cal .day { display: grid; grid-template-columns: 46px minmax(0, 1fr); grid-auto-flow: row dense; column-gap: 12px; row-gap: 8px; min-height: 0; padding: 10px; overflow: visible; }
+  .cal .day > .cal-post { grid-column: 2; }
+  .cal .day .dn, .cal .day.today .dn { grid-column: 1; grid-row: 1; align-self: start; display: flex; flex-direction: column; align-items: center; width: 46px; height: auto; padding: 6px 0; border-radius: var(--rund-klein);
+    font-size: 20px; font-weight: 300; line-height: 1.1; background: var(--karte); color: var(--tinte); }
+  .cal .day.today .dn { background: var(--tinte); color: #FFF; }
+  .cal .day.today .dn::after { display: none; }
+  .dn .wt { display: block; font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .day.today .dn .wt { color: #C9CCC4; }
+  .cal .day.today:not(:has(.cal-post))::after { content: "Heute nichts geplant"; grid-column: 2; grid-row: 1; align-self: center; font-size: 13px; color: var(--muted); }
+  .cal .day.rhythmus::after { content: "Freier Rhythmus-Tag"; grid-column: 2; grid-row: 1; align-self: center; font-size: 13px; color: var(--muted); }
+  .cal-post { flex-direction: row; align-items: center; gap: 10px; padding: 6px; min-height: 56px; }
+  .cal-post .titel, .cal-post img { display: block; }
+  .cal-post img { width: 44px; height: 55px; flex: none; }
+  .cal-post .cal-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .cal-post .titel { display: -webkit-box; font-size: 14px; }
+  .cal-post .zeit { font-size: 11px; }
+  .cal-post.s-zur-abnahme::before { flex: none; margin: 0 0 0 4px; }
+  /* Kacheln mit Bild: kein 4:5-Overlay, sondern Zeile mit kleinem Vorschaubild */
+  .cal-post.mit-bild { display: flex; position: relative; aspect-ratio: auto; padding: 6px; background: var(--karte); color: var(--tinte); }
+  .cal-post.mit-bild img { position: static; width: 44px; height: 55px; border-radius: 3px; }
+  .cal-post.mit-bild .cal-info { position: static; padding: 0; background: none; }
+  .cal-post.mit-bild .zeit { color: var(--muted); }
+  .cal-post.mit-bild .titel { color: var(--tinte); }
+  .cal-post.mit-bild.s-geplant, .cal-post.mit-bild.s-gepostet, .cal-post.mit-bild.s-zur-abnahme, .cal-post.mit-bild.s-wartet-auf-input,
+  .cal-post.mit-bild.s-in-arbeit, .cal-post.mit-bild.s-freigegeben { background: var(--karte); color: var(--tinte); }
+  .cal-post.mit-bild::before { top: 3px; left: 3px; }
+  .legende { gap: 10px 16px; }
+  /* Post: Aktionsleiste unten kompakt (Nebenknöpfe in einer Zeile, Hauptaktion volle Breite, rechts Platz für den Chat-Knopf) */
+  .sticky-actions { gap: 8px; padding: 8px 76px 8px 8px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .sticky-actions button { flex: 1 1 auto; height: 40px; min-height: 40px; padding: 0 12px; font-size: 13px; }
+  .sticky-actions button.primary { flex-basis: 100%; }
+  /* Übersicht: nächste 7 Tage als waagrechter Streifen zum Wischen */
+  .woche { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 10px; margin: 0 -16px; padding: 0 16px 6px; scroll-padding: 0 16px; }
+  .woche > * { flex: 0 0 44%; scroll-snap-align: start; }
+}

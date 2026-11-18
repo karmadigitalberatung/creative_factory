@@ -106,7 +106,7 @@
           {% for woche in wochen %}{% for tag in woche %}
           {% set key = tag.isoformat() %}{% set posts = tage.get(key, []) %}
           <div class="day {{ 'other' if tag.month != erster.month }} {{ 'today' if tag == heute }} {{ 'rhythmus' if tag.weekday() in rhythmus and tag > heute and not posts }} {{ 'vorbei' if tag < heute }}" data-datum="{{ key }}">
-            <span class="dn">{{ tag.day }}</span>
+            <span class="dn"><span class="wt">{{ ['Mo','Di','Mi','Do','Fr','Sa','So'][tag.weekday()] }}</span>{{ tag.day }}</span>
             {% for p in posts %}
             <a class="cal-post s-{{ p.status|lower|replace(' ', '-') }} {{ 'mit-bild' if p.thumb }}" href="/planen/{{ p.id }}" data-format="{{ p.format }}" data-status="{{ p.status }}" data-titel="{{ p.kurz|lower }}"
                title="{{ p.kurz }} · {{ p.status|status }}{{ ' · bei Buffer eingeplant, Termin im Post ändern' if p.bei_buffer else (' · zum Verschieben auf einen anderen Tag ziehen' if p.verschiebbar else '') }}"

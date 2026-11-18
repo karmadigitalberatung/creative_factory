@@ -2,9 +2,16 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}heykajo Studio{% endblock %}</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#CFC9BC">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="heykajo Studio">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 </head>
 <body>
@@ -18,7 +25,15 @@
 {% endif %}
 {% if b is defined and b and b.onboarded and not einrichtung %}
 <div class="app">
-  <nav class="side" aria-label="Hauptmenü">
+  <header class="mobil-leiste">
+    <a class="marke" href="/" aria-label="heykajo Studio, zur Übersicht">{% with hell=True %}{% include "_logo.html" %}{% endwith %}</a>
+    {% set menue_hinweise = (nav_ideen or 0) + (offene_inputs or 0) %}
+    <button type="button" class="menue-knopf" data-menue-auf aria-controls="hauptmenue" aria-expanded="false" aria-label="Menü öffnen{{ ', ' ~ menue_hinweise ~ ' offen' if menue_hinweise }}">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>{% if menue_hinweise %}<span class="zahl" aria-hidden="true">{{ menue_hinweise }}</span>{% endif %}
+    </button>
+  </header>
+  <div class="menue-schleier" data-menue-zu aria-hidden="true"></div>
+  <nav class="side" id="hauptmenue" aria-label="Hauptmenü">
     <a class="marke" href="/" aria-label="heykajo Studio, zur Übersicht">{% with hell=True %}{% include "_logo.html" %}{% endwith %}</a>
     <div class="side-gruppe">
       <a href="/" class="{{ 'on' if path == '/' }}" {% if path == '/' %}aria-current="page"{% endif %}><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Übersicht</a>

@@ -952,3 +952,20 @@ document.querySelectorAll("[data-html-kopieren]").forEach((k) => k.addEventListe
     });
   });
 })();
+
+// Handy: Hauptmenü als Schublade (Menüknopf in der Kopfleiste, Schleier oder Escape schließt, ein Link schließt sie auch)
+(() => {
+  const knopf = document.querySelector("[data-menue-auf]"), menue = document.getElementById("hauptmenue");
+  if (!knopf || !menue) return;
+  const schmal = matchMedia("(max-width: 900px)");
+  const setzen = (offen) => {
+    document.body.classList.toggle("menue-offen", offen);
+    knopf.setAttribute("aria-expanded", offen ? "true" : "false");
+    if (offen) (menue.querySelector("a.on, a, button") || menue).focus({ preventScroll: true });
+  };
+  knopf.addEventListener("click", () => setzen(!document.body.classList.contains("menue-offen")));
+  document.querySelectorAll("[data-menue-zu]").forEach((s) => s.addEventListener("click", () => setzen(false)));
+  menue.addEventListener("click", (e) => { if (schmal.matches && e.target.closest("a")) setzen(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && document.body.classList.contains("menue-offen")) { setzen(false); knopf.focus(); } });
+  schmal.addEventListener("change", () => setzen(false));
+})();
