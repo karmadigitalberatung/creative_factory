@@ -155,12 +155,53 @@ def regeln_setzen(brand_id, typ, text):
 
 
 def vorbilder(brand_id, typ, n=6):
-    """Beispielbilder dieses Typs (aus dem Chat); ohne eigene: die allgemeinen Vorbilder (z. B. Website-Screenshots)."""
+    """Beispielbilder für diesen Typ, die neuesten zuerst: die aus dem Chat dieses Typs und die allgemeinen (Chat zu Design & Layout, Website)."""
     from . import medien
-    rows = db.q("SELECT * FROM medien WHERE brand_id=? AND art='vorbild' AND beschreibung=? ORDER BY id DESC LIMIT ?", brand_id, f"design:{typ}", n)
-    if not rows:
-        rows = db.q("SELECT * FROM medien WHERE brand_id=? AND art='vorbild' AND beschreibung NOT LIKE 'design:%' ORDER BY id DESC LIMIT ?", brand_id, n)
+    rows = db.q("SELECT * FROM medien WHERE brand_id=? AND art='vorbild' AND (beschreibung=? OR beschreibung NOT LIKE 'design:%') ORDER BY id DESC LIMIT ?",
+                brand_id, f"design:{typ}", n)
     return [medien.bild_von(brand_id, m).convert("RGB") for m in rows]
+
+
+def aus_post(brand_id, post_id, typ="Carousel"):
+    """Die Slides eines Posts 1:1 als Vorlagen dieses Typs übernehmen (ersetzt alle bisherigen). Gibt die Anzahl zurück.
+    ValueError, wenn der Post keine Szenen hat (fertig hochgeladen oder noch nicht gestaltet)."""
+    p = db.one("SELECT * FROM posts WHERE id=? AND brand_id=?", post_id, brand_id)
+    if not p:
+        raise ValueError("Diesen Post gibt es nicht.")
+    szenen = [{k: v for k, v in s.items() if k not in ("entwurf", "manuell")} for s in json.loads(p["design"] or "[]")]
+    if not szenen or typ not in BEISPIELE:
+        raise ValueError("Dieser Post hat keine Szenen, die sich als Vorlage übernehmen lassen.")
+    slides = json.loads(p["inhalt"]).get("slides") or []
+    for v in liste(brand_id, typ):
+        loeschen(brand_id, v["id"])
+    zaehler = {}
+    for i, sz in enumerate(szenen):
+        art = marke.ARTEN_NAMEN.get(slides[i].get("art") if i < len(slides) else "", "Slide")
+        zaehler[art] = zaehler.get(art, 0) + 1
+        anlegen(brand_id, typ, art if zaehler[art] == 1 else f"{art} {zaehler[art]}", sz, i + 1)
+    if typ == "Carousel":
+        db.run("UPDATE brands SET muster_design=?, muster_at=? WHERE id=?", json.dumps(szenen, ensure_ascii=False), db.now(), brand_id)
+    return len(szenen)
+
+
+def neu_aufbauen(brand_id, typen, wunsch="", video=False):
+    """Job (Chat zu Design & Layout): Vorlagen der genannten Typen neu gestalten (ersetzt die bisherigen), die übrigen mit den neuen
+    Farben und Schriften auffrischen, auf Wunsch den Video-Stil neu ableiten."""
+    fehler = None
+    for typ in [t for t in typen if t in BEISPIELE]:
+        try:
+            generieren(brand_id, typ, wunsch)
+        except Exception as e:
+            fehler = e
+    alle_neu_rendern(brand_id)
+    if video:
+        from . import jobs
+        try:
+            jobs.video_stil_ableiten(brand_id)   # ausdrücklich gewünscht: auch wenn der Stil von Hand angepasst war
+        except Exception as e:
+            fehler = fehler or e
+    if fehler:
+        raise fehler
 
 
 def generieren(brand_id, typ, wunsch=""):

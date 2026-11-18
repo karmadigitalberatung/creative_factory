@@ -4,7 +4,7 @@ Bereiche: Dashboard (Kalender), Planen (Ideen -> Freigabe -> Visuals, mit Chat),
 Auftreten (Social Corporate Design mit Chat).
 Start: ~/.venvs/creative-factory-app/bin/uvicorn app.main:app --port 8040
 """
-import calendar, datetime, hmac, json, os, re, sys, traceback, urllib.parse
+import calendar, datetime, hmac, io, json, os, re, sys, traceback, urllib.parse
 sys.dont_write_bytecode = True
 from typing import List, Optional
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
@@ -2079,11 +2079,12 @@ async def auftreten_videostil_speichern(request: Request):
     return go(_zurueck(request, "/design/reel") + "#video-stil")
 
 
-def _auftreten_speichern(b, a, quelle):
+def _auftreten_speichern(b, a, quelle, rendern=True):
     db.run("INSERT INTO changes (brand_id, bereich, alt, neu, quelle, created) VALUES (?,?,?,?,?,?)",
            b["id"], "auftreten", b["auftreten"], json.dumps(a, ensure_ascii=False), quelle, db.now())
     db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), b["id"])
-    jobs.start(b["id"], None, "vorlagen", vorlagen.alle_neu_rendern, b["id"])   # Vorlagen mit neuen Farben, Schriften, Logo
+    if rendern:
+        jobs.start(b["id"], None, "vorlagen", vorlagen.alle_neu_rendern, b["id"])   # Vorlagen mit neuen Farben, Schriften, Logo
 
 
 @app.post("/auftreten")
@@ -2365,6 +2366,76 @@ def _chat_newsletter(b, nachricht, hist, neue, fokus):
     return res["antwort"], geaendert
 
 
+def _posts_im_text(b, text):
+    """Eigene Posts, die im Chat verlinkt sind (…/planen/<Nummer>): [(Nummer, Titel, hat_szenen, [PIL-Bilder])], höchstens zwei."""
+    out = []
+    for pid in dict.fromkeys(int(x) for x in re.findall(r"/planen/(\d+)", text or "")):
+        p = db.one("SELECT * FROM posts WHERE id=? AND brand_id=?", pid, b["id"])
+        if not p:
+            continue
+        try:
+            bilder = fertig.bilder_des_posts(b["id"], p)
+        except Exception:
+            bilder = []
+        if bilder:
+            out.append((pid, p["titel"] or "Ohne Titel", bool(json.loads(p["design"] or "[]")), bilder))
+        if len(out) == 2:
+            break
+    return out
+
+
+def _chat_auftreten(b, nachricht, hist, neue):
+    """Chat zu Design & Layout: Auftreten ändern, Schriften laden, Vorlagen ersetzen. Was wirklich passiert ist, steht in der Antwort."""
+    schriften = marke.schriften_liste(b["id"])
+    frueher = [m for m in medien.liste(b["id"], "vorbild") if m["id"] not in {n["id"] for n in neue}][:4]
+    posts = _posts_im_text(b, nachricht)
+    antwort, neu, akt = ai.chat_auftreten(
+        b, nachricht, hist, schriften,
+        neue_bilder=[medien.bild_von(b["id"], m).convert("RGB") for m in neue],
+        vorbilder=[medien.bild_von(b["id"], m).convert("RGB") for m in frueher], posts=posts)
+    alt = json.loads(b["auftreten"])
+    a = ai.auftreten_pruefen(alt, neu, schriften) if neu else json.loads(b["auftreten"])
+    zusatz = []
+    for s in akt["schriften_laden"][:3]:   # Schriften, die es noch nicht gibt: von Google Fonts holen und für die Rolle einsetzen
+        res = website.schrift_laden(b["id"], s["familie"], s["gewicht"] or 400, s["kursiv"], {})
+        if res:
+            a["schriften"][s["rolle"]] = {"datei": res[0], "gewicht": res[1]}
+        else:
+            zusatz.append(f"Die Schrift „{s['familie']}“ habe ich bei Google Fonts nicht gefunden; dafür bleibt die bisherige. "
+                          "Du kannst die Schriftdatei unter Design & Layout hochladen.")
+    typen = [t for t in dict.fromkeys(akt["vorlagen_neu"]) if t in vorlagen.BEISPIELE]
+    wunsch = akt["vorlagen_wunsch"].strip()[:2000]
+    pid = akt["vorlagen_aus_post"]
+    if pid and db.one("SELECT id FROM posts WHERE id=? AND brand_id=?", pid, b["id"]):
+        try:
+            n = vorlagen.aus_post(b["id"], pid, "Carousel")
+            zusatz.append(f"Die {n} Slides des Posts sind jetzt deine Carousel-Vorlagen, die alten sind gelöscht.")
+            typen = [t for t in typen if t != "Carousel"]
+        except ValueError:   # fertig hochgeladen: keine Szenen. Dann die Slides als Vorbild nehmen und danach neu gestalten
+            for _, _, _, bilder in [x for x in posts if x[0] == pid]:
+                for im in bilder[:4]:
+                    buf = io.BytesIO(); im.save(buf, "JPEG", quality=90)
+                    medien.speichern(b["id"], buf.getvalue(), "vorbild", f"Slide aus Post {pid}", "design:Carousel")
+            typen = ["Carousel"] + [t for t in typen if t != "Carousel"]
+            wunsch = wunsch or "Bau die Slides des Posts (neueste Vorbilder) so genau wie möglich als Vorlagen nach."
+            zusatz.append("Der Post ist fertig hochgeladen und hat keine Szenen; ich baue seine Slides deshalb als Vorlagen nach.")
+    geaendert = a != alt
+    if geaendert:
+        _auftreten_speichern(b, a, "chat", rendern=not typen and not akt["video_stil_neu"])
+    if typen or akt["video_stil_neu"]:
+        if any(j["kind"] == "vorlagen" for j in jobs.running(b["id"])) and typen:
+            zusatz.append("Gerade werden noch Vorlagen gestaltet. Schreib mir danach noch einmal, dann ersetze ich sie.")
+        else:
+            jobs.start(b["id"], None, "vorlagen", vorlagen.neu_aufbauen, b["id"], typen, wunsch, bool(akt["video_stil_neu"]))
+            if typen:
+                zusatz.append(f"Die bisherigen {'- und '.join(typen)}-Vorlagen werden jetzt gelöscht und neu gestaltet; "
+                              "das dauert zwei bis drei Minuten.")
+        geaendert = True
+    elif neue and not geaendert:
+        jobs.start(b["id"], None, "vorlagen", vorlagen.alle_neu_rendern, b["id"])
+    return (antwort + ("\n\n" + " ".join(zusatz) if zusatz else "")), geaendert or bool(zusatz)
+
+
 def _chat_design(b, typ, nachricht, hist, neue):
     """Chat auf der Design-Seite eines Contenttyps: Regeln und Vorlagen ändern, neue Vorlagen gestalten."""
     if typ == "Newsletter":
@@ -2373,8 +2444,16 @@ def _chat_design(b, typ, nachricht, hist, neue):
             if m["id"] not in {n["id"] for n in neue}][:3]
     a = json.loads(b["auftreten"])
     res = ai.design_chat(b, typ, nachricht, hist, [medien.bild_von(b["id"], m).convert("RGB") for m in neue],
-                         [medien.bild_von(b["id"], m).convert("RGB") for m in alte], vorlagen.liste(b["id"], typ), vorlagen.regeln(a, typ))
+                         [medien.bild_von(b["id"], m).convert("RGB") for m in alte], vorlagen.liste(b["id"], typ), vorlagen.regeln(a, typ),
+                         posts=_posts_im_text(b, nachricht))
     geaendert = False
+    if res.get("aus_post") and typ in vorlagen.BEISPIELE:   # „genau so wie dieser Post“: seine Slides ersetzen alle Vorlagen dieses Typs
+        try:
+            n = vorlagen.aus_post(b["id"], int(res["aus_post"]), typ)
+            return res["antwort"] + f"\n\nDie {n} Slides des Posts sind jetzt deine Vorlagen, die alten sind gelöscht.", True
+        except ValueError as e:
+            if not res["vorlagen"]:
+                res["antwort"] += f"\n\n{e} Schick mir die Slides als Bilder oder sag „nachbauen“, dann gestalte ich sie als Vorlagen neu."
     if res["regeln"].strip():
         vorlagen.regeln_setzen(b["id"], typ, res["regeln"]); geaendert = True
     if vorlagen.TYPEN[typ]["art"] == "video" and res["aktion"] != "keine" and not any(j["kind"] == "vorlagen" for j in jobs.running(b["id"])):
@@ -2456,18 +2535,7 @@ def chat(request: Request, nachricht: str = Form(""), bereich: str = Form("post"
     geaendert = False
     try:
         if bereich == "auftreten":
-            schriften = marke.schriften_liste(b["id"])
-            frueher = [m for m in medien.liste(b["id"], "vorbild") if m["id"] not in {n["id"] for n in neue}][:4]
-            antwort, neu, muster_neu = ai.chat_auftreten(
-                b, nachricht, hist, schriften,
-                neue_bilder=[medien.bild_von(b["id"], m).convert("RGB") for m in neue],
-                vorbilder=[medien.bild_von(b["id"], m).convert("RGB") for m in frueher])
-            if neu:
-                _auftreten_speichern(b, ai.auftreten_pruefen(json.loads(b["auftreten"]), neu, schriften), "chat")
-                geaendert = True
-            elif muster_neu or neue:
-                jobs.start(b["id"], None, "vorlagen", vorlagen.alle_neu_rendern, b["id"])   # Vorlagen mit neuen Farben, Schriften, Logo
-                geaendert = True
+            antwort, geaendert = _chat_auftreten(b, nachricht, hist, neue)
         elif bereich.startswith("nlvorlage-") and bereich[10:].isdigit():
             antwort, geaendert = _chat_newsletter(b, nachricht, hist, neue, int(bereich[10:]))
         elif design_typ:

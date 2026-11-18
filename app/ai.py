@@ -732,24 +732,39 @@ def animation(brand, post, words, laenge, post_fotos=None, zusatz=""):
 
 # ---------------------------------------------------------------- Chat zum Auftreten
 
-AUF_SCHEMA = _obj({"antwort": S, "auftreten_json": S, "muster_neu": {"type": "boolean"}})
+AUF_SCHEMA = _obj({"antwort": S, "auftreten_json": S,
+                   "schriften_laden": {"type": "array", "items": _obj({"rolle": {"type": "string", "enum": ["titel", "text", "akzent"]}, "familie": S,
+                                                                        "gewicht": {"type": "integer"}, "kursiv": {"type": "boolean"}})},
+                   "vorlagen_neu": {"type": "array", "items": {"type": "string", "enum": ["Carousel", "Einzelbild"]}}, "vorlagen_wunsch": S,
+                   "vorlagen_aus_post": {"type": "integer"}, "video_stil_neu": {"type": "boolean"}})
 
 AUF_SYSTEM = """Du hilfst, das Social Corporate Design einer Personal Brand festzulegen: Schreibstil, Farben, Schriften, Layout-Prinzipien, Bildstil, Formate.
 Antworte kurz auf Deutsch (du-Form), ohne Markdown (keine Sternchen, keine Rauten; Absätze mit Leerzeile), stelle bei Bedarf eine gezielte Rückfrage und mach konkrete Vorschläge.
 Wenn sich etwas ändern soll, gib das vollständige neue Auftreten als JSON-String in auftreten_json zurück (gleiche Struktur wie das aktuelle), sonst leerer String.
 Farben: Liste aus {name, hex, rolle}; Rollen: hintergrund, text, akzent, flaeche, dunkel, hell, weitere. Jede Rolle außer weitere genau einmal. Achte auf Kontrast.
-Schriften: Rollen titel, text, akzent mit datei (nur aus der Liste verfügbarer Schriften) und gewicht (100 bis 900, nur bei variablen Schriften wirksam, sonst null).
+Schriften: Rollen titel, text, akzent mit datei (aus der Liste verfügbarer Schriften) und gewicht (100 bis 900, nur bei variablen Schriften wirksam, sonst null).
+Will die Person eine Schrift, die nicht in der Liste steht (z. B. Playfair Display), trag sie in schriften_laden ein: rolle, familie (exakter Name bei
+Google Fonts), gewicht, kursiv. Die App lädt sie von Google Fonts und setzt sie für diese Rolle ein; in auftreten_json lässt du die Rolle dann unverändert.
+Es gibt genau drei Schrift-Rollen; braucht ein Layout zwei Schnitte derselben Familie (z. B. Inter Light und Inter Regular), nimm dafür zwei Rollen.
 schreibstil, layout_prinzipien, bildstil: konkrete, kurze Regeln in Stichpunkten (je Zeile ein Punkt), die ein Texter, Designer und Fotograf direkt anwenden kann.
 Die Website ist der Benchmark: Farben, Schriften und Layout-Prinzipien sind beim Einrichten von dort übernommen (website_analyse im Auftreten).
 Weiche nur davon ab, wenn die Person es ausdrücklich will. Lies die Website, wenn sie angegeben ist, und leite daraus ab, was zur Marke passt.
 Vorbilder: Die Person kann Bilder schicken (eigene Posts, Layouts, die gefallen, Pinterest-Screenshots). Schau sie genau an und beschreib kurz,
 was sie ausmacht (Raster, Bildanteil, Typo-Hierarchie, Schriftgrößen, Weißraum, Formen, Farbeinsatz, wiederkehrende Elemente). Übernimm das in
 layout_prinzipien als konkrete Regeln (Stil übertragen, nicht kopieren; Farben und Schriften der Marke bleiben, außer die Person will das ändern).
-Setze muster_neu = true, wenn neue Vorbilder kamen oder sich Layout-Prinzipien geändert haben: dann werden die Musterseiten im neuen Stil gestaltet.
-Was du tatsächlich ändern kannst: nur das Auftreten (die Felder im JSON) und das Neugestalten der Musterseiten. Musterseiten und Posts nutzen
-automatisch die Fotos aus der Mediathek (Fotos und erzeugte Bilder); wie oft Fotos vorkommen, steuerst du über klare Regeln in layout_prinzipien.
-Behaupte nie, etwas an der App, an Regeln außerhalb des Auftretens oder an Dateien geändert zu haben. Wenn etwas nicht geht, sag das ehrlich
-und schlag vor, was die Person tun kann (z. B. Fotos in die Mediathek laden)."""
+Posts der Person: Nennt sie einen ihrer Posts (Link …/planen/<Nummer>), bekommst du dessen Slides als Bilder mit der Nummer des Posts. Du siehst sie also.
+Was du tatsächlich tun kannst (und nur das):
+- Das Auftreten ändern (die Felder in auftreten_json) und Schriften von Google Fonts laden (schriften_laden).
+- Vorlagen ersetzen: vorlagen_neu = ["Carousel"] und/oder ["Einzelbild"] löscht ALLE bisherigen Vorlagen dieses Typs und gestaltet sie neu, nach dem neuen
+  Auftreten und den Vorbildern. In vorlagen_wunsch schreibst du genau, wie sie aussehen sollen (Aufbau, Positionen, Größen, welche Schrift wo, was es nicht
+  mehr geben soll). Setz das, wenn die Person neue oder andere Layouts will, alte Designs loswerden will oder neue Vorbilder schickt. Sonst leere Liste.
+- Einen Post 1:1 zur Vorlage machen: vorlagen_aus_post = Nummer des Posts. Dann werden alle Carousel-Vorlagen durch die Slides genau dieses Posts ersetzt
+  (exakt gleiches Layout). Nimm das, wenn die Person „genau so wie dieser Post“ sagt und der Post Szenen hat; sonst 0.
+- Den Video-Stil (Reels) neu ableiten lassen: video_stil_neu = true. Das Feld video_stil im Auftreten kannst du NICHT direkt ändern; Änderungen daran in
+  auftreten_json werden verworfen. Setz video_stil_neu, wenn sich Schriften, Farben oder Layout so geändert haben, dass Reels nachziehen sollen.
+Was du nicht kannst: Posts, Entwürfe oder Bilder der Mediathek löschen (das geht in der App am Post bzw. in der Mediathek), bestehende Posts umgestalten.
+Sag nur, dass etwas passiert ist oder passiert, wenn du das passende Feld gesetzt hast. Behaupte nie etwas anderes; wenn etwas nicht geht, sag es einmal
+klar und nenn den Weg in der App. Wiederhol keine Entschuldigungen und keine Erklärungen aus früheren Antworten."""
 
 
 def _bilder_bloecke(titel, bilder, w=700):
@@ -794,13 +809,27 @@ def website_stil(brand, bilder, messwerte):
     return _claude(WEBSITE_SYSTEM, content, WEBSITE_SCHEMA, effort="high")
 
 
-def chat_auftreten(brand, message, history, schriften, neue_bilder=None, vorbilder=None):
-    """neue_bilder: gerade im Chat geschickt; vorbilder: frühere Vorbilder aus der Mediathek (PIL-Bilder)."""
+def _post_bloecke(posts, w=700):
+    """posts: [(Nummer, Titel, hat_szenen, [PIL-Bilder])] aus Links im Chat. Gibt Bildblöcke und eine Textzeile zurück."""
+    bloecke, zeilen = [], []
+    for pid, titel, szenen, bilder in posts or []:
+        for i, im in enumerate(bilder[:6], start=1):
+            bloecke.append({"type": "text", "text": f"Post {pid} „{titel}“, Slide {i}:"})
+            bloecke.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(im, w)}})
+        zeilen.append(f"Post {pid} „{titel}“: {len(bilder)} Slides" + (", hat Szenen (als Vorlage 1:1 übernehmbar)" if szenen else ", fertig hochgeladen (keine Szenen, nur als Vorbild nutzbar)"))
+    return bloecke, ("\nGenannte Posts der Person: " + "; ".join(zeilen)) if zeilen else ""
+
+
+def chat_auftreten(brand, message, history, schriften, neue_bilder=None, vorbilder=None, posts=None):
+    """neue_bilder: gerade im Chat geschickt; vorbilder: frühere Vorbilder aus der Mediathek (PIL-Bilder);
+    posts: im Chat verlinkte eigene Posts (siehe _post_bloecke). Gibt (antwort, neues Auftreten oder None, Aktionen) zurück."""
+    post_bilder, post_text = _post_bloecke(posts)
     verlauf = "\n".join(f"{h['role']}: {h['text']}" for h in history[-10:])
     text = (_marke_kontext(brand, mit_website=True) +
             f"\nVerfügbare Schriften (datei): {json.dumps([s[0] for s in schriften], ensure_ascii=False)}"
+            + post_text +
             f"\n\nBisheriger Chat:\n{verlauf or '(leer)'}\n\nNeue Nachricht: {message or '(nur Bilder)'}")
-    content = _bilder_bloecke("Früheres Vorbild", vorbilder or [], 500) + _bilder_bloecke("Neu geschicktes Bild", neue_bilder or [])
+    content = _bilder_bloecke("Früheres Vorbild", vorbilder or [], 500) + _bilder_bloecke("Neu geschicktes Bild", neue_bilder or []) + post_bilder
     res = _claude(AUF_SYSTEM, content + [{"type": "text", "text": text}] if content else text, AUF_SCHEMA, effort="high")
     neu = None
     if res["auftreten_json"].strip():
@@ -808,7 +837,7 @@ def chat_auftreten(brand, message, history, schriften, neue_bilder=None, vorbild
             neu = json.loads(res["auftreten_json"])
         except json.JSONDecodeError:
             neu = None
-    return res["antwort"], neu, res["muster_neu"]
+    return res["antwort"], neu, {k: res[k] for k in ("schriften_laden", "vorlagen_neu", "vorlagen_wunsch", "vorlagen_aus_post", "video_stil_neu")}
 
 
 MUSTER_SYSTEM = """Du bist Art Director. Gestalte Musterseiten (Templates) für die Social-Media-Posts einer Marke als Szenen (JSON) für einen Renderer.
@@ -868,7 +897,11 @@ def vorlagen_gestalten(brand, typ, slides, vorbilder, regeln="", wunsch=""):
             f"\nFotos für die Szenen (als hintergrund.foto oder foto.quelle): {', '.join(quellen) or 'keine'}"
             + ("\nNutze die Fotos, wo es zum Stil passt; je Szene ein anderes Foto, Gesichter nicht mit Text verdecken." if quellen else "")
             + f"\n{VORLAGEN_HINWEIS.get(typ, '')}"
-            + (f"\nRegeln für diesen Typ: {regeln}" if regeln else "") + (f"\nWunsch der Person: {wunsch}" if wunsch else "")
+            + (f"\nRegeln für diesen Typ: {regeln}" if regeln else "")
+            + (f"\nWunsch der Person (geht allem anderen vor, auch der Vorgabe unterschiedlicher Cover): {wunsch}"
+               "\nWill die Person ein Vorbild genau so haben, bau Aufbau, Positionen, Größenverhältnisse, Ausrichtung und Typo-Hierarchie so nah wie möglich nach "
+               "(mit Farben, Schriften und Fotos der Marke) und lass alles weg, was das Vorbild nicht hat. Die Vorbilder sind nach Aktualität sortiert, "
+               "das erste ist das neueste; bei Widersprüchen gilt das neuere." if wunsch else "")
             + f"\n\nSlides (eine Szene je Slide, in dieser Reihenfolge):\n{json.dumps(slides, ensure_ascii=False)}")
     content = _bilder_bloecke("Vorbild", vorbilder[:6], 600) + _foto_bloecke(fotos) + [{"type": "text", "text": text}]
     system = MUSTER_SYSTEM.replace("Die ersten drei Szenen sind drei unterschiedliche Cover-Varianten zum selben Inhalt, danach je eine Innenseite pro weiterer Slide.\n", "")
@@ -877,7 +910,8 @@ def vorlagen_gestalten(brand, typ, slides, vorbilder, regeln="", wunsch=""):
 
 
 DESIGN_CHAT_SCHEMA = _obj({"antwort": S, "regeln": S, "aktion": {"type": "string", "enum": ["keine", "neu", "hinzufuegen", "aendern"]},
-                           "vorlagen": {"type": "array", "items": _obj({"vorlage_id": {"type": "integer"}, "name": S, "szene_json": S})}})
+                           "vorlagen": {"type": "array", "items": _obj({"vorlage_id": {"type": "integer"}, "name": S, "szene_json": S})},
+                           "aus_post": {"type": "integer"}})
 
 DESIGN_CHAT_SYSTEM = """Du bist Art Director für einen Contenttyp einer Personal Brand ({typ}) und sprichst mit der Person über dessen Design.
 Antworte kurz auf Deutsch (du-Form, ohne Markdown). Die Person kann Beispielbilder schicken (Posts, die ihr gefallen, Pinterest-Screenshots):
@@ -888,20 +922,27 @@ Was du tun kannst:
   (vorlage_id angeben); „keine“: nur antworten oder nur Regeln ändern.
 - vorlagen: je Vorlage ein Name (kurz, z. B. „Cover mit Foto“) und die Szene als JSON-String für den Renderer (bei neuen vorlage_id = 0).
   Texte sind Platzhalter wie in den bisherigen Vorlagen. {hinweis}
+- aus_post: Nennt die Person einen ihrer Posts (Link …/planen/<Nummer>; du bekommst seine Slides als Bilder) und will das Layout „genau so“, setz aus_post
+  auf die Nummer: dann ersetzen die Slides genau dieses Posts alle Vorlagen dieses Typs (aktion „keine“, vorlagen leer). Geht nur bei Posts mit Szenen; sonst 0
+  und du baust die Slides als Vorlagen nach (aktion „neu“).
+„Alle alten Designs löschen“ heißt aktion „neu“ mit den neuen Vorlagen: das löscht die bisherigen wirklich. Posts oder Bilder der Mediathek kannst du nicht löschen.
 Bei Reel und Story gibt es keine Szenen-Vorlagen: dann nur regeln (Motion Graphics, Untertitel, Übergänge, Typo im Video) und aktion „keine“.
 Behaupte nie, etwas anderes geändert zu haben als Regeln und Vorlagen dieses Typs.
 Renderer-Doku:
 """
 
 
-def design_chat(brand, typ, nachricht, verlauf, neue_bilder, vorbilder, vorlagen_liste, regeln=""):
+def design_chat(brand, typ, nachricht, verlauf, neue_bilder, vorbilder, vorlagen_liste, regeln="", posts=None):
+    post_bilder, post_text = _post_bloecke(posts)
     fotos = _fotos_der_mediathek(brand, 8) if typ in VORLAGEN_HINWEIS else []
     quellen = [n for n, _, _ in fotos] + (["referenz"] if brand["ref_photo"] else [])
     text = (_marke_kontext(brand) + f"\nLogo vorhanden: {'ja' if brand['logo'] else 'nein'}; Fotos für Szenen: {', '.join(quellen) or 'keine'}"
             f"\nRegeln für {typ} bisher: {regeln or '(keine)'}"
             f"\nBisherige Vorlagen (JSON): {json.dumps([{'vorlage_id': v['id'], 'name': v['name'], 'szene': v['szene']} for v in vorlagen_liste], ensure_ascii=False)[:16000]}"
+            + post_text +
             f"\n\nBisheriger Chat:\n" + "\n".join(f"{h['role']}: {h['text']}" for h in verlauf[-10:]) + f"\n\nNeue Nachricht: {nachricht or '(nur Bilder)'}")
-    content = _bilder_bloecke("Früheres Beispielbild", vorbilder[:3], 500) + _bilder_bloecke("Neu geschicktes Beispielbild", neue_bilder[:6], 700) + _foto_bloecke(fotos)
+    content = (_bilder_bloecke("Früheres Beispielbild", vorbilder[:3], 500) + _bilder_bloecke("Neu geschicktes Beispielbild", neue_bilder[:6], 700)
+               + post_bilder + _foto_bloecke(fotos))
     system = DESIGN_CHAT_SYSTEM.replace("{typ}", typ).replace("{hinweis}", VORLAGEN_HINWEIS.get(typ, ""))
     res = _claude(system + scene_mod.__doc__, content + [{"type": "text", "text": text}], DESIGN_CHAT_SCHEMA, effort="high", max_tokens=32000)
     res["vorlagen"] = [dict(v, szene=_valid_scene(v["szene_json"])) for v in res["vorlagen"]]
