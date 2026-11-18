@@ -4,13 +4,13 @@
 <section class="ideen-seite">
   <div class="head">
     <div class="kopf-text">
-      <span class="label">Ideenwerkstatt · {{ zaehler.neu }} neu{% if zaehler.gemerkt %} · {{ zaehler.gemerkt }} gemerkt{% endif %}{% if letzter %} · Radar zuletzt {{ letzter }}{% endif %}</span>
+      <span class="label">Ideenwerkstatt · {{ zaehler.neu }} neu{% if zaehler.gemerkt %} · {{ zaehler.gemerkt }} zurückgestellt{% endif %}{% if letzter %} · Radar zuletzt {{ letzter }}{% endif %}</span>
       <h1>Ideen</h1>
     </div>
     <div class="kopf-aktionen"><a class="button" href="/leitlinien">Leitlinien</a><a class="button" href="/planen">Zum Redaktionsplan</a></div>
   </div>
   <p class="lead">Claude schlägt laufend Ideen vor, der <strong>Trendradar</strong> liefert aktuelle Aufhänger, die <strong>Swipe-Datei</strong> Posts, die dir gefallen. Du entscheidest:
-    <strong>Vorbereiten</strong> macht aus einer Idee einen Post im Redaktionsplan, <strong>Verwerfen</strong> sagt Claude, dass solche Ideen nicht mehr kommen sollen.</p>
+    <strong>Übernehmen</strong> macht aus einer Idee sofort einen fertigen Post, ein Carousel oder ein Reel zum Ansehen (mit neuen Bildern) und sagt Claude: mehr davon. <strong>Jetzt nicht</strong> legt sie ohne Wertung zur Seite. <strong>Passt nicht</strong> sagt Claude, dass du dieses Thema oder diese Art Content nicht mehr oder seltener willst.</p>
 
   {% if radar_fehler %}<p class="hinweis-leiste klein warn">Der letzte Radar-Lauf ist schiefgegangen: {{ radar_fehler.error }}</p>{% endif %}
 
@@ -68,9 +68,9 @@
         </details>
         <div class="idee-aktionen">
           {% if status in ['neu', 'gemerkt'] %}
-          <button class="small primary" name="aktion" value="vorbereiten" formaction="/ideen/aktion?nur={{ i.id }}">Vorbereiten</button>
-          {% if status == 'neu' %}<button class="small" name="aktion" value="gemerkt" formaction="/ideen/aktion?nur={{ i.id }}">Merken</button>{% endif %}
-          <button class="small link danger" name="aktion" value="verworfen" formaction="/ideen/aktion?nur={{ i.id }}">Verwerfen</button>
+          <button class="small primary" name="aktion" value="annehmen" formaction="/ideen/aktion?nur={{ i.id }}" title="Finde ich gut: Der Post wird sofort gestaltet und liegt dann im Redaktionsplan zur Abnahme. Claude schlägt mehr in dieser Richtung vor.">Übernehmen</button>
+          {% if status == 'neu' %}<button class="small" name="aktion" value="gemerkt" formaction="/ideen/aktion?nur={{ i.id }}" title="Gerade nicht verwenden, ohne Wertung. Die Idee liegt danach unter „Jetzt nicht“ und kann später noch übernommen werden.">Jetzt nicht</button>{% endif %}
+          <button class="small danger" name="aktion" value="verworfen" formaction="/ideen/aktion?nur={{ i.id }}" title="Finde ich nicht gut oder nicht passend: Claude schlägt dieses Thema und diese Art Content nicht mehr oder seltener vor.">Passt nicht</button>
           {% elif status == 'verworfen' %}
           <button class="small" name="aktion" value="neu" formaction="/ideen/aktion?nur={{ i.id }}">Doch wieder vorschlagen</button>
           {% elif i.post_id %}
@@ -81,16 +81,15 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="leer-hinweis">{% if status == 'neu' %}Gerade keine neuen Ideen. Lass dir oben welche vorschlagen{% if not red.aktiv %} oder schalte unter <a href="/planen#redaktion">Redaktionsplan</a> die Redaktion ein, dann kommen jeden Tag welche{% endif %}.{% elif status == 'gemerkt' %}Nichts gemerkt.{% elif status == 'uebernommen' %}Noch keine Idee vorbereitet.{% else %}Nichts verworfen.{% endif %}</p>
+    <p class="leer-hinweis">{% if status == 'neu' %}Gerade keine neuen Ideen. Lass dir oben welche vorschlagen{% if not red.aktiv %} oder schalte unter <a href="/planen#redaktion">Redaktionsplan</a> die Redaktion ein, dann kommen jeden Tag welche{% endif %}.{% elif status == 'gemerkt' %}Nichts zurückgestellt.{% elif status == 'uebernommen' %}Noch keine Idee übernommen.{% else %}Nichts als unpassend markiert.{% endif %}</p>
     {% endif %}
 
     {% if status in ['neu', 'gemerkt'] and ideen_liste %}
     <div class="auswahl-leiste" hidden>
       <strong data-auswahl-zahl>0 ausgewählt</strong>
-      <button class="primary" name="aktion" value="vorbereiten">Als Posts vorbereiten</button>
-      <button name="aktion" value="vorbereiten_visuals" title="Übernimmt die Ideen und startet gleich die Gestaltung der Visuals">… und Visuals erstellen</button>
-      {% if status == 'neu' %}<button name="aktion" value="gemerkt">Merken</button>{% endif %}
-      <button class="link danger" name="aktion" value="verworfen">Verwerfen</button>
+      <button class="primary" name="aktion" value="annehmen" title="Die Posts werden sofort gestaltet und liegen dann im Redaktionsplan zur Abnahme">Übernehmen</button>
+      {% if status == 'neu' %}<button name="aktion" value="gemerkt" title="Ohne Wertung zur Seite legen">Jetzt nicht</button>{% endif %}
+      <button class="danger" name="aktion" value="verworfen" title="Claude schlägt solche Ideen nicht mehr oder seltener vor">Passt nicht</button>
       <button type="button" class="link" data-auswahl-leeren>Auswahl aufheben</button>
     </div>
     {% endif %}

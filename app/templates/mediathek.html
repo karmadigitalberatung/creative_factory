@@ -33,6 +33,14 @@
       </div>
     </form>
 
+    <form method="get" action="/mediathek" class="row m-suche">
+      {% if art %}<input type="hidden" name="art" value="{{ art }}">{% endif %}
+      <input type="search" name="q" value="{{ suche }}" placeholder="In Titeln und Beschreibungen suchen, z. B. Schreibtisch, draußen, Portrait" aria-label="Mediathek durchsuchen" class="grow">
+      <button class="small">Suchen</button>{% if suche %}<a class="small" href="/mediathek{{ '?art=' ~ art if art }}">zurücksetzen</a>{% endif %}
+    </form>
+    {% if 'Beschreibt Bilder' in laeuft %}<p class="hinweis-leiste klein" data-arbeitet="Claude beschreibt deine Bilder">Claude sieht sich {{ 'noch ' ~ ohne_text ~ ' Bilder' if ohne_text else 'das Bild' }} an und schreibt dazu, was zu sehen ist. Daran erkennt es später die passenden Bilder für Posts, Reels und Storys.</p>
+    {% elif ohne_text and not ki_text %}<p class="hinweis-leiste klein warn">{{ ohne_text }} Bilder haben noch keine Beschreibung. Zum automatischen Beschreiben braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY); von Hand geht es an jedem Bild.</p>{% endif %}
+
     <div class="media-grid">
       {% if 'Erzeugt Bild' in laeuft and not art %}<figure class="medium platzhalter" data-arbeitet="Bild wird erzeugt"><div class="leer"></div></figure>{% endif %}
       {% for m in medien %}
@@ -42,6 +50,17 @@
           <span class="badge">{{ arten[m.art] }}</span>
           <span class="small grow ellipsis" title="{{ m.beschreibung or m.titel }}">{{ m.titel }}</span>
         </figcaption>
+        {% if m.art in beschreibbar %}
+        <details class="medium-inhalt">
+          <summary class="small {{ 'muted' if not m.inhalt }}" title="Beschreibung ansehen oder ändern">{{ m.inhalt or ('wird gerade beschrieben …' if 'Beschreibt Bilder' in laeuft else 'noch ohne Beschreibung') }}</summary>
+          <form method="post" action="/mediathek/{{ m.id }}/inhalt" class="stack">
+            <input type="hidden" name="zurueck" value="/mediathek{{ '?art=' ~ art if art }}">
+            <label class="small">Titel <input name="titel" value="{{ m.titel }}" maxlength="200"></label>
+            <label class="small">Was ist zu sehen? <textarea name="inhalt" rows="4" maxlength="400" placeholder="z. B. Philipp am Küchentisch mit Notizbuch, Seitenlicht vom Fenster, schwarzweiß, oben ruhige Wand">{{ m.inhalt }}</textarea></label>
+            <div class="row"><button class="small">Speichern</button>{% if ki_text %}<button class="small link" name="neu" value="1">von Claude neu beschreiben</button>{% endif %}</div>
+          </form>
+        </details>
+        {% endif %}
         <div class="medium-actions">
           <a class="link small" href="/media/{{ m.datei }}" download>laden</a>
           {% if m.art in ('foto', 'generiert') %}<form method="post" action="/mediathek/{{ m.id }}/referenzfoto"><button class="link small">als Referenzfoto</button></form>{% endif %}
@@ -49,7 +68,7 @@
         </div>
       </figure>
       {% else %}
-      <p class="muted">Noch keine Bilder{{ ' in dieser Kategorie' if art }}.</p>
+      <p class="muted">{% if suche %}Kein Bild passt zu „{{ suche }}“.{% else %}Noch keine Bilder{{ ' in dieser Kategorie' if art }}.{% endif %}</p>
       {% endfor %}
     </div>
 

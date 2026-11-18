@@ -118,6 +118,31 @@ def alle_neu_rendern(brand_id):
             pass
 
 
+# Jedes Format hat einen eigenen Charakter, damit Carousel, Einzelbild und Reel im Feed nicht gleich aussehen.
+# Eigene Regeln je Typ (Design & Layout) gehen vor.
+CHARAKTER = {
+    "Carousel": ("Charakter Carousel: redaktionell und ruhig, wie ein kleines Magazin zum Durchblättern. Cover mit klarer Titelzeile, Innenslides in einem "
+                 "durchgehenden Raster mit Fußzeile und Seitenzahl, viel Weißraum. Fotos eher als Bildfläche neben oder über dem Text als vollflächig; "
+                 "höchstens das Cover darf ein Vollbild sein."),
+    "Einzelbild": ("Charakter Einzelbild: ein Plakat, keine Carousel-Seite. Eine einzige Aussage, sehr groß gesetzt, auf vollflächigem Foto oder kräftiger "
+                   "Farbfläche. Keine Seitenzahl, kein Wisch-Hinweis, keine Carousel-Fußzeile, höchstens Logo oder Name klein. Es muss sich auf den ersten Blick "
+                   "von einem Carousel-Cover unterscheiden: andere Aufteilung, anderer Hintergrund, andere Position und Größe der Schrift."),
+    "Reel": ("Charakter Reel: filmisch und in Bewegung, nicht wie abgefilmte Carousel-Slides. Vollbild-Fotos mit langsamer Kamerafahrt, große Schrift, die "
+             "Wort für Wort oder Zeile für Zeile kommt, spürbarer Rhythmus mit Wechsel zwischen Bild-Szenen und reinen Schrift-Szenen, kontrastreichere "
+             "und dunklere Gründe als in den Carousels. Keine Fußzeilen, keine Seitenzahlen."),
+    "Story": ("Charakter Story: persönlich und spontan, wie kurz aus dem Alltag. Ein Gedanke, ein Bild, wenig Gestaltung, gern eine Frage am Ende. "
+              "Leichter und lockerer als ein Reel."),
+}
+
+
+def charakter(auftreten, typ):
+    """Charakter des Formats für Claude (Gestalten und Animation), mit dem Hinweis, dass eigene Regeln vorgehen."""
+    t = CHARAKTER.get(typ, "")
+    if t and regeln(auftreten, typ):
+        t += " Widersprechen die Regeln der Marke für dieses Format, gelten die Regeln der Marke."
+    return t
+
+
 def regeln(auftreten, typ):
     return ((auftreten.get("typ_regeln") or {}).get(typ) or "").strip()
 
@@ -178,7 +203,8 @@ def fuer_claude(brand, fmt, n=8):
     """Vorlagen und Regeln eines Formats als Textblock für das Gestalten (JSON der Szenen)."""
     a = json.loads(brand["auftreten"])
     typ = fmt if fmt in TYPEN else "Carousel"
-    vs = liste(brand["id"], typ)[:n] or (liste(brand["id"], "Carousel")[:n] if typ == "Einzelbild" else [])
+    eigene = liste(brand["id"], typ)[:n]
+    vs = eigene or (liste(brand["id"], "Carousel")[:n] if typ == "Einzelbild" else [])
     teile = []
     if regeln(a, typ):
         teile.append(f"Regeln für {TYPEN[typ]['titel']}: {regeln(a, typ)}")
@@ -186,6 +212,9 @@ def fuer_claude(brand, fmt, n=8):
         teile.append(f"Vorlagen der Marke für {TYPEN[typ]['titel']} (Gestaltungslogik, Raster, Typo-Hierarchie und Elemente übernehmen, "
                      "passend zum Inhalt variieren; Texte sind nur Platzhalter):\n" +
                      json.dumps([{"name": v["name"], "szene": v["szene"]} for v in vs], ensure_ascii=False)[:14000])
+        if not eigene:   # Einzelbild ohne eigene Vorlagen: die Carousel-Vorlagen liefern nur Farben und Schrift, nicht den Aufbau
+            teile.append("Achtung: Das sind Vorlagen für Carousels. Übernimm daraus nur Farben, Schriften und Abstände; "
+                         "Aufbau und Bildaufteilung gestaltest du für das Einzelbild eigenständig und sichtbar anders.")
     return "\n\n".join(teile)
 
 

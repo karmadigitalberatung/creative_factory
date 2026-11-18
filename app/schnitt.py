@@ -495,7 +495,7 @@ def animieren(brand_id, post_id, schnitt=None, mit_claude=True):
     extra = {n: storage.abs_path(brand_id, m["datei"]) for n, m in pf}
     if schnitt is None and mit_claude and config.ANTHROPIC_API_KEY:
         try:
-            schnitt = ai.animation(b, p, words, laenge, [(n, m["titel"]) for n, m in pf])
+            schnitt = ai.animation(b, p, words, laenge, [(n, medien.kurz(m)) for n, m in pf])
         except Exception as e:
             from .jobs import hinweis
             hinweis("Die Regie durch Claude hat nicht geklappt (" + ai.fehlertext(e) + "). Ich habe die Szenen automatisch gebaut.", b, post_id)

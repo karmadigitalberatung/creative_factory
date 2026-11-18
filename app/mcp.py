@@ -161,7 +161,7 @@ def post_lesen(b, a):
     inhalt = json.loads(p["inhalt"])
     d = dict(_kurz(p), slides=inhalt.get("slides"), skript=inhalt.get("skript"), caption_ig=p["caption_ig"], caption_li=p["caption_li"],
              bildidee=p["bildidee"], vorher_pruefen=p["vorher_pruefen"], anzahl_slides=p["slide_count"],
-             fotos=[{"name": n, "medien_id": m["id"], "titel": m["titel"]} for n, m in medien.post_fotos(b["id"], p)],
+             fotos=[{"name": n, "medien_id": m["id"], "titel": m["titel"], "inhalt": m["inhalt"]} for n, m in medien.post_fotos(b["id"], p)],
              letzter_fehler=jobs.last_error(b["id"], p["id"]))
     if p["format"] == "Blog":
         d = dict(_kurz(p), blog=inhalt.get("blog"), ableitungen=[dict(x) for x in hub.ableitungen(b["id"], p["id"])], vorher_pruefen=p["vorher_pruefen"])
@@ -278,7 +278,7 @@ def bild_erzeugen(b, a):
 def medien_lesen(b, a):
     art = a.get("art") if a.get("art") in medien.ARTEN else None
     rows = medien.liste(b["id"], art)[: max(1, min(int(a.get("anzahl") or 20), 40))]
-    out = [_text([{"medien_id": m["id"], "art": m["art"], "titel": m["titel"]} for m in rows])]
+    out = [_text([{"medien_id": m["id"], "art": m["art"], "titel": m["titel"], "inhalt": m["inhalt"]} for m in rows])]
     if a.get("bilder"):
         for m in rows[:12]:
             try:
@@ -323,19 +323,19 @@ def idee_anlegen(b, a):
     i = dict(a)
     i["slides"] = _slides(a.get("slides"))
     iid = ideen.anlegen(b["id"], i, "chat", _datum(a.get("datum")))
-    return [_text({"idee_id": iid, "hinweis": "In der Ideenwerkstatt abgelegt; mit ideen_entscheiden vorbereiten."})]
+    return [_text({"idee_id": iid, "hinweis": "In der Ideenwerkstatt abgelegt; mit ideen_entscheiden annehmen."})]
 
 
 def ideen_entscheiden(b, a):
     ids = [int(x) for x in a.get("idee_ids") or []]
     aktion = a.get("aktion")
-    if aktion in ("vorbereiten", "vorbereiten_visuals"):
-        neu = ideen.vorbereiten(b["id"], ids, visuals=aktion == "vorbereiten_visuals")
+    if aktion in ("annehmen", "vorbereiten", "vorbereiten_visuals"):
+        neu = ideen.annehmen(b["id"], ids)
         return [_text({"neue_posts": [_kurz(_post(b, pid)) for pid in neu]})]
     if aktion in ("gemerkt", "verworfen", "neu"):
         ideen.setzen(b["id"], ids, aktion)
         return [_text(f"{len(ids)} Ideen: {aktion}.")]
-    raise Fehler("aktion: vorbereiten, vorbereiten_visuals, gemerkt, verworfen oder neu.")
+    raise Fehler("aktion: annehmen, gemerkt, verworfen oder neu.")
 
 
 def trends_lesen(b, a):
@@ -592,7 +592,7 @@ WERKZEUGE = [
      _o({"post_id": INT, "anzahl": INT}, ["post_id"]), post_fotos_erzeugen),
     ("post_fotos_waehlen", "Fotos aus der Mediathek für einen Post festlegen (medien_ids aus medien_lesen). Ersetzt die bisherige Auswahl.",
      _o({"post_id": INT, "medien_ids": {"type": "array", "items": INT}}, ["post_id", "medien_ids"]), post_fotos_waehlen),
-    ("medien_lesen", "Mediathek: Fotos, erzeugte Bilder, Vorbilder. art: foto, generiert, person, sheet, vorbild. bilder=true zeigt Vorschauen.",
+    ("medien_lesen", "Mediathek: Fotos, erzeugte Bilder, Vorbilder. art: foto, generiert, person, sheet, vorbild. Jeder Eintrag trägt in inhalt, was auf dem Bild zu sehen ist; danach die passenden Bilder wählen. bilder=true zeigt Vorschauen.",
      _o({"art": STR, "anzahl": INT, "bilder": BOOL}), medien_lesen),
     ("bild_erzeugen", "Ein Bild im Bildstil der Marke erzeugen und in die Mediathek legen. Personen mit @Name erwähnen.",
      _o({"beschreibung": STR, "format": {"type": "string", "enum": ["4:5", "9:16", "1:1", "16:9"]}}, ["beschreibung"]), bild_erzeugen),
@@ -625,8 +625,8 @@ WERKZEUGE = [
     ("idee_anlegen", "Eine eigene Idee in die Ideenwerkstatt legen (z. B. aus diesem Gespräch). " + SLIDE_DOKU,
      _o({"titel": STR, "format": {"type": "string", "enum": marke.FORMATE}, "aufhaenger": STR, "warum": STR, "datum": STR, "slides": SLIDES,
          "skript": STR, "caption_ig": STR, "caption_li": STR, "bildidee": STR, "saeule": STR}, ["titel", "format"]), idee_anlegen),
-    ("ideen_entscheiden", "Ideen vorbereiten (werden Posts im Redaktionsplan), merken, verwerfen oder zurück zu neu.",
-     _o({"idee_ids": {"type": "array", "items": INT}, "aktion": {"type": "string", "enum": ["vorbereiten", "vorbereiten_visuals", "gemerkt", "verworfen", "neu"]}},
+    ("ideen_entscheiden", "Ideen entscheiden: annehmen (gut: wird sofort ein Post im Redaktionsplan und gleich gestaltet, mit neuen Bildern), gemerkt (jetzt nicht, ohne Wertung), verworfen (passt nicht: Thema und Art Content künftig meiden) oder neu (zurück zu den neuen Ideen).",
+     _o({"idee_ids": {"type": "array", "items": INT}, "aktion": {"type": "string", "enum": ["annehmen", "gemerkt", "verworfen", "neu"]}},
         ["idee_ids", "aktion"]), ideen_entscheiden),
     ("trends_lesen", "Aktuelle Trends und Anlässe aus dem Trendradar mit Quellen und möglichem Winkel.", _o({}), trends_lesen),
     ("trendradar_starten", "Den Trendradar jetzt im Web suchen lassen.", _o({}), trendradar_starten),

@@ -47,7 +47,7 @@
             <a class="grow ellipsis" href="/ideen" title="{{ i.aufhaenger }}">{{ i.titel }}</a>
             {% if i.neu_seit %}<span class="chip dunkel">neu</span>{% endif %}
             <span class="muted small">{{ i.format }}{% if i.datum %} · {{ i.datum[8:10] }}.{{ i.datum[5:7] }}.{% endif %}</span>
-            <button class="small" name="aktion" value="vorbereiten" formaction="/ideen/aktion?nur={{ i.id }}">Vorbereiten</button>
+            <button class="small" name="aktion" value="annehmen" formaction="/ideen/aktion?nur={{ i.id }}">Übernehmen</button>
           </div>
           {% else %}
           <p class="muted small">Keine neuen Ideen. <a href="/ideen">In der Ideenwerkstatt</a> lässt du dir welche vorschlagen{% if not red.aktiv %}, oder die Redaktion legt täglich welche hin, wenn du sie unter <a href="/planen#redaktion">Redaktionsplan</a> einschaltest{% endif %}.</p>

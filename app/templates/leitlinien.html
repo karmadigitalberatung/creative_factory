@@ -14,11 +14,19 @@
   {% if fehler %}<p class="hinweis-leiste klein warn">Der Entwurf ist schiefgegangen: {{ fehler.error }}</p>{% endif %}
 
   <form method="post" action="/leitlinien" class="leitlinien" {% if entwirft %}data-arbeitet="Claude entwirft deine Leitlinien" data-poll="/jobs"{% endif %}>
+    <button hidden tabindex="-1" aria-hidden="true"></button>{# Enter in einem Feld speichert nur und löst nicht „Neu generieren“ aus #}
     {% if ki_text %}
-    <div class="hinweis-leiste klein entwurf-leiste">
-      <span>{% if leer %}Noch leer? Claude macht dir einen Entwurf aus Design &amp; Layout, deiner Website und deinen bisherigen Posts.{% else %}Claude kann leere Felder aus Design &amp; Layout, Website und bisherigen Posts vorschlagen. Was du schon eingetragen hast, bleibt.{% endif %}</span>
-      <button class="small" name="entwurf" value="1" {{ 'disabled' if entwirft }}>{{ 'Entwirft …' if entwirft else 'Leere Felder von Claude vorschlagen lassen' }}</button>
-    </div>
+    <section class="card neu-generieren">
+      <div class="bereich-zeile"><h2>Neu generieren</h2><span class="small muted">aus Design &amp; Layout, deiner Website und deinen bisherigen Posts</span></div>
+      <p class="small muted">{% if leer %}Noch leer? Claude schreibt dir einen ersten Entwurf, den du danach anpasst.{% else %}Claude schreibt alle Leitlinien neu, auch die Bild-Leitlinien. Deine Vorbild-Konten bleiben, die jetzige Fassung kannst du danach zurückholen.{% endif %}</p>
+      <label>Was soll anders werden? <span class="hint">optional</span>
+        <textarea name="wunsch" rows="2" placeholder="z. B. mehr Fokus auf KI-Werbefilme, weniger Privates, Bilder dokumentarischer und nie im Büro"></textarea></label>
+      <div class="row">
+        <button class="primary" name="neu" value="1" {{ 'disabled' if entwirft }} {% if not leer %}data-warnen="Alle Leitlinien werden neu geschrieben. Die jetzige Fassung kannst du danach zurückholen. Neu generieren?"{% endif %}>{{ 'Schreibt …' if entwirft else 'Leitlinien neu generieren' }}</button>
+        {% if not leer %}<button class="small" name="entwurf" value="1" {{ 'disabled' if entwirft }} title="Was du schon eingetragen hast, bleibt">Nur leere Felder füllen</button>{% endif %}
+        {% if vorher %}<button class="small link" formaction="/leitlinien/zurueck" formnovalidate>Vorherige Fassung zurückholen</button>{% endif %}
+      </div>
+    </section>
     {% endif %}
 
     <section class="card">
@@ -31,11 +39,11 @@
           <input name="saeule_name_{{ i }}" value="{{ s.name or '' }}" placeholder="{{ ['z. B. KI-Websites', 'z. B. Unternehmer und Vater', 'z. B. Hinter den Kulissen', '', '', ''][i] }}" aria-label="Säule {{ i + 1 }}">
           <label class="prozent"><input name="saeule_anteil_{{ i }}" type="number" min="0" max="100" step="5" value="{{ s.anteil or '' }}" aria-label="Anteil Säule {{ i + 1 }} in Prozent"> %</label>
           <input name="saeule_beschreibung_{{ i }}" value="{{ s.beschreibung or '' }}" placeholder="{{ 'z. B. Was KI für Websites kleiner Firmen wirklich bringt' if i == 0 else '' }}" aria-label="Beschreibung Säule {{ i + 1 }}">
-          <span class="small {{ 'warn' if v.zu_kurz else 'muted' }}" title="Anteil der vorbereiteten Ideen in den letzten 60 Tagen">{% if v and gesamt %}{{ v.ist }} %{% if v.zu_kurz %} · zu wenig{% endif %}{% endif %}</span>
+          <span class="small {{ 'warn' if v.zu_kurz else 'muted' }}" title="Anteil der übernommenen Ideen in den letzten 60 Tagen">{% if v and gesamt %}{{ v.ist }} %{% if v.zu_kurz %} · zu wenig{% endif %}{% endif %}</span>
         </div>
         {% endfor %}
       </div>
-      {% if gesamt %}<p class="hint">„zuletzt“: Anteil der {{ gesamt }} Ideen, die du in den letzten 60 Tagen vorbereitet hast. Kommt eine Säule zu kurz, bevorzugt Claude sie.</p>{% endif %}
+      {% if gesamt %}<p class="hint">„zuletzt“: Anteil der {{ gesamt }} Ideen, die du in den letzten 60 Tagen übernommen hast. Kommt eine Säule zu kurz, bevorzugt Claude sie.</p>{% endif %}
     </section>
 
     <div class="leitlinien-raster">
@@ -73,6 +81,14 @@
         </div>
         {% endfor %}
       </div>
+    </section>
+
+    <section class="card">
+      <div class="bereich-zeile"><h2>Bilder</h2><span class="small muted">gilt für jedes erzeugte Bild</span></div>
+      <p class="small muted">Welche Bilder Claude und der Bildgenerator machen dürfen und welche nicht: Motive, Orte, Licht, wann du selbst im Bild bist. Der Look selbst (Farben, Stimmung) steht im Bildstil unter <a href="/design">Design &amp; Layout</a>.</p>
+      <textarea name="bilder" rows="6" placeholder="- dokumentarisch, wie nebenbei fotografiert, natürliches Licht&#10;- ich selbst höchstens in jedem zweiten Bild, sonst Hände, Details, Räume&#10;- nie: Stockfoto-Posen, erfundene Kunden oder Teams, Bildschirme mit lesbarem Text&#10;- keine Schrift und keine Logos im Bild">{{ ll.bilder }}</textarea>
+      <label class="check"><input type="checkbox" name="bilder_neu" value="1" {{ 'checked' if ll.bilder_neu }}> Für jeden neuen Post eigene Bilder erzeugen
+        <span class="hint">passend zum Thema, im Look deiner Mediathek und mit deinen gespeicherten Personen{% if not ki_bild %} · braucht einen Bildgenerator{% endif %}</span></label>
     </section>
 
     <section class="card">

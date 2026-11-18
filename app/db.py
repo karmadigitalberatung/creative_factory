@@ -57,6 +57,7 @@ def conn():
 MIGRATION = [("posts", "video_roh", "TEXT"), ("posts", "video", "TEXT"), ("posts", "schnitt", "TEXT"),
              ("chats", "bilder", "TEXT"), ("brands", "muster_design", "TEXT"),
              ("posts", "kanaele", "TEXT"),
+             ("medien", "inhalt", "TEXT NOT NULL DEFAULT ''"),   # was auf dem Bild zu sehen ist (für Claude und die Suche)
              ("users", "rolle", "TEXT NOT NULL DEFAULT 'nutzer'"),
              ("jobs", "schritt", "TEXT"),   # nutzer | admin
              ("users", "aktiv", "INTEGER NOT NULL DEFAULT 1"), ("users", "letzter_login", "REAL"),

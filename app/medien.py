@@ -6,6 +6,8 @@ Arten (medien.art):
   person    eines der Fotos einer gemerkten Person
   sheet     Charakter-Referenz-Sheet einer Person
   vorbild   Layout-Beispiel für das Auftreten (Screenshots, Pinterest, Posts, die gefallen)
+Jedes Foto trägt in „inhalt“, was darauf zu sehen ist (von Claude beschrieben, von Hand änderbar). Daran erkennt Claude beim
+Gestalten, Animieren und Auswählen die passenden Bilder. „beschreibung“ bleibt der Prompt bzw. die Herkunft.
 """
 import io, json, os, uuid
 
@@ -38,7 +40,99 @@ def speichern(brand_id, raw, art, titel="", beschreibung="", person_id=None):
         im.convert("RGB").save(pfad, quality=90)
     mid = db.run("INSERT INTO medien (brand_id, datei, art, titel, beschreibung, person_id, breite, hoehe, created) VALUES (?,?,?,?,?,?,?,?,?)",
                  brand_id, rel, art, titel[:200], beschreibung[:2000], person_id, im.width, im.height, db.now())
+    if art in ("foto", "person"):   # hochgeladen: Claude beschreibt im Hintergrund, was zu sehen ist (erzeugte Bilder beschreibt ihr eigener Ablauf)
+        try:
+            beschreiben_starten(brand_id)
+        except Exception:
+            pass
     return db.one("SELECT * FROM medien WHERE id=?", mid)
+
+
+BESCHREIBBAR = ("foto", "generiert", "person")   # Vorbilder und Referenz-Sheets wählt Claude nicht für Posts aus
+
+
+def kurz(m):
+    """Titel und, wenn vorhanden, was auf dem Bild zu sehen ist (für Listen an Claude)."""
+    return m["titel"] + (f": {m['inhalt']}" if m["inhalt"] else "")
+
+
+def ohne_beschreibung(brand_id):
+    return db.one(f"SELECT COUNT(*) n FROM medien WHERE brand_id=? AND inhalt='' AND art IN ({','.join('?' * len(BESCHREIBBAR))})",
+                  brand_id, *BESCHREIBBAR)["n"]
+
+
+def _dateiname(titel):
+    """Titel, die nur ein Dateiname sind (IMG_1234, DSC00012, Scan 3 …) oder fehlen: die darf Claude ersetzen."""
+    t = (titel or "").strip()
+    return not t or (sum(c.isdigit() for c in t) >= 3 and " " not in t.strip()) or t.lower().startswith(("img", "dsc", "pxl", "screenshot", "bildschirmfoto"))
+
+
+def beschreiben(brand_id, ids=None, neu=False):
+    """Job: Claude beschreibt, was auf den Bildern zu sehen ist (Feld inhalt), je Aufruf sechs Bilder.
+    ids=None: alle Fotos ohne Beschreibung, auch solche, die währenddessen dazukommen. neu=True überschreibt vorhandene Beschreibungen.
+    Gibt die Anzahl beschriebener Bilder zurück."""
+    b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
+    marken = ",".join("?" * len(BESCHREIBBAR))
+    versucht, fertig, fehler = set(), 0, None
+    while True:
+        if ids is None:
+            rows = db.q(f"SELECT * FROM medien WHERE brand_id=? AND inhalt='' AND art IN ({marken}) ORDER BY id DESC", brand_id, *BESCHREIBBAR)
+        else:
+            rows = [m for m in (db.one("SELECT * FROM medien WHERE id=? AND brand_id=?", i, brand_id) for i in ids) if m and (neu or not m["inhalt"])]
+        rows = [m for m in rows if m["id"] not in versucht][:6]
+        if not rows:
+            break
+        versucht.update(m["id"] for m in rows)
+        bilder = []
+        for m in rows:
+            pe = db.one("SELECT name FROM personen WHERE id=?", m["person_id"]) if m["person_id"] else None
+            hinweis = "; ".join(x for x in (f"zeigt die gespeicherte Person {pe['name']}" if pe else "",
+                                            f"erzeugt mit dem Prompt: {m['beschreibung'][:300]}" if m["art"] == "generiert" and m["beschreibung"] else "") if x)
+            try:
+                bilder.append((m["id"], m["titel"], hinweis, bild_von(brand_id, m).convert("RGB")))
+            except Exception:
+                pass   # Datei fehlt oder ist nicht lesbar: überspringen
+        if not bilder:
+            continue
+        try:
+            res = ai.bilder_beschreiben(b, bilder)
+        except Exception as e:   # ein Stapel scheitert: die übrigen trotzdem versuchen
+            fehler = e
+            continue
+        for m in rows:
+            r = res.get(m["id"])
+            if r and r["inhalt"]:
+                titel = r["titel"] if r["titel"] and _dateiname(m["titel"]) else m["titel"]
+                db.run("UPDATE medien SET inhalt=?, titel=? WHERE id=?", r["inhalt"], titel, m["id"])
+                fertig += 1
+    if fehler and not fertig:
+        raise fehler
+    return fertig
+
+
+def beschreiben_starten(brand_id):
+    """Fehlende Beschreibungen im Hintergrund nachtragen (nach einem Upload, beim Öffnen der Mediathek). Läuft schon einer, passiert nichts."""
+    from . import jobs
+    if not config.ANTHROPIC_API_KEY or not ohne_beschreibung(brand_id):
+        return False
+    if any(j["kind"] == "bildtext" for j in jobs.running(brand_id)):
+        return False
+    jobs.start(brand_id, None, "bildtext", beschreiben, brand_id)
+    return True
+
+
+def passende_waehlen(brand_id, post_id, anzahl):
+    """Aus der Mediathek die Fotos wählen, deren Beschreibung zum Post passt, und dem Post zuordnen. Gibt die Anzahl zurück."""
+    b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
+    p = db.one("SELECT * FROM posts WHERE id=? AND brand_id=?", post_id, brand_id)
+    kandidaten = [(m["id"], m["titel"], m["inhalt"]) for m in
+                  db.q("SELECT * FROM medien WHERE brand_id=? AND inhalt!='' AND art IN ('foto','generiert') ORDER BY id DESC LIMIT 60", brand_id)]
+    if not kandidaten:
+        return 0
+    ids = ai.bilder_waehlen(b, p, kandidaten, anzahl)
+    if ids:
+        reel_fotos_setzen(brand_id, post_id, ids)
+    return len(ids)
 
 
 def liste(brand_id, art=None):
@@ -299,6 +393,11 @@ def erzeugen(brand_id, beschreibung, person_id=None, format="4:5", post_id=None,
     raw, gen = ai.bild_erzeugen(b, text, refs=refs, format=format, personen=personen_refs, generator=generator)
     m = speichern(brand_id, raw, "generiert", text[:80], f"{beschreibung} ({config.GENERATOREN[gen]})",
                   person_id=erwaehnt[0]["id"] if erwaehnt else None)
+    try:
+        beschreiben(brand_id, [m["id"]])
+        m = db.one("SELECT * FROM medien WHERE id=?", m["id"])
+    except Exception:
+        pass   # ohne Claude-Schlüssel oder bei einem Fehler bleibt das Bild ohne Beschreibung, sie lässt sich in der Mediathek nachtragen
     if post_id and setzen:   # setzen=False: nur für eine Slide gedacht (Layout-Editor), Foto des Posts bleibt
         db.run("UPDATE posts SET photo=?, bildidee=?, updated=? WHERE id=? AND brand_id=?", m["datei"], beschreibung, db.now(), post_id, brand_id)
     return m
@@ -329,28 +428,42 @@ def reel_fotos_erzeugen(brand_id, post_id, anzahl=4, person_id=None, generator=N
     Die neuen Fotos kommen in die Mediathek und werden dem Reel zugeordnet (zu bereits gewählten dazu)."""
     b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
     p = db.one("SELECT * FROM posts WHERE id=? AND brand_id=?", post_id, brand_id)
-    plan = ai.reel_fotos_plan(b, p, anzahl, ai._fotos_der_mediathek(b, 6))
-    personen = []
-    if person_id:
-        pe = db.one("SELECT * FROM personen WHERE id=? AND brand_id=?", person_id, brand_id)
-        if pe:
-            refs, desc = person_refs(brand_id, pe["id"])
-            personen = [{"name": pe["name"], "beschreibung": desc or "", "refs": refs[:4]}]
-    ref = [Image.open(storage.abs_path(brand_id, b["ref_photo"])).convert("RGB")] if b["ref_photo"] and not personen else []
+    alle = [] if person_id else db.q("SELECT * FROM personen WHERE brand_id=? ORDER BY id", brand_id)   # ohne Vorgabe wählt Claude je Foto
+    plan = ai.reel_fotos_plan(b, p, anzahl, ai._fotos_der_mediathek(b, 6),
+                              [{"name": pe["name"], "beschreibung": pe["beschreibung"] or ""} for pe in alle])
+    cache = {}
+
+    def person(pid):
+        if pid not in cache:
+            pe = db.one("SELECT * FROM personen WHERE id=? AND brand_id=?", pid, brand_id)
+            refs, desc = person_refs(brand_id, pid) if pe else ([], "")
+            cache[pid] = [{"name": pe["name"], "beschreibung": desc or "", "refs": refs[:4]}] if pe else []
+        return cache[pid]
+
+    fest = person(person_id) if person_id else []
+    ref = [Image.open(storage.abs_path(brand_id, b["ref_photo"])).convert("RGB")] if b["ref_photo"] and not fest else []
     neu, fehler = [], []
     for f in plan:
         try:
-            mit = f["mit_person"] and (personen or ref)
+            pid = person_id if fest else next((pe["id"] for pe in alle if pe["name"].lower() == str(f.get("person") or "").strip().lower()), None)
+            if not pid and f["mit_person"] and not ref and len(alle) == 1:   # kein Referenzfoto, genau eine Person gespeichert: die ist gemeint
+                pid = alle[0]["id"]
+            personen = person(pid) if pid and (f["mit_person"] or f.get("person")) else []
+            mit = bool(personen) or (f["mit_person"] and bool(ref))
             raw, gen = ai.bild_erzeugen(b, f["beschreibung"], refs=ref if mit and not personen else None,
                                         format="9:16" if p["format"] in marke.VIDEO_FORMATE else "4:5",
-                                        personen=personen if mit else None, generator=generator)
+                                        personen=personen or None, generator=generator)
             m = speichern(brand_id, raw, "generiert", f["titel"][:80], f"Für „{p['titel']}“: {f['beschreibung']} ({config.GENERATOREN[gen]})",
-                          person_id=personen and mit and person_id or None)
+                          person_id=pid if personen else None)
             neu.append(m["id"])
         except Exception as e:
             fehler.append(ai.fehlertext(e))
     if not neu:
         raise ai.AIFehler("Es konnte kein Foto erzeugt werden: " + (fehler[0] if fehler else "unbekannter Fehler"))
+    try:
+        beschreiben(brand_id, neu)
+    except Exception:
+        pass   # ohne Beschreibung geht es auch: Claude sieht die gewählten Fotos beim Gestalten
     alt = json.loads(db.one("SELECT inhalt FROM posts WHERE id=?", post_id)["inhalt"]).get("reel_fotos") or []
     reel_fotos_setzen(brand_id, post_id, alt + neu)
     return len(neu)

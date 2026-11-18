@@ -1,8 +1,9 @@
-"""Ideenwerkstatt: Claude schlägt laufend Ideen vor, die Person entscheidet (vorbereiten, merken, verwerfen).
+"""Ideenwerkstatt: Claude schlägt laufend Ideen vor, die Person entscheidet mit drei Knöpfen:
+Übernehmen (gut, Status uebernommen), Jetzt nicht (ohne Wertung, Status gemerkt), Passt nicht (negativ, Status verworfen).
 
 Eine Idee ist leicht (Titel, Aufhänger, Format, warum sie passt, Terminvorschlag), trägt aber den fertigen Entwurf
-(Slides, Captions, Skript, Bildidee) schon mit. „Vorbereiten“ macht daraus sofort einen Post im Redaktionsplan
-(optional gleich mit Visuals). Entscheidungen und die „Richtung“ fließen in die nächsten Vorschläge ein, damit sie besser werden.
+(Slides, Captions, Skript, Bildidee) schon mit. „Annehmen“ macht daraus sofort einen Post im Redaktionsplan und
+startet die Gestaltung (neue Bilder, Slides oder Reel); einen Zwischenschritt „Entwurf“ gibt es nicht mehr. Entscheidungen und die „Richtung“ fließen in die nächsten Vorschläge ein, damit sie besser werden.
 Status: neu | gemerkt | verworfen | uebernommen.
 """
 import json
@@ -64,8 +65,13 @@ def setzen(brand_id, ids, status):
         db.run("UPDATE ideen SET status=?, entschieden=? WHERE id=? AND brand_id=? AND status!='uebernommen'", status, db.now(), i, brand_id)
 
 
-def vorbereiten(brand_id, ids, visuals=False):
-    """Ideen als Posts in den Redaktionsplan übernehmen (Entwurf, Datum aus dem Vorschlag). visuals: gleich freigeben (gestalten)."""
+def annehmen(brand_id, ids):
+    """Ideen annehmen: Post im Redaktionsplan anlegen (Datum aus dem Vorschlag) und sofort gestalten lassen."""
+    return vorbereiten(brand_id, ids, visuals=True)
+
+
+def vorbereiten(brand_id, ids, visuals=True):
+    """Ideen als Posts in den Redaktionsplan übernehmen. visuals=False legt nur den Entwurf an (wird von der App nicht mehr genutzt)."""
     _schema()
     neu = []
     for i in ids:
@@ -102,19 +108,24 @@ def vorbereiten(brand_id, ids, visuals=False):
 def lernkontext(brand_id):
     """Für Claude: Leitlinien, was zuletzt übernommen und verworfen wurde, was noch offen liegt (keine Dubletten)."""
     _schema()
-    titel = lambda st, n: [r["titel"] for r in db.q("SELECT titel FROM ideen WHERE brand_id=? AND status=? ORDER BY COALESCE(entschieden, created) DESC LIMIT ?",
-                                                    brand_id, st, n)]
+    def titel(st, n, mit_art=False):
+        rows = db.q("SELECT titel, format, saeule FROM ideen WHERE brand_id=? AND status=? ORDER BY COALESCE(entschieden, created) DESC LIMIT ?", brand_id, st, n)
+        return [r["titel"] + (f" ({r['format']}{', Säule ' + r['saeule'] if r['saeule'] else ''})" if mit_art else "") for r in rows]
+
     a = json.loads(db.one("SELECT auftreten FROM brands WHERE id=?", brand_id)["auftreten"])
     teile = []
     if leitlinien.text(brand_id, a):
         teile.append(leitlinien.text(brand_id, a))
     if titel("uebernommen", 12):
-        teile.append("Diese Ideen hat die Person übernommen (mehr in diese Richtung): " + "; ".join(titel("uebernommen", 12)))
+        teile.append("Diese Ideen fand die Person gut und hat sie übernommen (mehr in diese Richtung, in Thema und Machart): " + "; ".join(titel("uebernommen", 12, True)))
     if titel("verworfen", 15):
-        teile.append("Diese Ideen hat sie verworfen (solche nicht mehr, auch nicht leicht abgewandelt): " + "; ".join(titel("verworfen", 15)))
-    offen = titel("neu", 20) + titel("gemerkt", 10)
-    if offen:
-        teile.append("Diese Ideen liegen schon bereit (keine Dubletten dazu): " + "; ".join(offen))
+        teile.append("Diese Ideen hat die Person als unpassend bewertet (klares Nein: dieses Thema und diese Art Content nicht mehr oder deutlich seltener, "
+                     "auch nicht leicht abgewandelt; häufen sich ein Format oder eine Säule, davon weniger): " + "; ".join(titel("verworfen", 15, True)))
+    if titel("gemerkt", 10):
+        teile.append("Diese Ideen hat die Person nur zur Seite gelegt (keine Wertung, weder gut noch schlecht; nicht noch einmal vorschlagen): "
+                     + "; ".join(titel("gemerkt", 10)))
+    if titel("neu", 20):
+        teile.append("Diese Ideen liegen schon bereit (keine Dubletten dazu): " + "; ".join(titel("neu", 20)))
     from . import radar
     if radar.kontext(brand_id):
         teile.append(radar.kontext(brand_id))

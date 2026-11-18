@@ -1094,3 +1094,16 @@ details[open] summary { margin-bottom: 14px; }
   .woche { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 10px; margin: 0 -16px; padding: 0 16px 6px; scroll-padding: 0 16px; }
   .woche > * { flex: 0 0 44%; scroll-snap-align: start; }
 }
+
+/* Mediathek: Beschreibung je Bild (was zu sehen ist), Suche */
+.m-suche { margin: 14px 0; }
+.medium-inhalt { padding: 2px 12px 6px; }
+.medium-inhalt > summary { list-style: none; cursor: pointer; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.medium-inhalt > summary::-webkit-details-marker { display: none; }
+.medium-inhalt[open] > summary { display: none; }
+.medium-inhalt form { margin: 4px 0 6px; gap: 8px; }
+.medium-inhalt textarea, .medium-inhalt input { font-size: 13px; }
+
+/* Ideen: „Passt nicht“ als eigener Knopf (negative Bewertung) */
+button.danger:not(.link) { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); background: none; }
+button.danger:not(.link):hover { background: color-mix(in srgb, var(--bad) 8%, transparent); }

@@ -8,6 +8,9 @@ Gespeichert im Auftreten unter „leitlinien“:
   vorbilder    [{konto, plattform, was}]: was ihr an dem Konto gefällt
   formate      Format-Vorlieben
   sonstiges    alles andere (früher „Richtung“ in der Ideenwerkstatt)
+  bilder       Bild-Leitlinien: welche Bilder erzeugt werden dürfen und welche nicht (gilt für jeden Bild-Prompt)
+  bilder_neu   für jeden neuen Post eigene Bilder erzeugen (Standard an)
+Beim „Neu generieren“ liegt die vorherige Fassung unter auftreten["leitlinien_vorher"] (zum Zurückholen).
 Ideen tragen die Säule, zu der sie gehören; so sieht man (und Claude), welche Säule zu kurz kommt.
 """
 import datetime, json
@@ -15,7 +18,7 @@ from . import db
 
 MAX_SAEULEN = 6
 MAX_VORBILDER = 8
-TEXTE = ("haltung", "widerspruch", "no_gos", "formate", "sonstiges")
+TEXTE = ("haltung", "widerspruch", "no_gos", "formate", "bilder", "sonstiges")
 
 
 def laden(auftreten):
@@ -30,6 +33,7 @@ def laden(auftreten):
                       for s in ll.get("saeulen") or [] if str(s.get("name", "")).strip()][:MAX_SAEULEN]
     out["vorbilder"] = [{"konto": str(v.get("konto", "")).strip(), "plattform": str(v.get("plattform", "")).strip(), "was": str(v.get("was", "")).strip()}
                         for v in ll.get("vorbilder") or [] if str(v.get("konto", "")).strip()][:MAX_VORBILDER]
+    out["bilder_neu"] = ll.get("bilder_neu") is not False
     return out
 
 
@@ -93,7 +97,8 @@ def text(brand_id, auftreten):
         if kurz:
             t.append(f"Zuletzt zu kurz gekommen (bevorzugen): {', '.join(kurz)}")
     namen = {"haltung": "So denkt die Person, ihre Überzeugungen", "widerspruch": "Hier widerspricht sie anderen (gute Aufhänger)",
-             "no_gos": "No-Gos (nie)", "formate": "Format-Vorlieben", "sonstiges": "Weitere Vorgaben"}
+             "no_gos": "No-Gos (nie)", "formate": "Format-Vorlieben", "sonstiges": "Weitere Vorgaben",
+             "bilder": "Bild-Leitlinien (welche Bilder erzeugt werden dürfen und welche nicht; gilt für jede Bildidee und jeden Bild-Prompt)"}
     for k in TEXTE:
         if ll[k]:
             t.append(f"{namen[k]}: {ll[k]}")
@@ -110,29 +115,56 @@ def aus_formular(form):
                       "beschreibung": str(form.get(f"saeule_beschreibung_{i}") or "")[:300]} for i in range(MAX_SAEULEN)]
     ll["vorbilder"] = [{"konto": str(form.get(f"vorbild_konto_{i}") or "")[:120], "plattform": str(form.get(f"vorbild_plattform_{i}") or "")[:30],
                         "was": str(form.get(f"vorbild_was_{i}") or "")[:300]} for i in range(MAX_VORBILDER)]
+    ll["bilder_neu"] = bool(form.get("bilder_neu"))
     return ll
 
 
-def entwurf(brand_id):
-    """Job: Claude schlägt Leitlinien aus Auftreten, Website und bisherigen Posts vor und füllt nur leere Felder."""
+def bild_regeln(auftreten):
+    """Bild-Leitlinien als Text für Bild-Prompts (leer, wenn nichts eingetragen ist)."""
+    return laden(auftreten)["bilder"]
+
+
+def entwurf(brand_id, neu=False, wunsch=""):
+    """Job: Claude schlägt Leitlinien aus Auftreten, Website und bisherigen Posts vor.
+    neu=False füllt nur leere Felder. neu=True schreibt alles neu (wunsch: was anders werden soll); Vorbild-Konten bleiben,
+    die vorherige Fassung wird zum Zurückholen aufgehoben."""
     from . import ai
     b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
     a = json.loads(b["auftreten"])
     ll = laden(a)
     posts = [r["titel"] for r in db.q("SELECT titel FROM posts WHERE brand_id=? ORDER BY id DESC LIMIT 30", brand_id)]
-    vorschlag = ai.leitlinien_entwurf(b, ll, posts)
+    vorschlag = ai.leitlinien_entwurf(b, ll, posts, neu=neu, wunsch=wunsch)
     v = laden({"leitlinien": vorschlag})
-    for k in TEXTE:
-        if not ll[k]:
-            ll[k] = v[k]
-    if not ll["saeulen"]:
-        ll["saeulen"] = v["saeulen"]
-    elif not any(s["anteil"] or s["beschreibung"] for s in ll["saeulen"]):
-        # Namen der Person behalten, Anteile und Beschreibungen ergänzen
-        vor = {s["name"].lower(): s for s in v["saeulen"]}
-        ll["saeulen"] = [{**s, **{k: vor[s["name"].lower()][k] for k in ("anteil", "beschreibung")}} if s["name"].lower() in vor else s
-                         for s in ll["saeulen"]]
+    vorher = json.loads(json.dumps(ll))
+    if neu:
+        for k in TEXTE:
+            ll[k] = v[k] or ll[k]
+        ll["saeulen"] = v["saeulen"] or ll["saeulen"]
+    else:
+        for k in TEXTE:
+            if not ll[k]:
+                ll[k] = v[k]
+        if not ll["saeulen"]:
+            ll["saeulen"] = v["saeulen"]
+        elif not any(s["anteil"] or s["beschreibung"] for s in ll["saeulen"]):
+            # Namen der Person behalten, Anteile und Beschreibungen ergänzen
+            vor = {s["name"].lower(): s for s in v["saeulen"]}
+            ll["saeulen"] = [{**s, **{k: vor[s["name"].lower()][k] for k in ("anteil", "beschreibung")}} if s["name"].lower() in vor else s
+                             for s in ll["saeulen"]]
     speichern(brand_id, ll)
     a = json.loads(db.one("SELECT auftreten FROM brands WHERE id=?", brand_id)["auftreten"])
     a["leitlinien_entwurf"] = datetime.datetime.now().isoformat(timespec="minutes")
+    if neu and not leer(vorher):
+        a["leitlinien_vorher"] = vorher
     db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), brand_id)
+
+
+def zurueckholen(brand_id):
+    """Die Fassung vor dem letzten „Neu generieren“ wiederherstellen. Gibt False zurück, wenn es keine gibt."""
+    a = json.loads(db.one("SELECT auftreten FROM brands WHERE id=?", brand_id)["auftreten"])
+    vorher = a.pop("leitlinien_vorher", None)
+    if not vorher:
+        return False
+    a["leitlinien"] = laden({"leitlinien": vorher})
+    db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), brand_id)
+    return True

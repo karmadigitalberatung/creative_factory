@@ -140,7 +140,7 @@ def page(request, name, **ctx):
 
 SCHNELLFRAGEN = ["Hast du Ideen für nächste Woche?", "Was steht nächste Woche an?", "Was fehlt noch?"]
 SEITEN = {"dashboard.html": "Dashboard (die nächsten 7 Tage und die nächsten Ideen)",
-          "ideen.html": "Ideen (Vorschläge sichten: vorbereiten, merken, verwerfen; Reiter Trends aus dem Trendradar und Swipe-Datei)",
+          "ideen.html": "Ideen (Vorschläge sichten: übernehmen, jetzt nicht, passt nicht; Reiter Trends aus dem Trendradar und Swipe-Datei)",
           "leitlinien.html": "Leitlinien (Themen-Säulen, Haltung, Widerspruch, No-Gos, Vorbild-Konten, Format-Vorlieben)",
           "mediathek.html": "Mediathek (Fotos, erzeugte Bilder, Personen, neues Bild erzeugen)",
           "input.html": "Input (Aufnahmen, die die Person selbst machen soll, mit Skript)",
@@ -708,7 +708,7 @@ def _neuer_post(b, inhalt, status="Idee", **kw):
 
 # ---------------------------------------------------------------- Ideenwerkstatt
 
-IDEEN_ANSICHTEN = {"neu": "Neu", "gemerkt": "Gemerkt", "uebernommen": "Vorbereitet", "verworfen": "Verworfen"}
+IDEEN_ANSICHTEN = {"neu": "Neu", "gemerkt": "Jetzt nicht", "uebernommen": "Übernommen", "verworfen": "Passt nicht"}
 
 
 @app.get("/ideen", response_class=HTMLResponse)
@@ -746,7 +746,7 @@ def ideen_mehr(request: Request, anzahl: int = Form(6), thema: str = Form(""), f
 
 @app.post("/ideen/aktion")
 async def ideen_aktion(request: Request):
-    """Eine oder mehrere Ideen entscheiden: vorbereiten (optional mit Visuals), merken, verwerfen, zurück zu neu."""
+    """Eine oder mehrere Ideen entscheiden: annehmen (Post entsteht sofort), merken, verwerfen, zurück zu neu."""
     b = brand_of(request)
     f = await request.form()
     nur = request.query_params.get("nur", "")
@@ -755,15 +755,15 @@ async def ideen_aktion(request: Request):
     zurueck = str(f.get("zurueck") or "/ideen")
     if not ids:
         flash(request, "Wähl zuerst mindestens eine Idee aus.")
-    elif aktion in ("vorbereiten", "vorbereiten_visuals"):
-        neu = ideen.vorbereiten(b["id"], ids, visuals=aktion == "vorbereiten_visuals")
-        flash(request, f"{len(neu)} Idee{'n' if len(neu) != 1 else ''} im Redaktionsplan"
-                       + (" – die Visuals entstehen jetzt." if aktion == "vorbereiten_visuals" else " als Entwurf."))
-        if len(neu) == 1 and aktion == "vorbereiten":
-            return go(f"/planen/{neu[0]}")
+    elif aktion in ("annehmen", "vorbereiten", "vorbereiten_visuals"):   # die alten Namen kommen noch aus offenen Seiten
+        neu = ideen.annehmen(b["id"], ids)
+        flash(request, "Übernommen. Der Post entsteht jetzt und liegt dann im Redaktionsplan zur Abnahme." if len(neu) == 1 else
+                       f"{len(neu)} Ideen übernommen. Die Posts entstehen jetzt und liegen dann im Redaktionsplan zur Abnahme.")
     elif aktion in ("gemerkt", "verworfen", "neu"):
         ideen.setzen(b["id"], ids, aktion)
-        flash(request, {"gemerkt": "Gemerkt.", "verworfen": "Verworfen. Solche Ideen kommen nicht mehr.", "neu": "Wieder bei den neuen Ideen."}[aktion])
+        flash(request, {"gemerkt": "Zur Seite gelegt, ohne Wertung. Du findest sie unter „Jetzt nicht“.",
+                        "verworfen": "Als unpassend markiert. Claude schlägt dieses Thema und diese Art Content nicht mehr oder seltener vor.",
+                        "neu": "Wieder bei den neuen Ideen."}[aktion])
     return go(zurueck if zurueck.startswith("/") else "/ideen")
 
 
@@ -777,7 +777,7 @@ def leitlinien_seite(request: Request):
     vert, gesamt = leitlinien.verteilung(b["id"], a)
     entwirft = any(j["kind"] == "leitlinien" for j in jobs.running(b["id"]))
     fehler = db.one("SELECT * FROM jobs WHERE brand_id=? AND kind='leitlinien' ORDER BY id DESC LIMIT 1", b["id"])
-    return page(request, "leitlinien.html", b=b, ll=ll, vert=vert, gesamt=gesamt, entwirft=entwirft,
+    return page(request, "leitlinien.html", b=b, ll=ll, vert=vert, gesamt=gesamt, entwirft=entwirft, vorher=bool(a.get("leitlinien_vorher")),
                 max_saeulen=leitlinien.MAX_SAEULEN, max_vorbilder=leitlinien.MAX_VORBILDER, leer=leitlinien.leer(ll),
                 fehler=fehler if fehler and fehler["status"] == "fehler" else None)
 
@@ -787,13 +787,20 @@ async def leitlinien_speichern(request: Request):
     b = brand_of(request)
     f = await request.form()
     leitlinien.speichern(b["id"], leitlinien.aus_formular(f))
-    if f.get("entwurf"):
+    if f.get("entwurf") or f.get("neu"):
         if not config.ANTHROPIC_API_KEY:
             flash(request, "Dafür braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY).")
         elif not any(j["kind"] == "leitlinien" for j in jobs.running(b["id"])):
-            jobs.start(b["id"], None, "leitlinien", leitlinien.entwurf, b["id"])
+            jobs.start(b["id"], None, "leitlinien", leitlinien.entwurf, b["id"], bool(f.get("neu")), str(f.get("wunsch") or "").strip()[:1000])
     else:
         flash(request, "Leitlinien gespeichert. Ideen, Trendradar, Redaktion und Chat richten sich ab jetzt danach.")
+    return go("/leitlinien")
+
+
+@app.post("/leitlinien/zurueck")
+def leitlinien_zurueck(request: Request):
+    b = brand_of(request)
+    flash(request, "Die vorherige Fassung ist wieder da." if leitlinien.zurueckholen(b["id"]) else "Es gibt keine vorherige Fassung.")
     return go("/leitlinien")
 
 
@@ -2162,16 +2169,22 @@ def auftreten_undo(request: Request):
 
 def _mediathek(request, ansicht, art=""):
     b = brand_of(request)
-    laufend = [j for j in jobs.running(b["id"]) if j["kind"] in ("bild", "person")]
-    f = db.one("SELECT error FROM jobs WHERE brand_id=? AND kind IN ('bild','person') AND status='fehler' AND finished>? ORDER BY id DESC LIMIT 1",
+    if ansicht == "alle":
+        medien.beschreiben_starten(b["id"])   # vorhandene Bilder ohne Beschreibung: Claude trägt sie im Hintergrund nach
+    laufend = [j for j in jobs.running(b["id"]) if j["kind"] in ("bild", "person", "bildtext")]
+    f = db.one("SELECT error FROM jobs WHERE brand_id=? AND kind IN ('bild','person','bildtext') AND status='fehler' AND finished>? ORDER BY id DESC LIMIT 1",
                b["id"], db.now() - 300)
     anzahl = {r["art"]: r["n"] for r in db.q("SELECT art, COUNT(*) n FROM medien WHERE brand_id=? AND art!='person' GROUP BY art", b["id"])}
     if ansicht == "alle":
         liste = medien.liste(b["id"], art) if art else [m for m in medien.liste(b["id"]) if m["art"] != "person"]
+        q = request.query_params.get("q", "").strip().lower()
+        if q:   # Suche in Titel und Beschreibung, alle Wörter müssen vorkommen
+            liste = [m for m in liste if all(w in (m["titel"] + " " + m["inhalt"]).lower() for w in q.split())]
     else:
         liste = medien.liste(b["id"], "generiert")[:24] if ansicht == "neu" else []
     return page(request, "mediathek.html", b=b, ansicht=ansicht, medien=liste, art=art, arten=medien.ARTEN,
                 formate=medien.FORMATE, personen=medien.personen(b["id"]), anzahl=anzahl, gesamt=sum(anzahl.values()),
+                ohne_text=medien.ohne_beschreibung(b["id"]), beschreibbar=medien.BESCHREIBBAR, suche=request.query_params.get("q", "").strip(),
                 laeuft=[jobs.LABELS.get(j["kind"]) for j in laufend], fehler=f["error"] if f else None)
 
 
@@ -2267,6 +2280,22 @@ def mediathek_delete(request: Request, mid: int, zurueck: str = Form("/mediathek
     medien.loeschen(b["id"], mid)
     if m and m["art"] == "vorbild":
         pass   # Vorbilder wirken jetzt je Contenttyp (Design & Layout), keine Neugestaltung nötig
+    return go(zurueck if zurueck.startswith("/") and not zurueck.startswith("//") else "/mediathek")
+
+
+@app.post("/mediathek/{mid}/inhalt")
+def mediathek_inhalt(request: Request, mid: int, titel: str = Form(""), inhalt: str = Form(""), neu: str = Form(""), zurueck: str = Form("/mediathek")):
+    """Titel und Beschreibung eines Bilds ändern, oder das Bild von Claude neu beschreiben lassen."""
+    b = brand_of(request)
+    m = db.one("SELECT * FROM medien WHERE id=? AND brand_id=?", mid, b["id"])
+    if m and neu:
+        if not config.ANTHROPIC_API_KEY:
+            flash(request, "Dafür braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY).")
+        else:
+            jobs.start(b["id"], None, "bildtext", medien.beschreiben, b["id"], [mid], True)
+    elif m:
+        db.run("UPDATE medien SET titel=?, inhalt=? WHERE id=?", titel.strip()[:200] or m["titel"], inhalt.strip()[:400], mid)
+        flash(request, "Beschreibung gespeichert.")
     return go(zurueck if zurueck.startswith("/") and not zurueck.startswith("//") else "/mediathek")
 
 

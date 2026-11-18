@@ -7,7 +7,7 @@ from .engine import layouts, render
 
 _pool = ThreadPoolExecutor(max_workers=2)
 
-LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "vorlagen": "Gestaltet Vorlagen", "blog": "Schreibt den Blogbeitrag", "aufteilen": "Teilt in Posts auf", "newsletter": "Schreibt den Newsletter", "uebergabe": "Übergibt als Entwurf", "fertig": "Übernimmt die Dateien", "captions": "Schreibt Captions", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
+LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "bildtext": "Beschreibt Bilder", "bildwahl": "Wählt Fotos aus", "vorlagen": "Gestaltet Vorlagen", "blog": "Schreibt den Blogbeitrag", "aufteilen": "Teilt in Posts auf", "newsletter": "Schreibt den Newsletter", "uebergabe": "Übergibt als Entwurf", "fertig": "Übernimmt die Dateien", "captions": "Schreibt Captions", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
           "schnitt": "Schneidet Video", "animation": "Animiert Reel",
           "muster": "Musterseiten", "buffer": "Gleicht mit Buffer ab", "einrichtung": "Richtet dein Konto ein", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
 
@@ -109,11 +109,14 @@ def gestalten(brand_id, post_id, neu=True):
             schnitt.schneiden(brand_id, post_id, not os.path.exists(os.path.join(storage.post_dir(brand_id, post_id), "transkript.json")))
         else:
             from . import schnitt
+            neue_bilder(b, p)
             db.run("UPDATE jobs SET kind='animation' WHERE post_id=? AND status='läuft'", post_id)
             schnitt.animieren(brand_id, post_id)
         return
 
     from . import medien
+    if neue_bilder(b, p):
+        p = _post(post_id)
     if not p["photo"] and not medien.post_fotos(brand_id, p) and p["bildidee"] and config.generatoren():
         db.run("UPDATE jobs SET kind='foto' WHERE post_id=? AND status='läuft'", post_id)
         try:
@@ -145,6 +148,41 @@ def gestalten(brand_id, post_id, neu=True):
                     design[i] = s
             render_post(brand_id, post_id, design)
     db.run("UPDATE posts SET status='Zur Abnahme', updated=? WHERE id=? AND status='In Arbeit'", db.now(), post_id)
+
+
+BILDER_JE_FORMAT = {"Einzelbild": 1, "Carousel": 3, "Reel": 3, "Story": 2}
+
+
+def neue_bilder(b, p):
+    """Jeder neue Post bekommt eigene, zum Thema passende Bilder (Leitlinien → Bilder; abschaltbar). Ist das aus oder klappt es nicht,
+    wählt Claude passende Fotos aus der Mediathek (nach ihren Beschreibungen).
+    Nur beim ersten Gestalten: hat der Post schon ein eigenes Foto oder gewählte Fotos, bleibt es dabei. Gibt die Anzahl der Bilder zurück."""
+    from . import leitlinien, medien
+    if not config.ANTHROPIC_API_KEY or p["photo"] or medien.post_fotos(b["id"], p) or p["format"] not in BILDER_JE_FORMAT:
+        return 0
+    n = BILDER_JE_FORMAT[p["format"]]
+    if p["format"] == "Carousel":
+        n = max(1, min(n, len(json.loads(p["inhalt"]).get("slides") or [])))
+    neu = 0
+    if leitlinien.laden(json.loads(b["auftreten"]))["bilder_neu"] and config.generatoren():
+        db.run("UPDATE jobs SET kind='reelfotos' WHERE post_id=? AND status='läuft'", p["id"])
+        try:
+            neu = medien.reel_fotos_erzeugen(b["id"], p["id"], n)
+        except Exception as e:   # Bilder sind kein Muss: ohne weitergestalten, Grund im Chat des Posts
+            traceback.print_exc()
+            hinweis("Für diesen Post konnten keine neuen Bilder erzeugt werden: " + ai.fehlertext(e) + " Ich nehme passende aus der Mediathek.", b, p["id"])
+    if not neu:
+        db.run("UPDATE jobs SET kind='bildwahl' WHERE post_id=? AND status='läuft'", p["id"])
+        try:
+            neu = medien.passende_waehlen(b["id"], p["id"], n)
+        except Exception:
+            traceback.print_exc()
+    if neu and p["format"] not in marke.VIDEO_FORMATE:   # das erste Bild ist das Hauptfoto des Posts (Quelle „post“, Vorschau, Newsletter)
+        erstes = medien.post_fotos(b["id"], _post(p["id"]))
+        if erstes:
+            db.run("UPDATE posts SET photo=? WHERE id=? AND (photo IS NULL OR photo='')", erstes[0][1]["datei"], p["id"])
+    db.run("UPDATE jobs SET kind='gestalten' WHERE post_id=? AND status='läuft'", p["id"])
+    return neu
 
 
 def hinweis(text, b, post_id):
