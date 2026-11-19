@@ -8,6 +8,7 @@ anthropic>=0.125
 google-genai>=1.40
 imageio-ffmpeg>=0.6
 faster-whisper>=1.2
+av>=15,<16   # faster-whisper 1.2 ruft av.open(..., metadata_errors=...) auf; PyAV 16+ kennt das nicht mehr
 markdown-it-py>=3
 httpx>=0.27
 websockets>=13
