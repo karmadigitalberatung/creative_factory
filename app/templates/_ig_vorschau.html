@@ -1,18 +1,18 @@
-{# Instagram-Vorschau eines Posts: Feed (Einzelbild, Carousel), Reel oder Story. Nur Anzeige, keine echten Zahlen. #}
+{# Instagram-Vorschau eines Posts: Feed (Einzelbild, Carousel), Reel oder Story. Folien und Caption lassen sich direkt anklicken und bearbeiten. #}
 {% set ist_story = p.format == 'Story' %}
 {% set hat_video = p.video %}
 {% set n_slides = p.slide_count if p.rendered_at and not video else 0 %}
 {% macro avatar(gross=false) %}<span class="ig-avatar {{ 'gross' if gross }} {{ 'logo' if ig.logo }}">{% if ig.bild %}<img src="/media/{{ ig.bild }}" alt="">{% else %}{{ ig.handle[:1]|upper }}{% endif %}</span>{% endmacro %}
 {% macro icon(name) %}<svg class="ig-icon" aria-hidden="true" viewBox="0 0 24 24">{% if name == 'herz' %}<path d="M12 20.5s-7.5-4.6-9.2-9.4C1.6 7.6 3.9 4.5 7.2 4.5c2 0 3.5 1.1 4.8 2.9 1.3-1.8 2.8-2.9 4.8-2.9 3.3 0 5.6 3.1 4.4 6.6-1.7 4.8-9.2 9.4-9.2 9.4z"/>{% elif name == 'kommentar' %}<path d="M20.6 16.2A9 9 0 1 0 17 19.9L21 21z"/>{% elif name == 'senden' %}<path d="M21.5 3 10.2 14.3M21.5 3l-6.8 18-4.5-6.7L3 9.8z"/>{% elif name == 'merken' %}<path d="M19 21l-7-5-7 5V3.5h14z"/>{% elif name == 'mehr' %}<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>{% elif name == 'ton' %}<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z M16 9a4 4 0 0 1 0 6"/>{% endif %}</svg>{% endmacro %}
 
-<div class="ig-buehne">
+<div class="pv-geraet">
   {% if ist_story %}
   {# ---------- Story #}
   <div class="ig-telefon story">
     <div class="ig-medium">
       {% if hat_video %}<video src="/media/{{ p.video }}?v={{ p.rendered_at|int }}" poster="/media/posts/{{ p.id }}/reel-cover.jpg?v={{ p.rendered_at|int }}" autoplay muted loop playsinline></video>
       {% elif p.rendered_at %}<img src="/media/posts/{{ p.id }}/slide-01.png?v={{ p.rendered_at|int }}" alt="">
-      {% else %}<div class="ig-leer"><span>Noch kein Video</span><span class="small">Unter „Bearbeiten“ erzeugen oder hochladen</span></div>{% endif %}
+      {% else %}<div class="ig-leer"><span>Noch kein Video</span><span class="small">Rechts erzeugen oder hochladen</span></div>{% endif %}
     </div>
     <div class="ig-story-oben">
       <div class="ig-balken"><span></span></div>
@@ -26,7 +26,7 @@
   <div class="ig-telefon reel">
     <div class="ig-medium">
       {% if hat_video %}<video src="/media/{{ p.video }}?v={{ p.rendered_at|int }}" poster="/media/posts/{{ p.id }}/reel-cover.jpg?v={{ p.rendered_at|int }}" autoplay muted loop playsinline data-ig-video></video>
-      {% else %}<div class="ig-leer"><span>Noch kein Video</span><span class="small">Unter „Bearbeiten“ animieren, eine Aufnahme schneiden oder ein fertiges Video hochladen</span></div>{% endif %}
+      {% else %}<div class="ig-leer"><span>Noch kein Video</span><span class="small">Rechts animieren, eine Aufnahme schneiden oder ein fertiges Video hochladen</span></div>{% endif %}
     </div>
     <div class="ig-reel-kopf"><strong>Reels</strong>{% if hat_video %}<button type="button" class="ig-ton" data-ig-ton aria-label="Ton an">{{ icon('ton') }}</button>{% endif %}</div>
     <div class="ig-reel-seite">
@@ -35,7 +35,8 @@
     </div>
     <div class="ig-reel-unten">
       <div class="ig-zeile">{{ avatar() }}<strong>{{ ig.handle }}</strong><span class="ig-folgen">Folgen</span></div>
-      {% if p.caption_ig %}<p class="ig-caption kurz" data-ig-caption>{{ p.caption_ig|ig_text }}</p>{% else %}<p class="ig-caption leise">Noch keine Caption</p>{% endif %}
+      <div class="pv-feld" data-inline-feld="caption_ig" data-max="2200" role="button" tabindex="0" title="Caption bearbeiten">
+        <p class="ig-caption kurz" data-ig-caption><span data-inline-text>{% if p.caption_ig %}{{ p.caption_ig|ig_text }}{% else %}<span class="leise">Caption schreiben …</span>{% endif %}</span></p></div>
       <span class="ig-audio">♫ {{ ig.handle }} · Originalaudio</span>
     </div>
   </div>
@@ -47,38 +48,28 @@
     <div class="ig-karussell" data-ig-karussell>
       {% if n_slides %}
       <div class="ig-spur" data-ig-spur>
-        {% for n in range(1, n_slides + 1) %}<img src="/media/posts/{{ p.id }}/slide-{{ '%02d' % n }}.png?v={{ p.rendered_at|int }}" alt="Slide {{ n }}" loading="{{ 'eager' if n == 1 else 'lazy' }}">{% endfor %}
+        {% for n in range(1, n_slides + 1) %}<img src="/media/posts/{{ p.id }}/slide-{{ '%02d' % n }}.png?v={{ p.rendered_at|int }}" alt="Folie {{ n }}" loading="{{ 'eager' if n == 1 else 'lazy' }}"
+          {% if n <= design_n %}data-layout="{{ n }}" role="button" tabindex="0" title="Folie {{ n }} bearbeiten"{% endif %}>{% endfor %}
       </div>
       {% if n_slides > 1 %}
       <span class="ig-zaehler" data-ig-zaehler>1/{{ n_slides }}</span>
       <button type="button" class="ig-pfeil links" data-ig-pfeil="-1" aria-label="Vorherige Slide" hidden>‹</button>
       <button type="button" class="ig-pfeil rechts" data-ig-pfeil="1" aria-label="Nächste Slide">›</button>
       {% endif %}
+      {% if design_n %}<span class="pv-tipp" aria-hidden="true">Klick zum Bearbeiten</span>{% endif %}
       {% else %}
-      <div class="ig-leer feed"><span>Noch keine Visuals</span><span class="small">{% if p.status == 'Idee' %}Freigeben unter „Bearbeiten“, dann entstehen die Slides, oder fertige Slides hochladen{% else %}Die Slides entstehen gerade{% endif %}</span></div>
+      <div class="ig-leer feed"><span>Noch keine Visuals</span><span class="small">{% if p.status == 'Idee' %}Prüf rechts die Texte und gib frei, dann entstehen die Folien{% else %}Die Folien entstehen gerade{% endif %}</span></div>
       {% endif %}
     </div>
     <div class="ig-aktionen">{{ icon('herz') }}{{ icon('kommentar') }}{{ icon('senden') }}
       {% if n_slides > 1 %}<span class="ig-punkte" data-ig-punkte>{% for n in range(n_slides) %}<i class="{{ 'on' if loop.first }}"></i>{% endfor %}</span>{% endif %}
       <span class="grow"></span>{{ icon('merken') }}</div>
     <div class="ig-text">
-      {% if p.caption_ig %}<p class="ig-caption kurz" data-ig-caption><strong>{{ ig.handle }}</strong> {{ p.caption_ig|ig_text }}</p>
-      {% else %}<p class="ig-caption leise"><strong>{{ ig.handle }}</strong> Noch keine Caption</p>{% endif %}
+      <div class="pv-feld" data-inline-feld="caption_ig" data-max="2200" role="button" tabindex="0" title="Caption bearbeiten">
+        <p class="ig-caption kurz" data-ig-caption><strong>{{ ig.handle }}</strong> <span data-inline-text>{% if p.caption_ig %}{{ p.caption_ig|ig_text }}{% else %}<span class="leise">Caption schreiben …</span>{% endif %}</span></p></div>
       <span class="ig-datum">{% if p.datum %}{{ p.datum[8:10] }}.{{ p.datum[5:7] }}.{{ p.datum[:4] }}{% else %}ohne Termin{% endif %}</span>
     </div>
   </div>
   {% endif %}
 
-  <aside class="ig-info">
-    <span class="label">So sieht es auf Instagram aus</span>
-    <strong class="ig-info-titel">{{ p.titel or 'Ohne Titel' }}</strong>
-    <span class="small muted">{{ p.format }}{% if n_slides > 1 %} · {{ n_slides }} Slides{% endif %} · {{ p.status|status }}{% if p.datum %} · {{ p.datum[8:10] }}.{{ p.datum[5:7] }}. {{ p.uhrzeit }}{% endif %}</span>
-    {% if p.caption_ig %}<span class="small {{ 'warn' if p.caption_ig|length > 2200 else 'muted' }}">Caption: {{ p.caption_ig|length }} von 2200 Zeichen{% if p.caption_ig|length > 125 %}, „… mehr“ nach etwa 125{% endif %}</span>{% endif %}
-    <div class="stack ig-info-knoepfe">
-      {% if p.status in ['Zur Abnahme', 'Freigegeben', 'In Arbeit'] and (p.rendered_at or p.video) %}<button class="primary" form="postform" name="aktion" value="abnehmen">Abnehmen und einplanen</button>{% endif %}
-      {% if p.status == 'Idee' and not fertig %}<button class="primary" form="postform" name="aktion" value="freigeben">{{ 'Freigeben' if video else 'Freigeben und Visuals erstellen' }}</button>{% endif %}
-      <button type="button" data-ansicht-wechsel="bearbeiten">Bearbeiten</button>
-    </div>
-    <span class="hint">Vorschau ohne echte Zahlen. Auf dem Handy schneidet Instagram den Feed auf 4:5 und die Caption nach etwa 125 Zeichen ab.</span>
-  </aside>
 </div>

@@ -208,7 +208,7 @@ document.addEventListener("keydown", (e) => {
 
 // Bild-Prompt: Personen mit @Name erwähnen (Vorschlagsliste beim Tippen, erkannte Personen darunter, höchstens 3).
 document.querySelectorAll("textarea[data-erwaehnen]").forEach((feld) => {
-  const form = feld.closest("form");
+  const form = feld.closest("[data-erwaehnen-wurzel]") || feld.closest("form");
   const personen = [...(form?.querySelectorAll(".erwaehnen-personen li") || [])].map((li) => ({ name: li.dataset.name, bild: li.dataset.bild }));
   if (!personen.length) return;
   const MAX = 3;
@@ -326,6 +326,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   le.className = "le"; le.hidden = true;
   le.innerHTML = `<div class="le-fenster" role="dialog" aria-modal="true" aria-label="Layout anpassen">
     <div class="le-kopf"><h2></h2><span class="le-status"></span>
+      <span class="le-blaettern"><button type="button" class="small quadrat" data-folie="-1" aria-label="Vorherige Folie">‹</button><button type="button" class="small quadrat" data-folie="1" aria-label="Nächste Folie">›</button></span>
       <button type="button" class="small" data-undo title="Rückgängig (⌘Z)">↶</button>
       <button type="button" class="small" data-redo title="Wiederholen (⇧⌘Z)">↷</button>
       <button type="button" class="small" data-entwurf>Auf Entwurf zurücksetzen</button>
@@ -580,7 +581,10 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
     if (S.aktiv === null || S.aktiv === undefined || !el(S.aktiv)) {
       S.aktiv = null;
       const hg = S.szene.hintergrund || {}, hgFoto = "foto" in hg;
-      seite.innerHTML = `<p class="leer">Klick ein Element auf der Slide an, um es zu verschieben oder anzupassen.</p>
+      const fotoI = S.szene.elemente.findIndex((x) => x.typ === "foto"), fotoEl = fotoI >= 0 ? S.szene.elemente[fotoI] : null;
+      seite.innerHTML = `<p class="leer">Klick einen Text oder ein Bild auf der Folie an, um es zu ändern. Doppelklick auf einen Text ändert ihn direkt.</p>
+        ${!hgFoto && fotoEl ? `<div data-fotoel>${bildGruppe("Foto dieser Folie")}</div>` : ""}
+        ${!hgFoto && !fotoEl ? `<div class="gruppe le-bild"><span class="label">Foto</span><div class="knoepfe"><button type="button" data-neu="foto">Foto einfügen</button></div></div>` : ""}
         ${hgFoto ? `<div data-hg>${bildGruppe("Hintergrundbild")}<div class="gruppe"><label>Bildausschnitt <span class="wert">oben ↔ unten</span><input type="range" min="0" max="100" value="${Math.round((hg.fokus ?? 0.5) * 100)}" data-hgfokus></label></div></div>` : ""}
         <div class="gruppe"><span class="label">Element hinzufügen</span><div class="knoepfe le-neu">
           <button type="button" data-neu="text">Text</button><button type="button" data-neu="rechteck">Rechteck</button><button type="button" data-neu="kreis">Kreis</button>
@@ -590,6 +594,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
         <p class="le-tipp">Doppelklick auf einen Text ändert ihn direkt auf der Slide. Ziehen verschiebt, die Griffe links und rechts ändern die Breite. Hilfslinien rasten an Rand und Mitte ein (Alt hält sie aus, Shift zieht nur gerade). Pfeiltasten schieben um 1 px, mit Shift um 10 px.</p>`;
       seite.querySelectorAll("[data-waehle]").forEach((b) => b.addEventListener("click", () => waehlen(+b.dataset.waehle)));
       seite.querySelectorAll("[data-neu]").forEach((b) => b.addEventListener("click", () => hinzufuegen(b.dataset.neu)));
+      if (fotoEl && !hgFoto) bildBinden(seite.querySelector("[data-fotoel]"), { lesen: () => fotoEl.quelle || "post", setzen: (q) => { fotoEl.quelle = q; }, da: () => S.szene.elemente.includes(fotoEl), format: () => formatFuer(fotoEl.breite, fotoEl.hoehe) });
       if (hgFoto) {
         bildBinden(seite.querySelector("[data-hg]"), { lesen: () => hg.foto, setzen: (q) => { S.szene.hintergrund.foto = q; }, da: () => S.szene.hintergrund === hg, format: () => "4:5" });
         const hf = seite.querySelector("[data-hgfokus]");
@@ -729,7 +734,9 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
     const d = await r.json();
     if (d.fehler) { seite.innerHTML = `<p class="error">${esc(d.fehler)}</p>`; return; }
     S = { ...d, aktiv: null, zurueck: [], vor: [], geaendert: false };
-    le.querySelector("h2").textContent = d.titel || `Slide ${d.nr} von ${d.gesamt} · Layout anpassen`;
+    le.querySelector("h2").textContent = d.titel || `Folie ${d.nr} von ${d.gesamt}`;
+    le.querySelector('[data-folie="-1"]').disabled = d.nr <= 1;
+    le.querySelector('[data-folie="1"]').disabled = !document.querySelector(`[data-layout="${d.nr + 1}"]`);
     le.querySelector("[data-entwurf]").hidden = !d.manuell;
     markieren(d.manuell ? "von Hand angepasst" : "");
     bild.onload = () => { if (!ziehen) boxenZeichnen(); };
@@ -752,6 +759,12 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
     if (S.aktiv !== null && !el(S.aktiv)) S.aktiv = null;
     vorschau().then(seiteZeichnen);
   }
+  le.querySelectorAll("[data-folie]").forEach((b) => b.addEventListener("click", () => {
+    if (!S) return;
+    if (inline) inlineZu();
+    if (S.geaendert && !confirm("Änderungen an dieser Folie verwerfen?")) return;
+    oeffnen(S.nr + +b.dataset.folie);
+  }));
   le.querySelector("[data-undo]").addEventListener("click", () => schritt(S.zurueck, S.vor));
   le.querySelector("[data-redo]").addEventListener("click", () => schritt(S.vor, S.zurueck));
   le.querySelector("[data-abbrechen]").addEventListener("click", schliessen);
@@ -790,7 +803,10 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   });
   window.addEventListener("resize", () => { if (S && !le.hidden) boxenZeichnen(); });
   window.addEventListener("beforeunload", (ev) => { if (S && S.geaendert && !le.hidden) { ev.preventDefault(); ev.returnValue = ""; } });
-  knoepfe.forEach((b) => b.addEventListener("click", () => oeffnen(+b.dataset.layout, "layoutBild" in b.dataset)));
+  knoepfe.forEach((b) => {
+    b.addEventListener("click", () => oeffnen(+b.dataset.layout, "layoutBild" in b.dataset));
+    if (b.tagName !== "BUTTON") b.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); oeffnen(+b.dataset.layout); } });
+  });
 })();
 
 // Connectors: Zähler der ausgewählten Kanäle
@@ -861,46 +877,116 @@ document.querySelectorAll("[data-kopieren-knopf]").forEach((k) => k.addEventList
   k.textContent = "Kopiert";
 }));
 
-// Post: Vorschau (Instagram) und Bearbeiten. Start in der Vorschau; wer gerade bearbeitet hat (Speichern, Hochladen …), landet wieder in Bearbeiten.
+// Post: zwei Schritte, „Inhalt“ (Vorschau mit Inline-Bearbeitung) und „Planen & veröffentlichen“.
+// Start im Inhalt; wer gerade etwas abgeschickt hat, landet wieder im selben Schritt.
 (() => {
   const nav = document.querySelector("[data-post-ansicht]");
   if (!nav) return;
   const pid = nav.dataset.postAnsicht, key = "post-ansicht-" + pid;
+  const ALLE = ["inhalt", "veroeffentlichen"];
   const zeigen = (was, merken) => {
+    if (!ALLE.includes(was)) was = "inhalt";
     document.querySelectorAll("[data-ansicht]").forEach((d) => { d.hidden = d.dataset.ansicht !== was; });
     nav.querySelectorAll("[data-ansicht-wechsel]").forEach((b) => { const on = b.dataset.ansichtWechsel === was; b.classList.toggle("on", on); on ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"); });
     if (merken) { try { sessionStorage.setItem(key, JSON.stringify({ was, t: Date.now() })); } catch (e) {} }
   };
   document.querySelectorAll("[data-ansicht-wechsel]").forEach((b) => b.addEventListener("click", () => { zeigen(b.dataset.ansichtWechsel, true); window.scrollTo({ top: 0 }); }));
-  let start = "vorschau";
+  let start = "inhalt";
   try { const m = JSON.parse(sessionStorage.getItem(key) || "null"); if (m && Date.now() - m.t < 10 * 60 * 1000) start = m.was; } catch (e) {}
-  if (new URLSearchParams(location.search).get("tab") || /^#(abnehmen|post-fotos|reel-fotos|slides)/.test(location.hash)) start = "bearbeiten";
+  if (new URLSearchParams(location.search).get("tab")) start = "inhalt";
+  if (/^#(abnehmen|planen|veroeffentlichen)/.test(location.hash)) start = "veroeffentlichen";
   zeigen(start, false);
-  // Beim Absenden eines Formulars aus der Bearbeitung danach wieder dort landen
-  document.addEventListener("submit", (e) => { if (e.target.closest("[data-ansicht='bearbeiten']") || (e.submitter && e.submitter.closest("[data-ansicht='bearbeiten']"))) { try { sessionStorage.setItem(key, JSON.stringify({ was: "bearbeiten", t: Date.now() })); } catch (x) {} } }, true);
+  document.addEventListener("submit", (e) => {
+    const quelle = (e.submitter && e.submitter.closest("[data-ansicht]")) || e.target.closest("[data-ansicht]");
+    if (quelle) { try { sessionStorage.setItem(key, JSON.stringify({ was: quelle.dataset.ansicht, t: Date.now() })); } catch (x) {} }
+  }, true);
 
-  // Carousel wischen: Zähler, Punkte, Pfeile
-  const k = document.querySelector("[data-ig-karussell]");
-  const spur = k && k.querySelector("[data-ig-spur]");
-  if (spur) {
-    const n = spur.children.length, zaehler = k.querySelector("[data-ig-zaehler]"), punkte = document.querySelectorAll("[data-ig-punkte] i");
+  // Vorschau: Instagram oder LinkedIn (gemerkt)
+  const pk = "post-plattform";
+  const plattform = (was) => {
+    document.querySelectorAll("[data-plattform]").forEach((b) => { const on = b.dataset.plattform === was; b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false"); });
+    document.querySelectorAll("[data-plattform-inhalt]").forEach((d) => { d.hidden = d.dataset.plattformInhalt !== was; });
+    document.querySelectorAll("[data-plattform-inhalt] [data-ig-caption]").forEach(mehrPruefen);
+  };
+  document.querySelectorAll("[data-plattform]").forEach((b) => b.addEventListener("click", () => { plattform(b.dataset.plattform); try { localStorage.setItem(pk, b.dataset.plattform); } catch (e) {} }));
+  try { const g = localStorage.getItem(pk); if (g && document.querySelector(`[data-plattform="${g}"]`)) plattform(g); } catch (e) {}
+
+  // Carousel wischen: Zähler, Punkte, Pfeile – je Vorschau
+  document.querySelectorAll("[data-ig-karussell]").forEach((k) => {
+    const spur = k.querySelector("[data-ig-spur]");
+    if (!spur) return;
+    const n = spur.children.length, zaehler = k.querySelector("[data-ig-zaehler]");
+    const punkte = (k.closest(".ig-telefon") || k).querySelectorAll("[data-ig-punkte] i");
     const pfeile = k.querySelectorAll("[data-ig-pfeil]");
-    const aktuell = () => Math.round(spur.scrollLeft / spur.clientWidth);
+    const aktuell = () => Math.round(spur.scrollLeft / (spur.clientWidth || 1));
     const anzeigen = () => { const i = aktuell(); if (zaehler) zaehler.textContent = `${i + 1}/${n}`; punkte.forEach((p, j) => p.classList.toggle("on", j === i));
       pfeile.forEach((p) => { p.hidden = (+p.dataset.igPfeil < 0 && i === 0) || (+p.dataset.igPfeil > 0 && i === n - 1); }); };
     spur.addEventListener("scroll", anzeigen, { passive: true });
-    pfeile.forEach((p) => p.addEventListener("click", () => {
+    pfeile.forEach((p) => p.addEventListener("click", (ev) => {
+      ev.stopPropagation();
       const ziel = Math.max(0, Math.min(n - 1, aktuell() + +p.dataset.igPfeil)) * spur.clientWidth;
       spur.scrollTo({ left: ziel, behavior: "smooth" });
-      setTimeout(() => { if (Math.abs(spur.scrollLeft - ziel) > 2) spur.scrollLeft = ziel; anzeigen(); }, 450);   // ohne Animation (z. B. Tab im Hintergrund) trotzdem weiter
+      setTimeout(() => { if (Math.abs(spur.scrollLeft - ziel) > 2) spur.scrollLeft = ziel; anzeigen(); }, 450);
     }));
-  }
-  // Caption „… mehr“
-  document.querySelectorAll("[data-ig-caption]").forEach((c) => {
+  });
+  // Caption „… mehr“ (erst prüfbar, wenn die Vorschau sichtbar ist)
+  function mehrPruefen(c) {
+    if (c.dataset.mehrGeprueft || !c.offsetParent) return;
+    c.dataset.mehrGeprueft = "1";
     if (c.scrollHeight <= c.clientHeight + 2) { c.classList.remove("kurz"); return; }
     const mehr = document.createElement("button"); mehr.type = "button"; mehr.className = "ig-mehr"; mehr.textContent = "… mehr";
-    mehr.addEventListener("click", () => { c.classList.remove("kurz"); mehr.remove(); });
+    mehr.addEventListener("click", (ev) => { ev.stopPropagation(); c.classList.remove("kurz"); mehr.remove(); });
     c.after(mehr);
+  }
+  document.querySelectorAll("[data-ig-caption]").forEach(mehrPruefen);
+
+  // Inline-Bearbeitung: Caption (Instagram, LinkedIn) und Titel direkt in der Vorschau ändern, sofort gespeichert
+  document.querySelectorAll("[data-inline-feld]").forEach((zone) => {
+    const feld = zone.dataset.inlineFeld, max = +zone.dataset.max || 0, einzeilig = "einzeilig" in zone.dataset;
+    const anzeige = zone.querySelector("[data-inline-text]");
+    const formFeld = () => document.querySelector(`[data-feld-wert="${feld}"]`);
+    let offen = false;
+    const oeffnen = () => {
+      if (offen) return;
+      offen = true; zone.classList.add("bearbeitet");
+      const wert = formFeld() ? formFeld().value : anzeige.textContent;
+      const box = document.createElement("div");
+      box.className = "pv-inline" + (einzeilig ? " einzeilig" : "");
+      box.innerHTML = (einzeilig ? `<input type="text" maxlength="${max}">` : `<textarea rows="6"></textarea>`) +
+        `<div class="pv-inline-fuss"><span class="hint" data-z></span><span class="grow"></span><button type="button" class="small" data-x>Abbrechen</button><button type="button" class="small primary" data-ok>Fertig</button></div>`;
+      const eingabe = box.querySelector("input, textarea"), z = box.querySelector("[data-z]");
+      eingabe.value = wert;
+      const zaehlen = () => { if (!einzeilig) { z.textContent = max ? `${eingabe.value.length} / ${max}` : ""; z.classList.toggle("warn", max && eingabe.value.length > max); }
+        if (!einzeilig) { eingabe.style.height = "auto"; eingabe.style.height = Math.min(420, eingabe.scrollHeight + 2) + "px"; } };
+      zone.hidden = true; zone.after(box);
+      eingabe.focus(); eingabe.setSelectionRange(eingabe.value.length, eingabe.value.length); zaehlen();
+      eingabe.addEventListener("input", zaehlen);
+      const zu = () => { box.remove(); zone.hidden = false; zone.classList.remove("bearbeitet"); offen = false; };
+      const speichern = async () => {
+        const neu = eingabe.value;
+        if (neu === wert) return zu();
+        const ok = box.querySelector("[data-ok]"); ok.disabled = true; ok.textContent = "Speichert …";
+        try {
+          const r = await fetch(`/planen/${pid}/feld`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feld, wert: neu }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || d.fehler) throw new Error(d.fehler || "Speichern ging nicht.");
+          if (formFeld()) formFeld().value = d.wert;
+          document.querySelectorAll(`[data-inline-feld="${feld}"] [data-inline-text]`).forEach((a) => {
+            a.innerHTML = d.wert ? (einzeilig ? "" : d.html) : `<span class="leise">${feld === "caption_li" ? "LinkedIn-Text schreiben …" : feld === "titel" ? "Ohne Titel" : "Caption schreiben …"}</span>`;
+            if (einzeilig && d.wert) a.textContent = d.wert;
+          });
+          zu();
+        } catch (f) { ok.disabled = false; ok.textContent = "Fertig"; z.textContent = f.message; z.classList.add("warn"); }
+      };
+      box.querySelector("[data-ok]").addEventListener("click", speichern);
+      box.querySelector("[data-x]").addEventListener("click", zu);
+      eingabe.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); zu(); }
+        if (ev.key === "Enter" && (einzeilig || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); speichern(); }
+      });
+    };
+    zone.addEventListener("click", (ev) => { if (!ev.target.closest("a, .ig-mehr")) oeffnen(); });
+    zone.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); oeffnen(); } });
   });
   // Reel: Ton an/aus
   document.querySelectorAll("[data-ig-ton]").forEach((b) => b.addEventListener("click", () => { const v = document.querySelector("[data-ig-video]"); if (v) { v.muted = !v.muted; b.classList.toggle("an", !v.muted); } }));
@@ -968,4 +1054,210 @@ document.querySelectorAll("[data-html-kopieren]").forEach((k) => k.addEventListe
   menue.addEventListener("click", (e) => { if (schmal.matches && e.target.closest("a")) setzen(false); });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && document.body.classList.contains("menue-offen")) { setzen(false); knopf.focus(); } });
   schmal.addEventListener("change", () => setzen(false));
+})();
+
+// Carousel: Folien in der Leiste umsortieren. Maus ziehen, am Handy lange drücken und ziehen, Tastatur Alt + Pfeil.
+(() => {
+  const leiste = document.querySelector("[data-sortieren]");
+  if (!leiste) return;
+  const folien = () => [...leiste.querySelectorAll(".pv-folie")];
+  const anfang = folien().map((f) => f.dataset.nr).join();
+  const hinweis = leiste.closest(".pv-block")?.querySelector(".pv-block-kopf .muted");
+  let zug = null, geklickt = false, timer = null;
+
+  const nummern = () => folien().forEach((f, i) => { const s = f.querySelector(".nr"); if (s) s.textContent = i + 1; });
+  const speichern = async () => {
+    const reihe = folien().map((f) => +f.dataset.nr);
+    if (reihe.join() === anfang) return;
+    leiste.classList.add("speichert");
+    if (hinweis) hinweis.textContent = "Neue Reihenfolge wird gespeichert …";
+    try {
+      const r = await fetch(leiste.dataset.sortieren, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reihe }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.fehler || "Das hat nicht geklappt.");
+      location.reload();
+    } catch (err) {
+      leiste.classList.remove("speichert");
+      if (hinweis) { hinweis.textContent = err.message; hinweis.classList.add("fehler"); }
+      setTimeout(() => location.reload(), 2500);
+    }
+  };
+  const beenden = (ok) => {
+    clearTimeout(timer);
+    if (zug?.an) {
+      zug.f.classList.remove("zieht"); leiste.classList.remove("sortiert");
+      geklickt = true; setTimeout(() => (geklickt = false), 0);
+      if (ok) speichern(); else location.reload();
+    }
+    zug = null;
+  };
+  const aktivieren = () => { zug.an = true; zug.f.classList.add("zieht"); leiste.classList.add("sortiert"); };
+
+  leiste.querySelectorAll("img").forEach((i) => (i.draggable = false));
+  leiste.addEventListener("pointerdown", (e) => {
+    const f = e.target.closest(".pv-folie");
+    if (!f || f.disabled || e.button !== 0 || leiste.classList.contains("speichert")) return;
+    zug = { f, x: e.clientX, y: e.clientY, an: false, id: e.pointerId, touch: e.pointerType !== "mouse" };
+    if (zug.touch) timer = setTimeout(() => zug && aktivieren(), 320);   // am Handy erst nach langem Drücken, sonst scrollt die Seite
+  });
+  addEventListener("pointermove", (e) => {
+    if (!zug || e.pointerId !== zug.id) return;
+    if (!zug.an) {
+      if (Math.hypot(e.clientX - zug.x, e.clientY - zug.y) < 6) return;
+      if (zug.touch) { clearTimeout(timer); zug = null; return; }
+      aktivieren();
+    }
+    const unter = document.elementFromPoint(e.clientX, e.clientY)?.closest(".pv-folie");
+    if (!unter || unter === zug.f || unter.parentElement !== leiste) return;
+    const r = unter.getBoundingClientRect();
+    leiste.insertBefore(zug.f, e.clientX > r.left + r.width / 2 ? unter.nextSibling : unter);
+    nummern();
+  });
+  addEventListener("touchmove", (e) => { if (zug?.an) e.preventDefault(); }, { passive: false });
+  addEventListener("pointerup", (e) => { if (zug && e.pointerId === zug.id) beenden(true); });
+  addEventListener("pointercancel", (e) => { if (zug && e.pointerId === zug.id) beenden(!!zug.an); });
+  leiste.addEventListener("contextmenu", (e) => { if (zug) e.preventDefault(); });
+  leiste.addEventListener("click", (e) => { if (geklickt) { e.stopPropagation(); e.preventDefault(); } }, true);   // nach dem Ziehen nicht den Editor öffnen
+
+  let spaeter = null;
+  leiste.addEventListener("keydown", (e) => {
+    const f = e.target.closest(".pv-folie");
+    if (!f || !e.altKey || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
+    e.preventDefault();
+    const vor = e.key === "ArrowLeft" || e.key === "ArrowUp";
+    const nachbar = vor ? f.previousElementSibling : f.nextElementSibling;
+    if (!nachbar) return;
+    leiste.insertBefore(f, vor ? nachbar : nachbar.nextSibling);
+    f.focus(); nummern();
+    clearTimeout(spaeter); spaeter = setTimeout(speichern, 900);
+  });
+})();
+
+// Planen & veröffentlichen: kleiner Monatskalender mit Miniaturen aller Posts. Den eigenen Post auf einen Tag ziehen
+// (Maus oder Finger, das Vorschaubild scrollt die Seite nicht) oder einen Tag anklicken, um das Datum zu setzen.
+(() => {
+  const wurzel = document.querySelector("[data-mini-kal]"), K = window.PLAN_KAL;
+  const datum = document.querySelector("[data-mini-kal-datum]"), zeit = document.querySelector("[data-mini-kal-zeit]");
+  const info = document.querySelector("[data-mini-kal-info]");
+  if (!wurzel || !K || !datum) return;
+  const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  const WT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"], WT_LANG = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const ausIso = (s) => { const [j, m, t] = s.split("-").map(Number); return new Date(j, m - 1, t); };
+  const wochentag = (d) => (d.getDay() + 6) % 7;
+  const anfang = datum.value;
+  const STATUS = { "Geplant": "geplant", "Gepostet": "gepostet", "Zur Abnahme": "abnahme", "Wartet auf Input": "abnahme", "Idee": "idee" };
+  let monat = ausIso(datum.value || K.heute); monat.setDate(1);
+
+  const mini = (p, eigen) => {
+    const inhalt = p.thumb ? `<img src="${esc(p.thumb)}" alt="" draggable="false">` : `<b>${esc((p.titel || "?").slice(0, 1))}</b>`;
+    return `<span class="mk-mini ${eigen ? "eigen" : STATUS[p.status] || "arbeit"}" ${eigen ? 'data-eigen aria-label="Dein Post, ziehen zum Verschieben"' : ""}>${inhalt}</span>`;
+  };
+
+  const beschreiben = (tag) => {
+    if (!tag) return '<span class="muted">Noch kein Datum. Zieh deinen Post auf einen Tag oder klick einen Tag an.</span>';
+    const d = ausIso(tag), andere = K.tage[tag] || [];
+    let h = `<span class="mini-kal-eigen"><strong>${WT_LANG[wochentag(d)]}, ${d.getDate()}. ${MONATE[d.getMonth()]} ${d.getFullYear()}</strong>${zeit?.value ? ` · ${esc(zeit.value)} Uhr` : ""}`;
+    if (tag !== anfang) h += ' <em class="mini-kal-neu">noch speichern</em>';
+    h += "</span>";
+    h += andere.length
+      ? `<span class="mini-kal-andere">Am selben Tag: ${andere.map((p) => `<a href="/planen/${p.id}">${esc(p.titel)}</a>${p.zeit ? ` <span class="muted">${esc(p.zeit)}</span>` : ""}`).join(", ")}</span>`
+      : '<span class="mini-kal-andere muted">An diesem Tag ist sonst nichts geplant.</span>';
+    if (tag < K.heute) h += '<span class="mini-kal-andere muted">Der Tag liegt in der Vergangenheit.</span>';
+    const gezeigt = ausIso(tag); if (gezeigt.getMonth() !== monat.getMonth() || gezeigt.getFullYear() !== monat.getFullYear())
+      h += '<button type="button" class="link small" data-mk-hin>Zum Monat deines Posts</button>';
+    return h;
+  };
+
+  const zeichnen = () => {
+    const erster = new Date(monat), start = new Date(erster); start.setDate(1 - wochentag(erster));
+    const ende = new Date(erster.getFullYear(), erster.getMonth() + 1, 0), wochen = Math.ceil((wochentag(erster) + ende.getDate()) / 7);
+    let h = `<div class="mini-kal-kopf"><strong>${MONATE[erster.getMonth()]} ${erster.getFullYear()}</strong>
+      <button type="button" class="quadrat small" data-mk="-1" aria-label="Vorheriger Monat">‹</button><button type="button" class="quadrat small" data-mk="1" aria-label="Nächster Monat">›</button></div>
+      <div class="mini-kal-raster">${WT.map((w) => `<span class="mk-wt">${w}</span>`).join("")}`;
+    for (let i = 0; i < wochen * 7; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const t = iso(d), posts = K.tage[t] || [], vorbei = t < K.heute, hier = t === datum.value;
+      const kl = ["mk-tag", d.getMonth() !== erster.getMonth() && "anders", vorbei && "vorbei", t === K.heute && "heute", hier && "gewaehlt",
+        !vorbei && K.rhythmus.includes(wochentag(d)) && !posts.length && !hier && "rhythmus"].filter(Boolean).join(" ");
+      const titel = [hier ? `Dein Post: ${K.eigen.titel}` : "", ...posts.map((p) => `${p.zeit || ""} ${p.titel} (${p.status})`.trim())].filter(Boolean).join("\n");
+      const max = hier ? 2 : 3, rest = posts.length - max;
+      h += `<div class="${kl}" data-tag="${t}" ${vorbei ? "" : 'role="button" tabindex="0"'} title="${esc(titel || (vorbei ? "" : "Auf diesen Tag legen"))}">
+        <span class="mk-zahl">${d.getDate()}</span><span class="mk-minis">${hier ? mini(K.eigen, true) : ""}${posts.slice(0, max).map((p) => mini(p)).join("")}${rest > 0 ? `<span class="mk-mehr">+${rest}</span>` : ""}</span></div>`;
+    }
+    wurzel.innerHTML = h + `</div><div class="mini-kal-legende"><span><span class="mk-mini eigen"></span>dein Post</span>
+      ${[["geplant", "geplant"], ["abnahme", "braucht dich"], ["idee", "Idee"], ["gepostet", "gepostet"]].map(([k, t]) => `<span><span class="mk-mini ${k}"></span>${t}</span>`).join("")}</div>`;
+    if (info) info.innerHTML = beschreiben(datum.value);
+  };
+
+  const setzen = (tag) => { datum.value = tag; datum.dispatchEvent(new Event("change", { bubbles: true })); };
+  const zumPost = () => { if (datum.value) { monat = ausIso(datum.value); monat.setDate(1); } };
+
+  // ---------- Ziehen des eigenen Posts
+  let zug = null, geradeGezogen = false;
+  const zielUnter = (x, y) => document.elementFromPoint(x, y)?.closest(".mk-tag:not(.vorbei), [data-mk]");
+  const loslegen = () => {
+    zug.an = true;
+    zug.geist = document.createElement("div");
+    zug.geist.className = "mk-geist";
+    zug.geist.innerHTML = K.eigen.thumb ? `<img src="${esc(K.eigen.thumb)}" alt="">` : `<b>${esc(K.eigen.titel.slice(0, 1))}</b>`;
+    document.body.appendChild(zug.geist);
+    wurzel.classList.add("zieht");
+    bewegen(zug.x, zug.y);
+  };
+  const bewegen = (x, y) => {
+    zug.geist.style.transform = `translate(${x - 18}px, ${y - 24}px) rotate(-4deg)`;
+    const ziel = zielUnter(x, y);
+    wurzel.querySelectorAll(".mk-tag.ziel").forEach((z) => z.classList.remove("ziel"));
+    clearTimeout(zug.blaettern);
+    if (ziel?.dataset.tag) ziel.classList.add("ziel");
+    else if (ziel?.dataset.mk) zug.blaettern = setTimeout(() => { monat.setMonth(monat.getMonth() + +ziel.dataset.mk); zeichnen(); wurzel.classList.add("zieht"); }, 450);
+  };
+  const ende = (x, y, ok) => {
+    clearTimeout(zug.halten); clearTimeout(zug.blaettern);
+    if (zug.an) {
+      zug.geist.remove(); wurzel.classList.remove("zieht");
+      geradeGezogen = true; setTimeout(() => (geradeGezogen = false), 0);
+      const ziel = ok && zielUnter(x, y);
+      if (ziel?.dataset.tag) setzen(ziel.dataset.tag); else zeichnen();
+    }
+    zug = null;
+  };
+  wurzel.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest("[data-eigen]") || e.button !== 0) return;
+    e.preventDefault();
+    zug = { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, id: e.pointerId, an: false, touch: e.pointerType !== "mouse" };
+  });
+  addEventListener("pointermove", (e) => {
+    if (!zug || e.pointerId !== zug.id) return;
+    zug.x = e.clientX; zug.y = e.clientY;
+    if (!zug.an) {
+      const weg = Math.hypot(e.clientX - zug.startX, e.clientY - zug.startY);
+      if (weg < 4) return;
+      loslegen();
+    }
+    bewegen(e.clientX, e.clientY);
+  });
+  addEventListener("touchmove", (e) => { if (zug?.an) e.preventDefault(); }, { passive: false });
+  addEventListener("pointerup", (e) => { if (zug && e.pointerId === zug.id) ende(e.clientX, e.clientY, true); });
+  addEventListener("pointercancel", (e) => { if (zug && e.pointerId === zug.id) ende(e.clientX, e.clientY, false); });
+  wurzel.addEventListener("contextmenu", (e) => { if (e.target.closest("[data-eigen]")) e.preventDefault(); });
+
+  // ---------- Klicks und Tastatur
+  wurzel.addEventListener("click", (e) => {
+    if (geradeGezogen) return;
+    const nav = e.target.closest("[data-mk]");
+    if (nav) { monat.setMonth(monat.getMonth() + +nav.dataset.mk); zeichnen(); return; }
+    const tag = e.target.closest(".mk-tag:not(.vorbei)");
+    if (tag) setzen(tag.dataset.tag);
+  });
+  wurzel.addEventListener("keydown", (e) => {
+    const tag = e.target.closest(".mk-tag:not(.vorbei)");
+    if (tag && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setzen(tag.dataset.tag); wurzel.querySelector(`[data-tag="${tag.dataset.tag}"]`)?.focus(); }
+  });
+  info?.addEventListener("click", (e) => { if (e.target.closest("[data-mk-hin]")) { zumPost(); zeichnen(); } });
+  datum.addEventListener("change", () => { zumPost(); zeichnen(); });
+  zeit?.addEventListener("change", zeichnen);
+  zeichnen();
 })();

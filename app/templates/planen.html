@@ -4,8 +4,8 @@
 <section class="planen">
   <div class="head">
     <div class="kopf-text">
-      <span class="label">{{ anzahl }} Post{{ 's' if anzahl != 1 }} · {{ mit_termin }} mit Termin</span>
       <h1>Redaktionsplan</h1>
+      <p class="unterzeile"><b>{{ anzahl }} Post{{ 's' if anzahl != 1 }}</b> in Planung · {{ mit_termin }} mit Termin</p>
     </div>
     <div class="kopf-aktionen">
       <details class="aufklapp">
@@ -21,24 +21,27 @@
       </details>
       <form method="post" action="/planen/neu" class="row wrapless">
         <select name="format" aria-label="Format des neuen Beitrags" style="width:auto">{% for f in formate %}<option>{{ f }}</option>{% endfor %}</select>
-        <button>Neu anlegen</button>
+        <button class="primary">Neu anlegen</button>
       </form>
     </div>
   </div>
 
   <div class="voll">
     <div class="col-main">
-      {% if offen %}
-      <div class="offen-leiste">
-        {% for o in offen %}
-        <a class="offen-kachel s-{{ o.status|lower|replace(' ', '-') }}" href="{{ o.link }}">
-          <span class="offen-punkt" aria-hidden="true"></span>
-          <span class="offen-zahl">{{ o.n }}</span>
-          <span class="offen-text"><strong>{{ o.text }}</strong>{% if o.titel %}<span class="small muted">{{ o.titel }}</span>{% endif %}</span>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
-        </a>
-        {% endfor %}
-      </div>
+      {% if offen %}{% set f = offen[0] %}
+      <section class="fokus" aria-label="Als Nächstes für dich">
+        <div>
+          <span class="fokus-hinweis">Als Nächstes für dich</span>
+          <h2>{% if f.status == 'Zur Abnahme' %}{{ f.n }} Post{{ 's warten' if f.n != 1 else ' wartet' }} auf deine Abnahme{% elif f.status == 'Idee' %}{{ f.n }} {{ 'Entwürfe warten' if f.n != 1 else 'Entwurf wartet' }} auf dich{% else %}{{ f.n }} Post{{ 's warten' if f.n != 1 else ' wartet' }} auf deine Aufnahme{% endif %}</h2>
+          <p>{% if f.titel %}„{{ f.titel }}“{% if f.wann %} ist für {{ f.wann }} geplant{% endif %}.{% elif f.wann %}Der erste ist für {{ f.wann }} geplant.{% endif %}
+            {% if f.status == 'Zur Abnahme' %}Du kannst freigeben oder kajo sagen, was noch anders soll.{% elif f.status == 'Idee' %}Mach daraus einen fertigen Post oder verwirf ihn.{% else %}Lade die Aufnahme hoch, dann geht es weiter.{% endif %}</p>
+          <div class="fokus-aktionen">
+            <a class="button gelb" href="{{ f.link }}">{{ 'Jetzt durchsehen' if f.status != 'Wartet auf Input' else 'Aufnahme hochladen' }}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+            {% if offen|length > 1 %}<span class="fokus-weitere">Außerdem: {% for o in offen[1:] %}<a href="{{ o.link }}">{{ o.n }} {{ o.text }}</a>{{ ' · ' if not loop.last }}{% endfor %}</span>{% endif %}
+          </div>
+        </div>
+        {% if f.bilder %}<div class="stapel" aria-hidden="true">{% for t, v in f.bilder %}<img src="/media/{{ t }}?v={{ v|int }}" alt="" loading="lazy">{% endfor %}</div>{% endif %}
+      </section>
       {% endif %}
 
       <div class="ansicht-leiste">
@@ -112,6 +115,7 @@
                title="{{ p.kurz }} · {{ p.status|status }}{{ ' · bei Buffer eingeplant, Termin im Post ändern' if p.bei_buffer else (' · zum Verschieben auf einen anderen Tag ziehen' if p.verschiebbar else '') }}"
                {% if p.verschiebbar %}draggable="true" data-verschieben="{{ p.id }}"{% endif %}>
               {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy" draggable="false">{% endif %}
+              {% if p.status == 'Zur Abnahme' %}<span class="cal-marke">Freigeben</span>{% elif p.status == 'Wartet auf Input' %}<span class="cal-marke">Input fehlt</span>{% endif %}
               <span class="cal-info">
                 <span class="zeit">{{ p.uhrzeit }} · {{ p.format }}{% if p.bei_buffer %} · <span class="buffer-marke">Buffer</span>{% endif %}{% if p.aufrufe %} · {{ p.aufrufe }} Aufrufe{% endif %}</span>
                 <span class="titel">{{ p.kurz }}</span>
@@ -122,9 +126,11 @@
           {% endfor %}{% endfor %}
         </div>
         <div class="legende">
-          <span><i class="geplant"></i>Geplant</span>
-          <span><i class="abnahme"></i>Zur Abnahme</span>
-          <span><i class="arbeit"></i>In Arbeit</span>
+          <span><b class="cal-legende-heute"></b>ab heute</span>
+          <span><i class="geplant"></i>Fix geplant</span>
+          <span><b class="cal-marke">Freigeben</b>braucht dich</span>
+          <span><i class="arbeit"></i>kajo arbeitet daran</span>
+          <span><i class="gepostet"></i>Gepostet</span>
           <span><i></i>Idee</span>
           {% if rhythmus %}<span><i class="frei"></i>freier Rhythmus-Tag</span>{% endif %}
         </div>

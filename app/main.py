@@ -657,12 +657,19 @@ def _offen(brand_id):
     """Was gerade auf die Person wartet: Abnahme, Entwürfe, Aufnahmen (mit Ziel-Link; bei genau einem Post direkt dorthin)."""
     out = []
     for status, name, mehr in (("Zur Abnahme", "zur Abnahme", "zur Abnahme"), ("Idee", "Entwurf", "Entwürfe"), ("Wartet auf Input", "wartet auf Aufnahme", "warten auf Aufnahme")):
-        rows = db.q("SELECT id, titel FROM posts WHERE brand_id=? AND status=? ORDER BY datum='', datum, id", brand_id, status)
+        rows = db.q("SELECT * FROM posts WHERE brand_id=? AND status=? ORDER BY datum='', datum, uhrzeit, id", brand_id, status)
         if rows:
             link = (f"/planen/{rows[0]['id']}" if len(rows) == 1 else
                     "/input" if status == "Wartet auf Input" else f"/planen?ansicht=tabelle&status={urllib.parse.quote(status)}")
+            ansichten = [post_view(r, []) for r in rows[:3]]
+            erster = rows[0]
+            wann = ""
+            if erster["datum"]:
+                d = datetime.date.fromisoformat(erster["datum"])
+                wann = f"{WOCHENTAGE[d.weekday()]} {d.day:02d}.{d.month:02d}." + (f" um {erster['uhrzeit']}" if erster["uhrzeit"] else "")
             out.append({"status": status, "n": len(rows), "text": name if len(rows) == 1 else mehr,
-                        "titel": rows[0]["titel"] if len(rows) == 1 else "", "link": link})
+                        "titel": rows[0]["titel"] if len(rows) == 1 else "", "link": link, "wann": wann,
+                        "bilder": [(v["thumb"], v.get("rendered_at") or 0) for v in ansichten if v.get("thumb")]})
     return out
 
 
@@ -916,6 +923,19 @@ def werkstatt_verwerfen(request: Request, pid: int):
     return go("/planen")
 
 
+def _plan_kalender(b, p):
+    """Daten für den kleinen Kalender beim Planen: andere Posts je Tag, Rhythmus-Tage, heute."""
+    tage = {}
+    for r in db.q("SELECT * FROM posts WHERE brand_id=? AND id!=? AND datum!='' ORDER BY datum, uhrzeit", b["id"], p["id"]):
+        v = post_view(r)
+        tage.setdefault(r["datum"], []).append({"id": r["id"], "titel": v["kurz"], "status": r["status"], "zeit": r["uhrzeit"], "format": r["format"],
+                                                "thumb": f"/media/{v['thumb']}?v={int(r['rendered_at'] or 0)}" if v["thumb"] else ""})
+    red = redaktion.einstellungen(json.loads(b["auftreten"]))
+    eigen = post_view(p)
+    return {"tage": tage, "rhythmus": red["tage"] if red["aktiv"] else [], "heute": datetime.date.today().isoformat(),
+            "eigen": {"titel": eigen["kurz"], "thumb": f"/media/{eigen['thumb']}?v={int(p['rendered_at'] or 0)}" if eigen["thumb"] else ""}}
+
+
 @app.get("/planen/{pid}", response_class=HTMLResponse)
 def post_edit(request: Request, pid: int):
     b = brand_of(request)
@@ -950,11 +970,39 @@ def post_edit(request: Request, pid: int):
                 arten=marke.ARTEN_NAMEN, felder=marke.ARTEN, formate=marke.FORMATE, status=marke.STATUS,
                 laeuft=jobs.LABELS.get(laufende[0]["kind"]) if laufende else None, fehler=jobs.last_error(b["id"], pid),
                 design_n=len(json.loads(p["design"] or "[]")), manuell=layout_editor.hat_manuelle(p),
+                plan_kal=_plan_kalender(b, p),
                 kanaele=buffer.kanaele_fuer_post(b["id"], p), buffer_da=bool(buffer.verbindung(b["id"])),
                 buffer_sync_an=bool(buffer_sync.einstellungen(b["id"])["aktiv"]), buffer_sendungen=buffer_sync.sendungen(b["id"], pid),
                 buffer_grund=buffer_sync.bereit(b["id"], p), kennzahlen=auswertung.je_post(b["id"], pid),
                 reel_fotos=[(n, dict(m)) for n, m in medien.post_fotos(b["id"], p)],
-                ig=_ig_profil(b))
+                ig=_ig_profil(b), li=_li_profil(b, buffer.kanaele_fuer_post(b["id"], p)))
+
+
+def _li_profil(b, kanaele):
+    """Name und Bild für die LinkedIn-Vorschau: der verbundene LinkedIn-Kanal, sonst Name und Referenzfoto der Marke."""
+    a = json.loads(b["auftreten"])
+    k = next((k for k in kanaele if k.get("dienst") == "linkedin"), None)
+    name = (k and (k.get("name") or k.get("handle"))) or a.get("name") or a.get("label") or "Dein Profil"
+    zeile = a.get("label") if a.get("label") and a.get("label") != name else (a.get("rolle") or "")
+    return {"name": name, "zeile": zeile, "avatar": (k or {}).get("avatar") or "",
+            "bild": b["ref_photo"] or b["logo"] or "", "logo": not b["ref_photo"] and bool(b["logo"])}
+
+
+INLINE_FELDER = {"caption_ig": 2200, "caption_li": 3000, "titel": 200}
+
+
+@app.post("/planen/{pid}/feld")
+async def post_feld(request: Request, pid: int):
+    """Inline-Bearbeitung in der Vorschau: ein einzelnes Textfeld (Caption, Titel) sofort speichern."""
+    b = brand_of(request)
+    post_of(b, pid)
+    d = await request.json()
+    feld = str(d.get("feld") or "")
+    if feld not in INLINE_FELDER:
+        return JSONResponse({"fehler": "Dieses Feld lässt sich hier nicht ändern."}, status_code=400)
+    wert = str(d.get("wert") or "").strip()[:INLINE_FELDER[feld] + 500]
+    db.run(f"UPDATE posts SET {feld}=?, updated=? WHERE id=? AND brand_id=?", wert, db.now(), pid, b["id"])
+    return JSONResponse({"ok": True, "wert": wert, "html": str(_ig_text(wert))})
 
 
 def _ig_profil(b):
@@ -1302,6 +1350,46 @@ def layout_zuruecksetzen(request: Request, pid: int, nr: int):
     b = brand_of(request)
     p = post_of(b, pid)
     return _layout_antwort(lambda: (layout_editor.zuruecksetzen(b, p, nr), {"ok": True})[1])
+
+
+@app.post("/planen/{pid}/reihenfolge")
+async def post_reihenfolge(request: Request, pid: int):
+    """Folien eines Carousels umsortieren: Texte, Layouts und fertige Bilder wandern mit, danach neu rendern."""
+    b = brand_of(request)
+    p = post_of(b, pid)
+    if jobs.running(b["id"], pid):
+        return JSONResponse({"fehler": "Gerade läuft noch etwas an diesem Post. Bitte kurz warten."}, status_code=409)
+    n = p["slide_count"] or 0
+    try:
+        reihe = [int(x) for x in (await request.json()).get("reihe") or []]
+    except (TypeError, ValueError):
+        reihe = []
+    if n < 2 or sorted(reihe) != list(range(1, n + 1)):
+        return JSONResponse({"fehler": "Die Reihenfolge passt nicht zu den Folien."}, status_code=400)
+    if reihe == list(range(1, n + 1)):
+        return JSONResponse({"ok": True, "neu_rendern": False})
+    inhalt, design = json.loads(p["inhalt"]), json.loads(p["design"] or "[]")
+    slides = inhalt.get("slides") or []
+    if design and len(design) != n:
+        return JSONResponse({"fehler": "Die Folien lassen sich gerade nicht umsortieren. Gestalte den Post einmal neu."}, status_code=409)
+    if design:
+        design = [design[i - 1] for i in reihe]
+    if len(slides) == n:
+        inhalt["slides"] = [slides[i - 1] for i in reihe]
+    d = storage.post_dir(b["id"], pid)
+    from PIL import Image
+    bilder = []
+    for i in reihe:
+        with Image.open(os.path.join(d, f"slide-{i:02d}.png")) as im:
+            bilder.append(im.convert("RGB"))
+    for i, im in enumerate(bilder, start=1):
+        im.save(os.path.join(d, f"slide-{i:02d}.png"))
+    jobs.render.pdf(bilder, os.path.join(d, "linkedin.pdf"))
+    db.run("UPDATE posts SET inhalt=?, design=?, rendered_at=?, updated=? WHERE id=?",
+           json.dumps(inhalt, ensure_ascii=False), json.dumps(design, ensure_ascii=False), db.now(), db.now(), pid)
+    if design:   # Seitenzahlen und Übergänge hängen an der Position: im Hintergrund sauber neu rendern
+        jobs.start(b["id"], pid, "render", jobs.render_post, b["id"], pid, design)
+    return JSONResponse({"ok": True, "neu_rendern": bool(design)})
 
 
 @app.get("/planen/{pid}/status")

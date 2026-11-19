@@ -1,0 +1,53 @@
+{# LinkedIn-Vorschau: Beitrag im Feed. Carousel als Dokument (wie das LinkedIn-PDF), Einzelbild, Video. Folien und Caption direkt bearbeitbar. #}
+{% set n_slides = p.slide_count if p.rendered_at and not video else 0 %}
+<div class="pv-geraet">
+  <article class="li-karte">
+    <header class="li-kopf">
+      <span class="li-avatar {{ 'logo' if li.logo and not li.avatar }}">{% if li.avatar %}<img src="{{ li.avatar }}" alt="" referrerpolicy="no-referrer">{% elif li.bild %}<img src="/media/{{ li.bild }}" alt="">{% else %}{{ li.name[:1]|upper }}{% endif %}</span>
+      <span class="li-wer">
+        <strong>{{ li.name }}</strong>
+        {% if li.zeile %}<span class="li-leise">{{ li.zeile }}</span>{% endif %}
+        <span class="li-leise">{{ 'Geplant' if p.status == 'Geplant' else '1 Tag' }} · <svg class="li-welt" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c2 2 2 10.4 0 12.4M8 1.8c-2 2-2 10.4 0 12.4"/></svg></span>
+      </span>
+      <span class="li-folgen">+ Folgen</span>
+    </header>
+
+    <div class="pv-feld li-text" data-inline-feld="caption_li" data-max="3000" role="button" tabindex="0" title="LinkedIn-Text bearbeiten">
+      <p class="li-caption kurz" data-ig-caption><span data-inline-text>{% if p.caption_li %}{{ p.caption_li|ig_text }}{% else %}<span class="leise">LinkedIn-Text schreiben …</span>{% endif %}</span></p>
+    </div>
+
+    {% if video %}
+    <div class="li-medium video">
+      {% if p.video %}<video src="/media/{{ p.video }}?v={{ p.rendered_at|int }}" poster="/media/posts/{{ p.id }}/reel-cover.jpg?v={{ p.rendered_at|int }}" muted loop playsinline controls></video>
+      {% else %}<div class="ig-leer"><span>Noch kein Video</span></div>{% endif %}
+    </div>
+    {% elif n_slides > 1 %}
+    <div class="li-dokument" data-ig-karussell>
+      <div class="li-dok-kopf"><span class="ellipsis">{{ p.titel or 'Dokument' }}</span><span>· {{ n_slides }} Seiten</span></div>
+      <div class="ig-spur" data-ig-spur>
+        {% for n in range(1, n_slides + 1) %}<img src="/media/posts/{{ p.id }}/slide-{{ '%02d' % n }}.png?v={{ p.rendered_at|int }}" alt="Seite {{ n }}" loading="lazy"
+          {% if n <= design_n %}data-layout="{{ n }}" role="button" tabindex="0" title="Folie {{ n }} bearbeiten"{% endif %}>{% endfor %}
+      </div>
+      <button type="button" class="ig-pfeil links" data-ig-pfeil="-1" aria-label="Vorherige Seite" hidden>‹</button>
+      <button type="button" class="ig-pfeil rechts" data-ig-pfeil="1" aria-label="Nächste Seite">›</button>
+      <div class="li-dok-fuss"><span data-ig-zaehler>1/{{ n_slides }}</span></div>
+      {% if design_n %}<span class="pv-tipp" aria-hidden="true">Klick zum Bearbeiten</span>{% endif %}
+    </div>
+    {% elif n_slides == 1 %}
+    <div class="li-medium" data-ig-karussell>
+      <div class="ig-spur" data-ig-spur><img src="/media/posts/{{ p.id }}/slide-01.png?v={{ p.rendered_at|int }}" alt="Bild" {% if design_n %}data-layout="1" role="button" tabindex="0" title="Bild bearbeiten"{% endif %}></div>
+      {% if design_n %}<span class="pv-tipp" aria-hidden="true">Klick zum Bearbeiten</span>{% endif %}
+    </div>
+    {% else %}
+    <div class="li-medium"><div class="ig-leer feed"><span>Noch keine Visuals</span></div></div>
+    {% endif %}
+
+    <div class="li-reaktionen"><span class="li-emojis"><i class="a"></i><i class="b"></i></span><span class="li-leise">Reaktionen</span><span class="grow"></span><span class="li-leise">Kommentare</span></div>
+    <footer class="li-aktionen">
+      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v10H4V10zM7 10l4-7c1.5 0 2.5 1 2.2 2.6L12.6 9H19a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.8 20H7"/></svg>Gefällt mir</span>
+      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>Kommentieren</span>
+      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a5 5 0 0 1 5-5h9l-3-3M20 12a5 5 0 0 1-5 5H6l3 3"/></svg>Reposten</span>
+      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/></svg>Senden</span>
+    </footer>
+  </article>
+</div>
