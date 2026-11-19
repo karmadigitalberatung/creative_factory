@@ -23,7 +23,8 @@
   </header>
 
   {% if p.vorher_pruefen %}<p class="note"><strong>Vorher prüfen:</strong> {{ p.vorher_pruefen }}</p>{% endif %}
-  {% if fehler and not laeuft %}<p class="error">Fehler: {{ fehler }}</p>{% endif %}
+  {% if fehler and not laeuft %}<p class="error">Fehler: {{ fehler }}{% if p.video_roh and not cut %}
+    <button form="schnittform" name="art" value="{{ 'claude' if ki_text else 'auto' }}" class="small">Erneut schneiden</button>{% endif %}</p>{% endif %}
 
   <nav class="ansicht-tabs post-ansicht" aria-label="Schritte" data-post-ansicht="{{ p.id }}">
     <button type="button" class="on" data-ansicht-wechsel="inhalt" aria-current="page"><b>1</b> Inhalt</button>
