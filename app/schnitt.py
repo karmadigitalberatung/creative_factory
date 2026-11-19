@@ -14,6 +14,13 @@ Schnitt (JSON, in posts.schnitt):
   "einblendungen": [{"von": 40, "bis": 52, "szene": {...}}]   # optional: Infografik (Szene wie engine/scene.py,
                                                              # 1080 x 1920, transparent) solange diese Wörter laufen
 }
+Mehrere Clips (siehe material.py): Wort-Indizes gelten in der gemeinsamen Wortliste aller Clips, jedes Wort trägt "c".
+Ein Teil darf über Clipgrenzen gehen, er wird beim Rendern je Clip geteilt. Zusätzlich je Teil optional:
+  "fokus": {"x": 0.5, "y": 0.4}   Bildmitte des Zuschnitts im Clip (0..1), sonst das Gesicht aus der Analyse
+  "ut": "auto" | "oben" | "mitte" | "unten" | 0.72   Position der Untertitel (Zahl = Oberkante relativ zur Höhe)
+"zwischen": [{"quelle": "c2" | "m12", "von": 40, "bis": 46, "start": 3.0, "fokus": {...}, "ut": "auto"}]
+  Zwischenschnitte (B-Roll): ein Foto oder anderer Clip liegt über dem Bild, solange diese Wörter laufen; der Ton läuft weiter.
+  start = Sekunde im Quell-Clip (bei Fotos egal).
 """
 import json, os, re, shutil, subprocess, tempfile
 from PIL import Image
@@ -87,17 +94,71 @@ def auto_schnitt(words, titel=""):
 
 
 def segmente(words, schnitt, dauer):
-    """Wort-Teile -> Zeitabschnitte im Quellvideo (mit etwas Luft), sortiert nach Schnitt-Reihenfolge."""
+    """Wort-Teile -> Zeitabschnitte im Quellvideo (mit etwas Luft), sortiert nach Schnitt-Reihenfolge.
+    dauer: Sekunden (ein Clip) oder {Clip: Sekunden}. Teile über Clipgrenzen werden je Clip geteilt."""
     out = []
-    for t in schnitt.get("teile") or []:
+    for k, t in enumerate(schnitt.get("teile") or []):
         a, b = max(0, int(t["von"])), min(len(words) - 1, int(t["bis"]))
-        if a > b:
-            continue
-        s = max(0.0, words[a]["s"] - 0.12)
-        e = min(dauer, words[b]["e"] + 0.18)
-        if e - s > 0.25:
-            out.append({"s": round(s, 3), "e": round(e, 3), "von": a, "bis": b, "zoom": bool(t.get("zoom"))})
+        while a <= b:
+            c = words[a].get("c", "c1")
+            z = a
+            while z + 1 <= b and words[z + 1].get("c", "c1") == c:
+                z += 1
+            d = dauer.get(c, 0) if isinstance(dauer, dict) else dauer
+            s = max(0.0, words[a]["s"] - 0.12)
+            e = min(d or words[z]["e"] + 0.18, words[z]["e"] + 0.18)
+            if e - s > 0.25:
+                out.append({"s": round(s, 3), "e": round(e, 3), "von": a, "bis": z, "zoom": bool(t.get("zoom")), "clip": c,
+                            "teil": k, "fokus": t.get("fokus"), "ut": t.get("ut", "auto")})
+            a = z + 1
     return out
+
+
+# ---------------------------------------------------------------- Zuschnitt und Untertitel-Lage
+
+UT_NAMEN = {"oben": 330, "mitte": 880, "unten": 1400}
+UT_AUTO = (1400, 1250, 1080, 330)   # Kandidaten für die Oberkante der Untertitel, der erste ohne Gesicht gewinnt
+
+
+def zuschnitt(seite, fokus):
+    """Quelle (Breite/Höhe = seite) füllend auf 1080 x 1920 zuschneiden, fokus (0..1) möglichst mittig (senkrecht bei 40 %).
+    Gibt (Breite, Höhe nach dem Skalieren, ffmpeg-Filter, Lage des Fokus im Ergebnis {x, y} in 0..1) zurück."""
+    fx, fy = (min(1.0, max(0.0, float((fokus or {}).get(k, d)))) for k, d in (("x", 0.5), ("y", 0.4)))
+    if seite > W / H:
+        sh = H; sw = int(round(H * seite / 2)) * 2
+    else:
+        sw = W; sh = int(round(W / seite / 2)) * 2
+    x = min(max(fx * sw - W / 2, 0), sw - W)
+    y = min(max(fy * sh - 0.4 * H, 0), sh - H)
+    filt = f"scale={sw}:{sh},crop={W}:{H}:{int(x)}:{int(y)},setsar=1"
+    return sw, sh, filt, {"x": round((fx * sw - x) / W, 3), "y": round((fy * sh - y) / H, 3)}
+
+
+def ut_lage(ut, gesicht_im_bild=None):
+    """Oberkante der Untertitel in px. ut: Name, Zahl (0..1) oder "auto" (dann über oder unter dem Gesicht, nie darauf)."""
+    if isinstance(ut, (int, float)) and not isinstance(ut, bool):
+        return int(min(0.88, max(0.05, float(ut))) * H)
+    if ut in UT_NAMEN:
+        return UT_NAMEN[ut]
+    if not gesicht_im_bild:
+        return UT_AUTO[0]
+    g = gesicht_im_bild
+    oben, unten = (g["y"] - g["h"] * 0.62) * H - 40, (g["y"] + g["h"] * 0.75) * H + 40   # Stirn bis Kinn, mit Luft
+    for y in UT_AUTO:
+        if y + 230 < oben or y > unten:
+            return y
+    return UT_AUTO[0]
+
+
+def gesicht_im_bild(gesicht, seite, fokus=None):
+    """Gesicht (0..1 in der Quelle) -> Lage und Höhe im zugeschnittenen 1080 x 1920 Bild, oder None."""
+    if not gesicht:
+        return None
+    sw, sh, _, f = zuschnitt(seite, fokus or gesicht)
+    fx, fy = (min(1.0, max(0.0, float((fokus or gesicht).get(k, d)))) for k, d in (("x", 0.5), ("y", 0.4)))
+    x = f["x"] + (float(gesicht["x"]) - fx) * sw / W
+    y = f["y"] + (float(gesicht["y"]) - fy) * sh / H
+    return {"x": round(x, 3), "y": round(y, 3), "h": round(float(gesicht.get("h", 0.2)) * sh / H, 3)}
 
 
 def wortzeiten(words, segs):
@@ -227,11 +288,45 @@ def overlay_titel(r, titel, p):
 
 # ---------------------------------------------------------------- Rendern
 
-def render(brand, src, words, schnitt, dauer, out_mp4, out_cover, post_titel=""):
-    """Schneiden (ffmpeg) -> Motion-Seite (Kamera-Lagen, Szenen, Karaoke-Untertitel) -> Chrome rendert jedes Bild -> MP4 mit Ton."""
+def _eingang_nr(eingaenge):
+    """Index der zuletzt angehängten Eingangsdatei (Anzahl der -i minus 1)."""
+    return sum(1 for x in eingaenge if x == "-i") - 1
+
+
+def zwischen_zeiten(eintraege, pos, laenge, szenen=()):
+    """Zwischenschnitte -> Zeitfenster im fertigen Video (1,2 bis 6 s), nie über einer Szene, nie in den ersten 1,5 s, ohne Überlappung."""
+    out = []
+    for k, z in enumerate(eintraege or []):
+        idx = [i for i in range(int(z.get("von", 0)), int(z.get("bis", -1)) + 1) if i in pos]
+        if not idx:
+            continue
+        s = max(1.5, min(pos[i][0] for i in idx))
+        e = min(laenge - 0.2, max(pos[i][1] for i in idx) + 0.25, s + 6)
+        for sz in szenen:
+            if s < sz["e"] and e > sz["s"]:
+                e = min(e, sz["s"]) if s < sz["s"] else e
+                s = max(s, sz["e"]) if s >= sz["s"] else s
+        if e - s >= 1.2:
+            out.append(dict(z, k=k, s=round(s, 3), e=round(e, 3)))
+    out.sort(key=lambda x: x["s"])
+    fertig = []
+    for z in out:
+        if fertig and z["s"] < fertig[-1]["e"]:
+            z["s"] = fertig[-1]["e"]
+        if z["e"] - z["s"] >= 1.2:
+            fertig.append(z)
+    return fertig
+
+
+def render(brand, clips, words, schnitt, out_mp4, out_cover, post_titel="", fotos=None):
+    """Schneiden (ffmpeg) -> Motion-Seite (Kamera-Lagen, Szenen, Karaoke-Untertitel) -> Chrome rendert jedes Bild -> MP4 mit Ton.
+    clips: {Clip: {"pfad", "seite", "dauer", "gesicht"}}, fotos: {"m12": {"pfad", "seite"}} für Zwischenschnitte.
+    Gibt info zurück, darin "abschnitte" (was wann zu sehen ist, für den Editor)."""
     import html as _html
     from .motion import regie
-    segs = segmente(words, schnitt, dauer)
+    fotos = fotos or {}
+    segs = segmente(words, schnitt, {c: v["dauer"] for c, v in clips.items()})
+    segs = [sg for sg in segs if sg["clip"] in clips]
     if not segs:
         raise ValueError("Im Schnitt ist nichts übrig geblieben")
     zeilen, laenge = untertitel(words, segs, schnitt.get("zeilen"), korrekturen=schnitt.get("korrekturen"))
@@ -239,21 +334,73 @@ def render(brand, src, words, schnitt, dauer, out_mp4, out_cover, post_titel="")
     pos = wortzeiten(words, segs)
     tmp = tempfile.mkdtemp(prefix="schnitt-")
     try:
-        # 1. Aufnahme schneiden: Einzelbilder (JPEG) + Ton
+        # 1. Clips schneiden, je Abschnitt aufs Hochformat zuschneiden (Fokus = Gesicht), Zwischenschnitte darüberlegen: Einzelbilder + Ton
         os.makedirs(os.path.join(tmp, "frames"))
-        fc, n, zooms, off = [], len(segs), [], 0.0
+        eingaenge, nr = [], {}
+        for sg in segs:
+            if sg["clip"] not in nr:
+                nr[sg["clip"]] = len(eingaenge); eingaenge += ["-i", clips[sg["clip"]]["pfad"]]
+        fc, n, zooms, off, fokus_plan, ut_plan, abschnitte = [], len(segs), [], 0.0, [], [], []
         for k, sg in enumerate(segs):
-            fc.append(f"[0:v]trim=start={sg['s']}:end={sg['e']},setpts=PTS-STARTPTS,fps={regie.FPS},"
-                      f"scale='min(1920,iw)':-2,setsar=1[v{k}]")
-            fc.append(f"[0:a]atrim=start={sg['s']}:end={sg['e']},asetpts=PTS-STARTPTS[a{k}]")
+            c = clips[sg["clip"]]
+            fokus = sg.get("fokus") or c.get("gesicht") or {"x": 0.5, "y": 0.4}
+            _, _, filt, f_im_bild = zuschnitt(c["seite"], fokus)
+            g = gesicht_im_bild(c.get("gesicht"), c["seite"], sg.get("fokus") or c.get("gesicht"))
+            i = nr[sg["clip"]]
+            fc.append(f"[{i}:v]trim=start={sg['s']}:end={sg['e']},setpts=PTS-STARTPTS,fps={regie.FPS},{filt}[v{k}]")
+            fc.append(f"[{i}:a]atrim=start={sg['s']}:end={sg['e']},asetpts=PTS-STARTPTS[a{k}]")
+            ende = off + sg["e"] - sg["s"]
             if sg["zoom"]:
-                zooms.append([round(off, 3), round(off + sg["e"] - sg["s"], 3)])
-            off += sg["e"] - sg["s"]
+                zooms.append([round(off, 3), round(ende, 3)])
+            fokus_plan.append({"s": round(off, 3), "e": round(ende, 3), **(g or f_im_bild)})
+            ut_plan.append({"s": round(off, 3), "e": round(ende, 3), "y": ut_lage(sg.get("ut", "auto"), g)})
+            if not abschnitte or abschnitte[-1]["teil"] != sg["teil"]:
+                abschnitte.append({"art": "teil", "teil": sg["teil"], "clip": sg["clip"], "s": round(off, 2), "e": round(ende, 2),
+                                   "text": verbinden([words[j]["w"] for j in range(sg["von"], min(sg["bis"], sg["von"] + 7) + 1)]),
+                                   "fokus": fokus, "ut": sg.get("ut", "auto"), "zoom": sg["zoom"]})
+            else:
+                abschnitte[-1]["e"] = round(ende, 2)
+            off = ende
         fc.append("".join(f"[v{k}][a{k}]" for k in range(n)) + f"concat=n={n}:v=1:a=1[vc][ac]")
         fc.append("[ac]loudnorm=I=-16:TP=-1.5:LRA=11[aout]")
+
+        szenen_vorab = regie.szenen_zeiten(list(schnitt.get("szenen") or []), pos, laenge)
+        zw = zwischen_zeiten(schnitt.get("zwischen"), pos, laenge, szenen_vorab)
+        basis = "vc"
+        for j, z in enumerate(zw):
+            q, dauer = z.get("quelle"), round(z["e"] - z["s"], 3)
+            if q in clips:
+                c = clips[q]
+                start = max(0.0, min(float(z.get("start") or 0), max(0.0, c["dauer"] - dauer)))
+                eingaenge += ["-ss", f"{start:.2f}", "-t", f"{dauer + 0.2:.2f}", "-i", c["pfad"]]
+                fokus = z.get("fokus") or c.get("gesicht") or {"x": 0.5, "y": 0.4}
+                _, _, filt, f_im_bild = zuschnitt(c["seite"], fokus)
+                g = gesicht_im_bild(c.get("gesicht"), c["seite"], z.get("fokus") or c.get("gesicht"))
+                quelle_filter = f"[{_eingang_nr(eingaenge)}:v]setpts=PTS-STARTPTS,fps={regie.FPS},{filt}"
+            elif q in fotos:
+                fo = fotos[q]
+                eingaenge += ["-loop", "1", "-framerate", str(regie.FPS), "-t", f"{dauer + 0.2:.2f}", "-i", fo["pfad"]]
+                fokus = z.get("fokus") or {"x": 0.5, "y": 0.45}
+                sw, sh, _, f_im_bild = zuschnitt(fo["seite"], fokus)
+                g = None
+                # langsamer Ken-Burns-Zoom: 8 % größer skalieren, Ausschnitt gleitet über die Dauer zur Mitte des Fokus
+                gw, gh = int(sw * 1.08 / 2) * 2, int(sh * 1.08 / 2) * 2
+                fx, fy = fokus.get("x", 0.5), fokus.get("y", 0.45)
+                x0, y0 = min(max(fx * gw - W / 2, 0), gw - W), min(max(fy * gh - 0.4 * H, 0), gh - H)
+                quelle_filter = (f"[{_eingang_nr(eingaenge)}:v]fps={regie.FPS},scale={gw}:{gh},"
+                                 f"crop={W}:{H}:x='{x0:.1f}+({(gw - W) / 2 - x0:.1f})*t/{dauer}*0.35':y='{y0:.1f}',setsar=1")
+            else:
+                continue
+            fc.append(f"{quelle_filter},format=yuv420p,setpts=PTS+{z['s']}/TB[z{j}]")
+            fc.append(f"[{basis}][z{j}]overlay=enable='between(t,{z['s']},{z['e']})':eof_action=pass[b{j}]")
+            basis = f"b{j}"
+            fokus_plan.append({"s": z["s"], "e": z["e"], "z": 1, **(g or f_im_bild)})   # z: Zwischenschnitt geht im Browser vor
+            ut_plan.append({"s": z["s"], "e": z["e"], "z": 1, "y": ut_lage(z.get("ut", "auto"), g)})
+            abschnitte.append({"art": "zwischen", "k": z["k"], "quelle": q, "s": round(z["s"], 2), "e": round(z["e"], 2),
+                               "fokus": fokus, "ut": z.get("ut", "auto"), "start": z.get("start", 0)})
         ton = os.path.join(tmp, "ton.m4a")
-        res = subprocess.run([ffmpeg(), "-y", "-hide_banner", "-loglevel", "error", "-i", src, "-filter_complex", ";".join(fc),
-                              "-map", "[vc]", "-q:v", "3", os.path.join(tmp, "frames", "%05d.jpg"),
+        res = subprocess.run([ffmpeg(), "-y", "-hide_banner", "-loglevel", "error", *eingaenge, "-filter_complex", ";".join(fc),
+                              "-map", f"[{basis}]", "-q:v", "3", os.path.join(tmp, "frames", "%05d.jpg"),
                               "-map", "[aout]", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", ton], capture_output=True, text=True)
         if res.returncode != 0:
             raise RuntimeError("ffmpeg: " + res.stderr[-600:])
@@ -267,6 +414,7 @@ def render(brand, src, words, schnitt, dauer, out_mp4, out_cover, post_titel="")
             bilder["logo"] = storage.abs_path(brand["id"], brand["logo"])
         if brand["ref_photo"]:
             bilder["foto"] = storage.abs_path(brand["id"], brand["ref_photo"])
+        bilder.update({fid: fo["pfad"] for fid, fo in fotos.items()})   # Fotos aus dem Material auch in Szenen (src="m12")
         if schnitt.get("einblendungen") and not eintraege:
             r = marke.renderer(brand); r.W, r.H = W, H
             for k, eb in enumerate(schnitt["einblendungen"]):
@@ -283,7 +431,11 @@ def render(brand, src, words, schnitt, dauer, out_mp4, out_cover, post_titel="")
         ut = [] if not schnitt.get("untertitel", True) else [
             {"s": z["s"], "e": z["e"], "w": [[_html.escape(w), s0, e0] for w, s0, e0 in z["w"]]} for z in zeilen]
         seite, kamera = regie.seite(tmp, a, p, lambda d: marke.font_path(brand["id"], d), {"w": qw, "h": qh}, nframes,
-                                    szenen, pos, laenge, ut, titel, zooms, bilder, post_titel=post_titel)
+                                    szenen, pos, laenge, ut, titel, zooms, bilder, post_titel=post_titel,
+                                    fokus_plan=fokus_plan, ut_plan=ut_plan)
+        for k, sz in enumerate(szenen):
+            abschnitte.append({"art": "szene", "k": k, "s": round(sz["s"], 2), "e": round(sz["e"], 2), "lage": sz.get("lage", "oben"),
+                               "von": sz.get("von"), "bis": sz.get("bis")})
 
         # 3. Chrome rendert jedes Bild, dann Ton dazu
         bild = os.path.join(tmp, "bild.mp4")
@@ -304,8 +456,9 @@ def render(brand, src, words, schnitt, dauer, out_mp4, out_cover, post_titel="")
             still(min(sz["e"] - 0.4, sz["s"] + 0.75 * (sz["e"] - sz["s"])), os.path.join(vorschau_dir, f"einblendung-{k + 1:02d}.jpg"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    abschnitte.sort(key=lambda x: (x["s"], {"teil": 0, "zwischen": 1, "szene": 2}[x["art"]]))
     return {"laenge": round(laenge, 1), "teile": len(segs), "zeilen": len(zeilen), "einblendungen": len(szenen),
-            "lagen": sorted({k["lage"] for k in kamera})}
+            "lagen": sorted({k["lage"] for k in kamera}), "zwischen": len(zw), "abschnitte": abschnitte}
 
 
 # ---------------------------------------------------------------- Job
@@ -313,38 +466,62 @@ def render(brand, src, words, schnitt, dauer, out_mp4, out_cover, post_titel="")
 VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm")
 
 
+def auto_zwischen(words, schnitt, quellen):
+    """Ohne Claude: Fotos und stumme Clips gleichmäßig als Zwischenschnitte verteilen (je etwa 6 Wörter, nicht am Anfang)."""
+    behalten = [i for t in schnitt.get("teile") or [] for i in range(int(t["von"]), int(t["bis"]) + 1) if 0 <= i < len(words)]
+    if len(behalten) < 20 or not quellen:
+        return []
+    out = []
+    for k, q in enumerate(quellen[:6]):
+        mitte = int(len(behalten) * (k + 1) / (len(quellen[:6]) + 1))
+        a, b = behalten[max(8, mitte - 3)], behalten[min(len(behalten) - 1, mitte + 3)]
+        if a <= b:
+            out.append({"quelle": q, "von": a, "bis": b, "start": 0, "ut": "auto"})
+    return out
+
+
 def schneiden(brand_id, post_id, neu_transkribieren=False, schnitt=None):
-    """Job: Aufnahme des Posts transkribieren, schneiden, rendern."""
-    from . import ai
+    """Job: Material des Posts (Clips und Fotos) analysieren, Schnittplan holen (Claude oder automatisch), rendern."""
+    from . import ai, material as mat
     b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
     p = db.one("SELECT * FROM posts WHERE id=?", post_id)
-    if not p["video_roh"]:
-        raise ValueError("Für diesen Post gibt es noch keine Aufnahme")
-    src = storage.abs_path(brand_id, p["video_roh"])
-    d = storage.post_dir(brand_id, post_id)
-    tpath = os.path.join(d, "transkript.json")
-    if neu_transkribieren or not os.path.exists(tpath):
-        t = transkript(src)
-        json.dump(t, open(tpath, "w"), ensure_ascii=False)
-    t = json.load(open(tpath))
-    words = t["woerter"]
+    eintraege = mat.liste(p)
+    videos = [e for e in eintraege if e.get("art") == "video"]
+    if not videos:
+        raise ValueError("Für diesen Post gibt es noch keine Aufnahme und keinen Clip")
+    analysen = [(e, mat.analyse(brand_id, p, e, neu=neu_transkribieren)) for e in videos]
+    words = mat.woerter_gesamt([(e["id"], a) for e, a in analysen])
     if not words:
-        raise ValueError("In der Aufnahme wurde keine Sprache erkannt")
+        raise ValueError("In keinem Clip wurde Sprache erkannt. Lade mindestens einen Clip hoch, in dem du sprichst.")
+    d = storage.post_dir(brand_id, post_id)
+    json.dump({"woerter": words, "dauer": round(sum(a["dauer"] for _, a in analysen), 2), "clips": {e["id"]: a["dauer"] for e, a in analysen}},
+              open(os.path.join(d, "transkript.json"), "w"), ensure_ascii=False)
+    fotos = mat.fotos(brand_id, eintraege)
     if schnitt is None:
         from .jobs import video_stil_sicherstellen
         video_stil_sicherstellen(brand_id)
         b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
         if config.ANTHROPIC_API_KEY:
             try:
-                schnitt = ai.schnitt(b, p, words)
+                schnitt = ai.reel_plan(b, p, [(e, a, mat.standbilder(brand_id, post_id, e)) for e, a in analysen], fotos, words)
             except Exception as e:
                 from .jobs import hinweis
                 hinweis("Der Schnitt durch Claude hat nicht geklappt (" + ai.fehlertext(e) + "). Ich habe automatisch geschnitten.", b, post_id)
-        if not schnitt:
+                schnitt = None
+        if schnitt:
+            for cid, g in (schnitt.pop("gesichter", None) or {}).items():   # Gesichter aus Claudes Blick auf die Standbilder merken
+                mat.gesicht_setzen(brand_id, post_id, cid, g)
+            analysen = [(e, mat.analyse(brand_id, p, e)) for e, _ in analysen]
+        else:
             inhalt = json.loads(p["inhalt"])
             c = (inhalt.get("slides") or [{}])[0]
             schnitt = auto_schnitt(words, " ".join(x for x in (c.get("zeile1"), c.get("zeile2")) if x))
-    info = render(b, src, words, schnitt, t["dauer"], os.path.join(d, "reel.mp4"), os.path.join(d, "reel-cover.jpg"), (p["titel"] or "").upper())
+            stumm = [e["id"] for e, a in analysen if not a["woerter"]]
+            schnitt["zwischen"] = auto_zwischen(words, schnitt, [f for f, _, _ in fotos] + stumm)
+    clips = {e["id"]: {"pfad": mat.clip_pfad(brand_id, e), "seite": a["seite"], "dauer": a["dauer"], "gesicht": a.get("gesicht")}
+             for e, a in analysen}
+    foto_map = {fid: {"pfad": storage.abs_path(brand_id, m["datei"]), "seite": (m["breite"] or 1) / (m["hoehe"] or 1)} for fid, _, m in fotos}
+    info = render(b, clips, words, schnitt, os.path.join(d, "reel.mp4"), os.path.join(d, "reel-cover.jpg"), (p["titel"] or "").upper(), fotos=foto_map)
     schnitt["info"] = info
     db.run("UPDATE posts SET schnitt=?, video='posts/' || ? || '/reel.mp4', rendered_at=?, status=CASE WHEN status IN ('In Arbeit','Wartet auf Input') "
            "THEN 'Zur Abnahme' ELSE status END, updated=? WHERE id=?",

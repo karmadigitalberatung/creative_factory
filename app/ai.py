@@ -605,7 +605,7 @@ def chat_post(brand, post, message, history):
     user = (_marke_kontext(brand) + video + f"\nPost: {post['titel']} ({post['format']})\nSlides: {json.dumps(generisch, ensure_ascii=False)}"
             f"\nSzenen: {post['design']}\nCaption Instagram: {post['caption_ig']}\nCaption LinkedIn: {post['caption_li']}"
             f"\nBildidee: {post['bildidee']}\n\nBisheriger Chat:\n{verlauf or '(leer)'}\n\nNeue Nachricht: {message}")
-    system = POST_CHAT_SYSTEM.replace("Renderer-Doku:", "Szenen-Doku für Videos:" + REGIE_DOKU + "\n\nRenderer-Doku (Slides):")
+    system = POST_CHAT_SYSTEM.replace("Renderer-Doku:", "Szenen-Doku für Videos:" + REGIE_DOKU + REEL_CHAT_DOKU + "\n\nRenderer-Doku (Slides):")
     res = _claude(system + scene_mod.__doc__, user, POST_CHAT_SCHEMA, effort="medium", max_tokens=24000)
     res["neue_slides"] = [slide_aus_ki(s) for s in res["neue_slides"]]
     res["szenen"] = {k["slide"] - 1: _valid_scene(k["szene_json"]) for k in res["szenen"] if _valid_scene(k["szene_json"])}
@@ -618,7 +618,18 @@ def _transkript_text(brand, post):
     if not os.path.exists(p):
         return ""
     words = json.load(open(p))["woerter"]
-    return " ".join(f"{i}:{w['w']}[{w['s']}-{w['e']}]" for i, w in enumerate(words))
+    return " ".join(f"{i}:{w.get('c', 'c1')}:{w['w']}[{w['s']}-{w['e']}]" for i, w in enumerate(words))
+
+
+REEL_CHAT_DOKU = """
+
+Schnitt eines Reels mit Aufnahme (schnitt_json, ganzes JSON zurückgeben, nur wenn die Person den Schnitt ändern will):
+Transkript-Wörter stehen als Index:Clip:Wort[Start-Ende]. Felder: teile [{von, bis, zoom, ut, fokus}], zwischen [{quelle, von, bis, start, ut, fokus}],
+zeilen, korrekturen, szenen [{von, bis, lage: oben|bild, grund, html}], titel, untertitel (true/false). Übernimm alles Unveränderte genau.
+- ut = Höhe der Untertitel in diesem Abschnitt: "auto" (nie aufs Gesicht), "oben", "mitte", "unten" oder Zahl 0.05 bis 0.88 (Oberkante, Anteil der Bildhöhe).
+- fokus = {x, y} 0..1 im Quell-Clip: dorthin richtet sich der Hochformat-Zuschnitt (sonst das erkannte Gesicht).
+- zwischen = Zwischenschnitte (B-Roll): quelle = Clip-ID (c2 …) oder Foto-ID (m12 …), sichtbar während der Wörter von..bis, start = Sekunde im Quell-Clip.
+Abschnittszeiten im fertigen Video stehen in info.abschnitte (s, e in Sekunden): „ab Sekunde 12“ heißt der Abschnitt, der dann läuft."""
 
 
 # ---------------------------------------------------------------- Schnitt (Reel oder Story mit eigener Aufnahme)
@@ -665,6 +676,80 @@ def schnitt(brand, post, words):
             "szenen": [{"von": z["von"], "bis": z["bis"], "lage": z["lage"], "grund": z["grund"], "html": z["html"]}
                        for z in res["szenen"] if 0 <= z["von"] <= z["bis"] < n and z["html"].strip()],
             "begruendung": res["begruendung"]}
+
+
+# ---------------------------------------------------------------- Reel aus Material (mehrere Clips und Fotos)
+
+_UT = {"type": "string", "enum": ["auto", "oben", "mitte", "unten"]}
+_ZAHL = {"type": "number"}
+REEL_SCHEMA = _obj({
+    "gesichter": {"type": "array", "items": _obj({"clip": S, "sichtbar": {"type": "boolean"}, "x": _ZAHL, "y": _ZAHL, "h": _ZAHL})},
+    "begruendung": S, "titel": S, "untertitel": {"type": "boolean"},
+    "teile": {"type": "array", "items": _obj({"von": {"type": "integer"}, "bis": {"type": "integer"}, "zoom": {"type": "boolean"}, "ut": _UT})},
+    "zwischen": {"type": "array", "items": _obj({"quelle": S, "von": {"type": "integer"}, "bis": {"type": "integer"}, "start": _ZAHL, "ut": _UT})},
+    "zeilen": SCHNITT_SCHEMA["properties"]["zeilen"],
+    "korrekturen": SCHNITT_SCHEMA["properties"]["korrekturen"],
+    "szenen": SCHNITT_SCHEMA["properties"]["szenen"],
+})
+
+REEL_ZUSATZ = """
+
+Material: Du schneidest aus mehreren Clips und Fotos. Im Transkript steht jedes Wort als Index:Clip:Wort[Start-Ende in Sekunden im Clip].
+- teile dürfen Wörter aus verschiedenen Clips kombinieren; ordne wie ein Cutter (stärkster Hook zuerst, dann der rote Faden).
+- zwischen = Zwischenschnitte (B-Roll): ein Foto oder Clip liegt über dem Bild, während der Ton weiterläuft. quelle = Clip-ID (Clips ohne
+  Sprache oder ohne Gesicht eignen sich besonders) oder Foto-ID (m…). von/bis = Wort-Indizes, solange es zu sehen ist (1,5 bis 5 Sekunden),
+  start = Sekunde im Quell-Clip, ab der gezeigt wird (bei Fotos 0). Setze sie, wo das Gesagte das Bild zeigt oder ein Wechsel Tempo bringt;
+  nicht in den ersten 2 Sekunden (Gesicht für den Hook), nie gleichzeitig mit einer Szene. Nutze jedes Foto und jeden stummen Clip einmal,
+  wenn er inhaltlich passt.
+- gesichter: für jeden Clip, ob ein Gesicht zu sehen ist und wo: x, y = Mitte des Gesichts, h = Höhe von Stirn bis Kinn, alles 0..1 bezogen
+  auf das Standbild (Ursprung oben links). Daraus schneidet heykajo das Hochformat zu und legt die Untertitel so, dass sie nie das Gesicht verdecken.
+- ut je Teil und Zwischenschnitt: auto (Standard, richtet sich nach dem Gesicht) oder oben, mitte, unten, wenn du bewusst etwas anderes willst.
+- In Szenen sind zusätzlich die Foto-IDs als Bildquelle erlaubt, z. B. <img class="vollfoto" src="m12">.
+- Bilder, die als Platzhalter erscheinen, sind Lizenzbilder: du siehst sie nicht, nutze sie über ihre Beschreibung."""
+
+
+def reel_plan(brand, post, clips, fotos, words):
+    """clips: [(Material-Eintrag, Analyse, [Standbilder])], fotos: [(ID, Beschreibung, Mediathek-Zeile)], words: gemeinsame Wortliste.
+    Gibt einen Schnitt (siehe schnitt.py) mit zusätzlichem "gesichter" {Clip: {x, y, h} oder None} zurück, oder None."""
+    from . import medien
+    inhalt = json.loads(post["inhalt"])
+    bloecke = []
+    for e, a, bilder in clips[:6]:
+        bloecke.append({"type": "text", "text": f"Clip {e['id']} „{e.get('titel') or ''}“: {a['dauer']} s, {'mit Sprache' if a['woerter'] else 'ohne Sprache'}"
+                        f"{', Lizenzmaterial' if e.get('lizenz') else ''}. Standbilder bei {', '.join(f'{z} s' for z in a['standbilder'])}:"})
+        for im in bilder:
+            bloecke.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(im, 480)}})
+    for fid, text, m in fotos[:10]:
+        bloecke.append({"type": "text", "text": f"Foto {fid}: {text}"})
+        try:
+            bloecke.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(medien.bild_von(brand["id"], m).convert("RGB"), 480)}})
+        except Exception:
+            pass
+    t = " ".join(f"{i}:{w.get('c', 'c1')}:{w['w']}[{w['s']}-{w['e']}]" for i, w in enumerate(words))
+    user = (_marke_kontext(brand) + f"\nPost: {post['titel']} ({post['format']})\nGeplantes Skript: {inhalt.get('skript', '')}"
+            f"\nCover-Texte: {json.dumps((inhalt.get('slides') or [{}])[0], ensure_ascii=False)}"
+            f"\nBilder für Szenen: {', '.join([n for n, v in (('logo', brand['logo']), ('foto', brand['ref_photo'])) if v] + [f for f, _, _ in fotos]) or 'keine'}"
+            f"\nClips: {', '.join(e['id'] for e, _, _ in clips)}; Fotos: {', '.join(f for f, _, _ in fotos) or 'keine'}"
+            f"\n\nTranskript: {t}")
+    res = _claude(SCHNITT_SYSTEM + REEL_ZUSATZ + REGIE_DOKU, _stil_bloecke(brand) + bloecke + [{"type": "text", "text": user}], REEL_SCHEMA,
+                  effort="high", max_tokens=32000)
+    n = len(words)
+    teile = [{"von": x["von"], "bis": x["bis"], "zoom": x["zoom"], "ut": x["ut"]} for x in res["teile"] if 0 <= x["von"] <= x["bis"] < n]
+    if not teile:
+        return None
+    clip_ids = {e["id"] for e, _, _ in clips}
+    quellen = clip_ids | {f for f, _, _ in fotos}
+    klemm = lambda v: round(min(1.0, max(0.0, float(v))), 3)
+    gesichter = {g["clip"]: ({"x": klemm(g["x"]), "y": klemm(g["y"]), "h": klemm(g["h"]) or 0.2} if g["sichtbar"] else None)
+                 for g in res["gesichter"] if g["clip"] in clip_ids}
+    return {"teile": teile, "titel": res["titel"], "untertitel": res["untertitel"],
+            "zwischen": [{"quelle": z["quelle"], "von": z["von"], "bis": z["bis"], "start": max(0.0, float(z["start"])), "ut": z["ut"]}
+                         for z in res["zwischen"] if z["quelle"] in quellen and 0 <= z["von"] <= z["bis"] < n],
+            "zeilen": [[z["von"], z["bis"]] for z in res["zeilen"] if 0 <= z["von"] <= z["bis"] < n],
+            "korrekturen": {str(k["index"]): k["wort"] for k in res["korrekturen"] if 0 <= k["index"] < n and k["wort"].strip()},
+            "szenen": [{"von": z["von"], "bis": z["bis"], "lage": z["lage"], "grund": z["grund"], "html": z["html"]}
+                       for z in res["szenen"] if 0 <= z["von"] <= z["bis"] < n and z["html"].strip()],
+            "begruendung": res["begruendung"], "gesichter": gesichter}
 
 
 # ---------------------------------------------------------------- Video-Stil aus dem Brand Guide

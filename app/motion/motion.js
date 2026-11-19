@@ -27,13 +27,16 @@
     }
     return r;
   }
+  // Plan je Zeitabschnitt (Zwischenschnitte mit z gehen vor): Fokus = wo das Gesicht im Bild ist, Untertitel-Höhe
+  const imPlan = (liste, t) => (liste || []).find((x) => x.z && t >= x.s && t < x.e) || (liste || []).find((x) => !x.z && t >= x.s && t < x.e);
   function kamera(t) {
     if (R.ohne_kamera) { cam.style.display = 'none'; return; }   // reine Animation ohne Aufnahme
     const r = rect(t);
+    const f = imPlan(R.fokus_plan, t) || R.fokus;
     const z = R.zooms.some(([a, b]) => t >= a && t < b) ? 1.12 : 1;
     const k = Math.max(r.w / R.quelle.w, r.h / R.quelle.h) * z;
     const iw = R.quelle.w * k, ih = R.quelle.h * k;
-    const left = cl(r.w / 2 - iw * R.fokus.x, r.w - iw, 0), top = cl(r.h * 0.4 - ih * R.fokus.y, r.h - ih, 0);
+    const left = cl(r.w / 2 - iw * f.x, r.w - iw, 0), top = cl(r.h * 0.4 - ih * f.y, r.h - ih, 0);
     cam.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;border-radius:${r.r}px;box-shadow:0 30px 70px rgba(0,0,0,${0.4 * r.sh})`;
     img.style.cssText = `left:${left}px;top:${top}px;width:${iw}px;height:${ih}px`;
   }
@@ -139,7 +142,8 @@
   function lageBei(t) { let l = R.kamera[0].lage; for (const k of R.kamera) if (k.t <= t + 0.25) l = k.lage; return l; }
   function untertitel(t) {
     if (!ut) return;
-    ut.style.top = R.ut_y[lageBei(t)] + 'px';
+    const lage = lageBei(t), plan = lage === 'voll' ? imPlan(R.ut_plan, t) : null;   // eigene Höhe nur bei Vollbild-Kamera
+    ut.style.top = (plan ? plan.y : R.ut_y[lage]) + 'px';
     const i = R.ut.findIndex((c) => t >= c.s && t < c.e);
     const c = R.ut[i];
     const k = i < 0 ? '' : i + ':' + c.w.map((w) => (w[1] <= t && t < w[2] + 0.12 ? 1 : 0)).join('');

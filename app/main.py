@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, auswertung, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, lizenz, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
+from . import ai, auswertung, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, lizenz, material, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI(title="heykajo Studio")
@@ -1043,12 +1043,27 @@ def post_edit(request: Request, pid: int):
         korr = sc.get("korrekturen") or {}
         cut = {"woerter": [(korr.get(str(i), w["w"]), i in drin) for i, w in enumerate(words)], "info": sc.get("info", {}),
                "animation": bool(sc.get("animation")),
-               "titel": sc.get("titel", ""), "begruendung": sc.get("begruendung", ""),
-               "einblendungen": sorted(f for f in os.listdir(storage.post_dir(b["id"], pid)) if f.startswith("einblendung-"))}
+               "titel": sc.get("titel", ""), "begruendung": sc.get("begruendung", ""), "untertitel": sc.get("untertitel", True),
+               "einblendungen": sorted(f for f in os.listdir(storage.post_dir(b["id"], pid)) if f.startswith("einblendung-")),
+               "abschnitte": (sc.get("info") or {}).get("abschnitte") or []}
     medien_auswahl = [m for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert", "person")][:24]
     bilder = [{"id": m["id"], "datei": m["datei"], "titel": m["titel"], "beschreibung": m["beschreibung"], "lizenz": bool(m["lizenz"])}
               for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert", "person")][:60]
-    return page(request, "post.html", b=b, p=p, slides=slides, inhalt=inhalt, chat=chat, inputs=inp, cut=cut,
+    mat = []
+    for e in material.liste(p):   # Material fürs Reel mit Vorschaubild (Clip: erstes Standbild, Foto: Mediathek)
+        e = dict(e)
+        if e.get("art") == "video":
+            st = os.path.join("posts", str(pid), "material", f"{e['id']}-1.jpg")
+            e["vorschau"] = st if os.path.exists(storage.abs_path(b["id"], st)) else ""
+            ap = os.path.join(storage.post_dir(b["id"], pid), "material", f"{e['id']}.json")
+            e["analyse"] = json.load(open(ap)) if os.path.exists(ap) else None
+        else:
+            m = db.one("SELECT datei, lizenz, titel, inhalt FROM medien WHERE id=? AND brand_id=?", e.get("medien_id"), b["id"])
+            if not m:
+                continue
+            e.update(vorschau=m["datei"], lizenz=bool(m["lizenz"]), titel=m["titel"] or e.get("titel"))
+        mat.append(e)
+    return page(request, "post.html", b=b, p=p, slides=slides, inhalt=inhalt, chat=chat, inputs=inp, cut=cut, material=mat,
                 medien_auswahl=medien_auswahl, bilder=bilder, mit_foto=layout_editor.mit_foto(p), personen=medien.personen(b["id"]),
                 arten=marke.ARTEN_NAMEN, felder=marke.ARTEN, formate=marke.FORMATE, status=marke.STATUS,
                 laeuft=jobs.LABELS.get(laufende[0]["kind"]) if laufende else None, fehler=jobs.last_error(b["id"], pid),
@@ -1559,6 +1574,164 @@ async def input_upload(request: Request, iid: int, datei: UploadFile = File(...)
             return go(f"/planen/{i['post_id']}")
     flash(request, "Danke! Die Aufnahme ist da und liegt beim Post.")
     return go("/aufgaben#input")
+
+
+@app.post("/planen/{pid}/material")
+async def post_material(request: Request, pid: int, dateien: List[UploadFile] = File(...), lizenzbild: str = Form("")):
+    """Material fürs Reel: beliebig viele Clips und Fotos. Geschnitten wird erst auf Knopfdruck (dann sieht Claude alles zusammen)."""
+    b = brand_of(request)
+    p = post_of(b, pid)
+    if jobs.running(b["id"], pid):
+        flash(request, "Gerade läuft noch etwas an diesem Post. Bitte kurz warten.")
+        return go(f"/planen/{pid}")
+    eintraege = material.liste(p)
+    neu, fehler, gesamt = 0, [], 0
+    for d in dateien[:20]:
+        if not d or not d.filename:
+            continue
+        stamm = os.path.splitext(os.path.basename(d.filename))[0][:120]
+        art = fertig.art_von(d.filename)
+        if art == "video":
+            cid = material.neue_id(eintraege, "video")
+            rel = os.path.join("posts", str(pid), "material", f"{cid}{os.path.splitext(d.filename)[1].lower()}")
+            path = storage.brand_dir(b["id"], rel)
+            groesse = 0
+            with open(path, "wb") as f:
+                while True:
+                    chunk = await d.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    groesse += len(chunk)
+                    gesamt += len(chunk)
+                    if gesamt > MAX_MEDIA:
+                        break
+                    f.write(chunk)
+            if gesamt > MAX_MEDIA:
+                os.remove(path)
+                fehler.append(f"{d.filename}: zusammen größer als 500 MB")
+                break
+            eintraege.append({"id": cid, "art": "video", "datei": rel, "titel": stamm, "lizenz": bool(lizenzbild)})
+            neu += 1
+        elif art == "bild":
+            try:
+                m = medien.speichern(b["id"], await d.read(), "foto", stamm, lizenzbild=bool(lizenzbild))
+            except ValueError as e:
+                fehler.append(f"{d.filename}: {e}")
+                continue
+            eintraege.append({"id": f"m{m['id']}", "art": "foto", "medien_id": m["id"], "titel": stamm})
+            neu += 1
+        else:
+            fehler.append(f"{d.filename}: weder Bild noch Video")
+    material.speichern(pid, eintraege)
+    erstes = next((e for e in eintraege if e["art"] == "video"), None)
+    if erstes and not p["video_roh"]:   # Hauptaufnahme für alles, was noch nach video_roh fragt
+        db.run("UPDATE posts SET video_roh=?, status=CASE WHEN status IN ('Idee','Freigegeben','Wartet auf Input') THEN 'In Arbeit' ELSE status END WHERE id=?",
+               erstes["datei"], pid)
+        db.run("UPDATE inputs SET status='hochgeladen', datei=? WHERE post_id=? AND status='offen'", erstes["datei"], pid)
+    flash(request, (f"{neu} Datei{'en' if neu != 1 else ''} im Material." if neu else "") + (" " + "; ".join(fehler) if fehler else "")
+          + (" Wenn alles da ist: „Reel aus dem Material schneiden“." if neu else ""))
+    return go(f"/planen/{pid}")
+
+
+@app.post("/planen/{pid}/material/{mid}/loeschen")
+def post_material_loeschen(request: Request, pid: int, mid: str):
+    b = brand_of(request)
+    p = post_of(b, pid)
+    eintraege = material.liste(p)
+    weg = next((e for e in eintraege if e["id"] == mid), None)
+    if weg:
+        eintraege = [e for e in eintraege if e["id"] != mid]
+        material.speichern(pid, eintraege)
+        if weg.get("art") == "video" and p["video_roh"] == weg.get("datei"):
+            naechstes = next((e for e in eintraege if e["art"] == "video"), None)
+            db.run("UPDATE posts SET video_roh=? WHERE id=?", naechstes["datei"] if naechstes else None, pid)
+        flash(request, "Aus dem Material entfernt. Neu schneiden, damit das Reel es nicht mehr enthält.")
+    return go(f"/planen/{pid}")
+
+
+def _zahl(v, a=0.0, b=1.0):
+    try:
+        return round(min(b, max(a, float(v))), 3)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.post("/planen/{pid}/schnitt/anpassen")
+async def post_schnitt_anpassen(request: Request, pid: int):
+    """Editor im Reiter Schnitt: je Abschnitt Fokus, Untertitel-Lage, Zoom, entfernen; Zwischenschnitte und Szenen anpassen
+    oder neu setzen; Titel und Untertitel. Danach wird mit dem geänderten Schnitt neu gerendert (ohne neuen Claude-Lauf)."""
+    b = brand_of(request)
+    p = post_of(b, pid)
+    if jobs.running(b["id"], pid):
+        flash(request, "Gerade läuft noch etwas an diesem Post. Bitte kurz warten.")
+        return go(f"/planen/{pid}?tab=schnitt")
+    if not p["schnitt"] or not p["video_roh"]:
+        return go(f"/planen/{pid}")
+    f = await request.form()
+    sch = json.loads(p["schnitt"])
+    info = sch.pop("info", {}) or {}
+
+    def lage(prefix):
+        if f.get(prefix + "_auto"):
+            return "auto"
+        return _zahl(f.get(prefix + "_ut"), 0.05, 0.88) if f.get(prefix + "_ut") not in (None, "") else "auto"
+
+    def fokus(prefix, alt):
+        x, y = _zahl(f.get(prefix + "_fx")), _zahl(f.get(prefix + "_fy"))
+        return {"x": x, "y": y} if x is not None and y is not None and f.get(prefix + "_fokus_neu") else alt
+
+    teile = []
+    for k, t in enumerate(sch.get("teile") or []):
+        if f.get(f"t{k}_weg"):
+            continue
+        if f"t{k}_ut" in f or f"t{k}_auto" in f:
+            t["ut"] = lage(f"t{k}")
+            t["zoom"] = bool(f.get(f"t{k}_zoom"))
+            fo = fokus(f"t{k}", t.get("fokus"))
+            if fo:
+                t["fokus"] = fo
+        teile.append(t)
+    if not teile:
+        flash(request, "Mindestens ein Abschnitt muss bleiben.")
+        return go(f"/planen/{pid}?tab=schnitt")
+    sch["teile"] = teile
+    zw = []
+    for k, z in enumerate(sch.get("zwischen") or []):
+        if f.get(f"z{k}_weg"):
+            continue
+        if f"z{k}_ut" in f or f"z{k}_auto" in f:
+            z["ut"] = lage(f"z{k}")
+            fo = fokus(f"z{k}", z.get("fokus"))
+            if fo:
+                z["fokus"] = fo
+        zw.append(z)
+    # neuer Zwischenschnitt: Quelle, ab Sekunde im fertigen Video, Dauer -> Wort-Indizes über die Zeiten des letzten Renderns
+    q, bei, dauer = f.get("neu_quelle"), _zahl(f.get("neu_bei"), 0, 600), _zahl(f.get("neu_dauer"), 1, 8)
+    if q and bei is not None and dauer:
+        tpath = os.path.join(storage.post_dir(b["id"], pid), "transkript.json")
+        words = json.load(open(tpath))["woerter"] if os.path.exists(tpath) else []
+        segs = schnitt.segmente(words, sch, json.load(open(tpath)).get("clips") or {}) if words else []
+        pos = schnitt.wortzeiten(words, segs)
+        im_fenster = sorted(i for i, (s0, e0) in pos.items() if s0 < bei + dauer and e0 > bei)
+        if im_fenster:
+            zw.append({"quelle": q, "von": im_fenster[0], "bis": im_fenster[-1], "start": 0, "ut": "auto"})
+        else:
+            flash(request, "An dieser Stelle läuft kein Wort, der Zwischenschnitt wurde nicht gesetzt.")
+    sch["zwischen"] = zw
+    sz = []
+    for k, z in enumerate(sch.get("szenen") or []):
+        if f.get(f"s{k}_weg"):
+            continue
+        if f.get(f"s{k}_lage") in ("oben", "bild"):
+            z["lage"] = f.get(f"s{k}_lage")
+        sz.append(z)
+    sch["szenen"] = sz
+    sch["untertitel"] = bool(f.get("untertitel"))
+    if "titel" in f:
+        sch["titel"] = str(f.get("titel") or "").strip()[:80]
+    jobs.start(b["id"], pid, "schnitt", schnitt.schneiden, b["id"], pid, False, sch)
+    flash(request, "Wird mit deinen Änderungen neu gerendert.")
+    return go(f"/planen/{pid}?tab=schnitt")
 
 
 @app.post("/planen/{pid}/video")

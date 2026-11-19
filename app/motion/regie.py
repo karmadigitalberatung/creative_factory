@@ -162,7 +162,8 @@ def szenen_zeiten(eintraege, pos, laenge):
     return [x for x in out if x["e"] - x["s"] > 1.2]
 
 
-def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, zooms, bilder, ohne_kamera=False, post_titel="", story=False):
+def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, zooms, bilder, ohne_kamera=False, post_titel="", story=False,
+          fokus_plan=None, ut_plan=None):
     """Schreibt ordner/seite.html. szenen mit s/e (Sekunden), lage, grund, html (roh). bilder: {Name: Dateipfad}.
     ohne_kamera: reine Animation, keine Aufnahme; jede Szene hat lage „frei“ und einen eigenen Hintergrund."""
     os.makedirs(os.path.join(ordner, "bilder"), exist_ok=True)
@@ -231,7 +232,7 @@ def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, 
 
     modus = "farbe" if marker.lower() == p["akzent"].lower() else "pille"
     daten = {"fps": FPS, "n": n, "dauer": round(n / FPS, 3), "frames": "frames/#.jpg", "quelle": quelle,
-             "fokus": {"x": 0.5, "y": 0.42}, "zooms": zooms, "kamera": kamera, "lagen": LAGEN, "ut_y": dict(UT_Y, frei=1330) if story else UT_Y,
+             "fokus": {"x": 0.5, "y": 0.42}, "fokus_plan": fokus_plan or [], "ut_plan": ut_plan or [], "zooms": zooms, "kamera": kamera, "lagen": LAGEN, "ut_y": dict(UT_Y, frei=1330) if story else UT_Y,
              "ut": ut, "titel": titel or {"s": 0, "e": 0}, "ohne_kamera": bool(ohne_kamera),
              "uebergang": st["uebergang"], "seitenzahl": bool(st["ecken"].get("seitenzahl")), "grund_dunkel": _lum(p["grund"]) < 0.25}
     css = open(os.path.join(HIER, "motion.css"), encoding="utf-8").read()

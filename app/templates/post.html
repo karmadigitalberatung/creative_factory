@@ -34,6 +34,9 @@
   {# Formulare außerhalb von #postform; ihre Felder hängen per form="…" daran (keine verschachtelten Formulare) #}
   <form method="post" action="/planen/{{ p.id }}/video" enctype="multipart/form-data" id="videoform" data-busy="Wird hochgeladen …" data-busy-ziel=".video-spalte"></form>
   <form method="post" action="/planen/{{ p.id }}/schneiden" id="schnittform" data-busy="Wird geschnitten …" data-busy-ziel=".video-spalte"></form>
+  <form method="post" action="/planen/{{ p.id }}/material" enctype="multipart/form-data" id="materialform" data-busy="Lädt hoch …" data-busy-ziel=".material"></form>
+  <form method="post" action="/planen/{{ p.id }}/material" id="materialwegform"></form>
+  <form method="post" action="/planen/{{ p.id }}/schnitt/anpassen" id="anpassenform" data-busy="Wird neu gerendert …" data-busy-ziel=".video-spalte"></form>
   <form method="post" action="/planen/{{ p.id }}/fertig" enctype="multipart/form-data" id="fertigform" data-busy="Lädt hoch …" data-busy-ziel=".pv-buehne"></form>
   <form method="post" action="/planen/{{ p.id }}/captions" id="captionsform" data-busy="Claude schreibt …" data-busy-ziel=".pv-buehne"></form>
   <form method="post" action="/planen/{{ p.id }}/fertig/zuruecknehmen" id="fertigzurueckform"></form>
@@ -126,6 +129,34 @@
           {# --- Video: erzeugen, schneiden, Skript, Szenen, Fotos #}
           <div class="pv-block video-spalte" {% if laeuft %}data-arbeitet="{{ laeuft }}" data-poll="/planen/{{ p.id }}/status"{% endif %}>
             <div class="pv-block-kopf"><h3>Video</h3></div>
+            {% if p.format in ['Reel', 'Story'] and not fertig %}
+            <div class="material" id="material">
+              <div class="row wrapless"><strong class="grow">Material</strong><span class="small muted">Clips und Fotos, Claude schneidet daraus das Reel</span></div>
+              {% if material %}
+              <div class="mat-raster">
+                {% for e in material %}
+                <div class="mat-kachel {{ 'lizenzbild' if e.lizenz }}" title="{{ e.titel }}">
+                  {% if e.vorschau %}<img src="/media/{{ e.vorschau }}" alt="" loading="lazy">{% else %}<span class="mat-leer">{{ 'Clip' if e.art == 'video' else 'Foto' }}</span>{% endif %}
+                  <span class="mat-art">{% if e.art == 'video' %}▶ {{ e.analyse.dauer|round|int ~ ' s' if e.analyse else 'Clip' }}{% else %}Foto{% endif %}</span>
+                  {% if e.lizenz %}<span class="mat-lizenz" title="Lizenzmaterial: geht nie an KI-Dienste">L</span>{% endif %}
+                  {% if e.art == 'video' and e.analyse and not e.analyse.woerter %}<span class="mat-stumm">ohne Sprache</span>{% endif %}
+                  <span class="mat-weg"><button class="quadrat small" form="materialwegform" formaction="/planen/{{ p.id }}/material/{{ e.id }}/loeschen" aria-label="{{ e.titel }} entfernen" data-warnen="„{{ e.titel }}“ aus dem Material entfernen?">×</button></span>
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+              <label class="mat-drop"><input type="file" name="dateien" accept="video/*,image/*" multiple required form="materialform" onchange="this.form.requestSubmit()">
+                <strong>Clips und Fotos hinzufügen</strong><span class="small muted">Videos (MP4, MOV) und Bilder, beliebig viele</span></label>
+              <label class="check small" title="Gekauft oder nur für Social Media lizenziert: geht nie an KI-Dienste"><input type="checkbox" name="lizenzbild" value="1" form="materialform" {{ 'checked' if auf.lizenz_standard }}> Lizenzmaterial (nicht an KI)</label>
+              {% if material|selectattr('art', 'equalto', 'video')|list %}
+              <div class="row">
+                {% if ki_text %}<button form="schnittform" name="art" value="claude" class="small primary" {{ 'disabled' if laeuft }}>Reel aus dem Material schneiden</button>{% endif %}
+                <button form="schnittform" name="art" value="auto" class="small" {{ 'disabled' if laeuft }}>Automatisch schneiden</button>
+              </div>
+              <span class="hint">{% if ki_text %}Claude sieht Clips und Fotos, wählt die besten Sätze, setzt Zwischenschnitte und legt Untertitel und Einblendungen so, dass sie dein Gesicht nicht verdecken. Alles lässt sich danach im Reiter „Schnitt“ ändern.{% else %}Schneidet Pausen und Füllwörter raus und verteilt Fotos als Zwischenschnitte.{% endif %}</span>
+              {% endif %}
+            </div>
+            {% endif %}
             {% if p.format in ['Reel', 'Story'] and not p.video_roh and not laeuft and not fertig and not mit_aufnahme %}
             <div class="row">
               <button form="animierform" name="art" value="claude" class="small {{ '' if p.video else 'primary' }}" {{ 'disabled' if not ki_text }}>{{ 'Neu animieren' if p.video else 'Animation erzeugen' }}</button>
@@ -186,6 +217,58 @@
             <div data-reiter-inhalt="schnitt" class="stack" {{ 'hidden' if tab != 'schnitt' }}>
               <p class="muted small">{{ cut.info.laenge }} s · {% if cut.animation %}reine Animation{% else %}{{ cut.info.teile }} Schnitte{% endif %} · {{ cut.info.zeilen }} Untertitel</p>
               {% if cut.begruendung %}<p class="small">{{ cut.begruendung }}</p>{% endif %}
+              {% if not cut.animation and cut.abschnitte and p.video_roh %}
+              {% set UTW = {'oben': 0.17, 'mitte': 0.46, 'unten': 0.73} %}
+              <div class="schnitt-editor">
+                <div class="row wrapless"><strong class="grow">Abschnitte</strong><span class="small muted">Bild anklicken: dorthin schauen · Untertitel-Höhe je Abschnitt</span></div>
+                {% for a in cut.abschnitte %}
+                {% set pre = ('t' ~ a.teil) if a.art == 'teil' else ('z' ~ a.k) if a.art == 'zwischen' else ('s' ~ a.k) %}
+                {% set quelle = a.clip if a.art == 'teil' else a.quelle %}
+                {% set e = (material|selectattr('id', 'equalto', quelle)|first) if quelle else none %}
+                <div class="ab-zeile ab-{{ a.art }}">
+                  {% if a.art == 'szene' %}
+                  <div class="ab-bild szene">{% if cut.einblendungen[a.k] %}<img src="/media/posts/{{ p.id }}/{{ cut.einblendungen[a.k] }}?v={{ p.rendered_at|int }}" alt="">{% endif %}</div>
+                  {% else %}
+                  {% set fx = (a.fokus or {}).x or 0.5 %}{% set fy = (a.fokus or {}).y or 0.4 %}
+                  <div class="ab-bild" data-fokus-wahl="{{ pre }}" style="aspect-ratio: {{ (e.analyse.seite if e and e.analyse else 0.5625) }}; --fx: {{ fx * 100 }}%; --fy: {{ fy * 100 }}%;" title="Klick: dorthin richtet sich der Zuschnitt">
+                    {% if e and e.vorschau %}<img src="/media/{{ e.vorschau }}" alt="">{% endif %}<i class="ab-punkt"></i>
+                  </div>
+                  <input type="hidden" name="{{ pre }}_fx" value="{{ fx }}" form="anpassenform"><input type="hidden" name="{{ pre }}_fy" value="{{ fy }}" form="anpassenform">
+                  <input type="hidden" name="{{ pre }}_fokus_neu" value="" form="anpassenform">
+                  {% endif %}
+                  <div class="ab-text">
+                    <span class="ab-kopf"><b>{{ '%d:%02d'|format((a.s // 60)|int, (a.s % 60)|int) }}–{{ '%d:%02d'|format((a.e // 60)|int, (a.e % 60)|int) }}</b>
+                      <span class="auf-chip">{{ {'teil': 'Clip ' ~ a.clip, 'zwischen': 'Zwischenschnitt ' ~ (a.quelle or ''), 'szene': 'Einblendung'}[a.art] }}</span></span>
+                    {% if a.text %}<span class="small muted ellipsis">„{{ a.text }} …“</span>{% endif %}
+                    {% if a.art == 'szene' %}
+                    <label class="small">Lage <select name="{{ pre }}_lage" form="anpassenform"><option value="oben" {{ 'selected' if a.lage == 'oben' }}>Grafik unten, du oben</option><option value="bild" {{ 'selected' if a.lage == 'bild' }}>Grafik groß, du im kleinen Bild</option></select></label>
+                    {% else %}
+                    {% set auto = a.ut == 'auto' or not a.ut %}
+                    {% set utw = a.ut if (a.ut is number) else UTW.get(a.ut, 0.73) %}
+                    <div class="ab-ut"><span class="small">Untertitel</span>
+                      <label class="check small"><input type="checkbox" name="{{ pre }}_auto" value="1" form="anpassenform" {{ 'checked' if auto }} data-ut-auto> automatisch</label>
+                      <input type="range" min="0.05" max="0.88" step="0.01" name="{{ pre }}_ut" value="{{ utw }}" form="anpassenform" {{ 'disabled' if auto }} aria-label="Höhe der Untertitel, links oben, rechts unten">
+                    </div>
+                    {% if a.art == 'teil' %}<label class="check small"><input type="checkbox" name="{{ pre }}_zoom" value="1" form="anpassenform" {{ 'checked' if a.zoom }}> Zoom</label>{% endif %}
+                    {% endif %}
+                  </div>
+                  <label class="check small ab-weg"><input type="checkbox" name="{{ pre }}_weg" value="1" form="anpassenform"> entfernen</label>
+                </div>
+                {% endfor %}
+                <details class="ab-neu"><summary class="small">Zwischenschnitt hinzufügen</summary>
+                  <div class="row">
+                    <label class="small">Was <select name="neu_quelle" form="anpassenform"><option value="">wählen …</option>{% for e in material %}<option value="{{ e.id }}">{{ 'Clip' if e.art == 'video' else 'Foto' }}: {{ e.titel }}</option>{% endfor %}</select></label>
+                    <label class="small">ab Sekunde <input type="number" name="neu_bei" min="0" step="0.5" value="5" form="anpassenform" style="width:90px"></label>
+                    <label class="small">Dauer <input type="number" name="neu_dauer" min="1" max="8" step="0.5" value="3" form="anpassenform" style="width:80px"></label>
+                  </div>
+                </details>
+                <div class="row">
+                  <label class="small grow">Titel am Anfang <input name="titel" value="{{ cut.titel }}" maxlength="80" form="anpassenform"></label>
+                  <label class="check small"><input type="checkbox" name="untertitel" value="1" form="anpassenform" {{ 'checked' if cut.untertitel is not sameas false }}> Untertitel</label>
+                </div>
+                <button form="anpassenform" class="small primary" {{ 'disabled' if laeuft }}>Änderungen übernehmen und neu rendern</button>
+              </div>
+              {% endif %}
               {% if p.video_roh %}<div class="row">
                 {% if ki_text %}<button form="schnittform" name="art" value="claude" class="small">Neu schneiden (Claude)</button>{% endif %}
                 <button form="schnittform" name="art" value="auto" class="small">Automatisch schneiden</button></div>

@@ -91,9 +91,10 @@ def post_hat(brand_id, post):
     if not post:
         return False
     inhalt = json.loads(post["inhalt"] or "{}")
-    if inhalt.get("lizenzbild"):
+    if inhalt.get("lizenzbild") or any(m.get("lizenz") for m in inhalt.get("material") or [] if isinstance(m, dict)):
         return True
     ids = {int(i) for i in inhalt.get("reel_fotos") or [] if str(i).isdigit()}
+    ids |= {int(m["medien_id"]) for m in inhalt.get("material") or [] if isinstance(m, dict) and str(m.get("medien_id", "")).isdigit()}
     for feld in ("design", "schnitt"):
         ids |= {int(x) for x in re.findall(r'"m(\d+)"', post[feld] or "")}
     dateien = [post["photo"]] if post["photo"] else []

@@ -895,7 +895,7 @@ document.querySelectorAll("[data-zaehler]").forEach((z) => {
 // Formatwechsel zwischen Slides (Carousel, Einzelbild) und Video (Reel, Story): vorher warnen
 (() => {
   const sel = document.querySelector("select[data-format-vorher]");
-  if (!sel) return;
+  if (!sel || !sel.form) return;
   const gruppe = (f) => (["Reel", "Story"].includes(f) ? "video" : "slides");
   sel.form.addEventListener("submit", (e) => {
     const vorher = sel.dataset.formatVorher;
@@ -1368,4 +1368,22 @@ document.querySelectorAll("[data-medium-auf]").forEach((k) => {
   k.addEventListener("click", () => d.showModal());
   d.addEventListener("click", (e) => { if (e.target === d || e.target.closest("[data-dialog-zu]")) d.close(); });   // Klick daneben schließt
   d.addEventListener("close", () => k.focus());
+});
+
+// Schnitt-Editor: Bild anklicken setzt den Fokus des Zuschnitts, „automatisch“ schaltet den Regler für die Untertitel-Höhe
+document.querySelectorAll("[data-fokus-wahl]").forEach((feld) => {
+  const pre = feld.dataset.fokusWahl;
+  const x = document.querySelector(`[name="${pre}_fx"]`), y = document.querySelector(`[name="${pre}_fy"]`), neu = document.querySelector(`[name="${pre}_fokus_neu"]`);
+  feld.addEventListener("click", (ev) => {
+    const r = feld.getBoundingClientRect();
+    const fx = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), fy = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+    x.value = fx.toFixed(3); y.value = fy.toFixed(3); neu.value = "1";
+    feld.style.setProperty("--fx", fx * 100 + "%"); feld.style.setProperty("--fy", fy * 100 + "%");
+    feld.classList.add("geaendert");
+  });
+});
+document.querySelectorAll("[data-ut-auto]").forEach((k) => {
+  const regler = k.closest(".ab-ut").querySelector('input[type="range"]');
+  k.addEventListener("change", () => { regler.disabled = k.checked; });
+  regler.addEventListener("input", () => { k.checked = false; });
 });
