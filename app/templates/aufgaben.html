@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Zu erledigen · heykajo Studio{% endblock %}
+{% block main %}
+<section class="aufgaben">
+  <div class="head">
+    <div class="kopf-text">
+      <h1>Zu erledigen</h1>
+      <p class="unterzeile">{% if zu.anzahl %}<b>{{ zu.anzahl }} Post{{ 's brauchen' if zu.anzahl != 1 else ' braucht' }} dich.</b> Von oben nach unten abarbeiten, dann ist alles bereit.{% else %}Gerade braucht kein Post etwas von dir.{% endif %}</p>
+    </div>
+    {% set erster = (zu.gruppen|selectattr('posts')|first) %}
+    {% if erster %}
+    <div class="kopf-aktionen"><a class="button gelb" href="/planen/{{ erster.posts[0].id }}{{ '#planen' if erster.key == 'termin' else '' }}">Mit dem ersten anfangen →</a></div>
+    {% endif %}
+  </div>
+  {% if laufende %}<span data-poll="/jobs" hidden></span>{% endif %}
+
+  {% if zu.anzahl %}
+  <nav class="auf-sprung" aria-label="Gruppen">
+    {% for g in zu.gruppen if g.posts %}
+    <a href="#{{ g.key }}" class="auf-sprung-{{ g.key }}"><b>{{ g.posts|length }}</b>{{ g.titel }}</a>
+    {% endfor %}
+  </nav>
+
+  {% for g in zu.gruppen if g.posts %}
+  <section class="card auf-gruppe auf-{{ g.key }}" id="{{ g.key }}">
+    <div class="auf-kopf">
+      <span class="auf-marke">{{ g.posts|length }}</span>
+      <div><h2>{{ g.titel }}</h2><p class="muted small">{{ g.text }}</p></div>
+    </div>
+    <ul class="auf-liste">
+      {% for p in g.posts %}
+      <li class="auf-zeile" data-post="{{ p.id }}">
+        <a class="auf-vorschau" href="/planen/{{ p.id }}" tabindex="-1" aria-hidden="true">
+          {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy">{% else %}<span>{{ p.format }}</span>{% endif %}
+        </a>
+        <div class="auf-text">
+          <a class="auf-titel" href="/planen/{{ p.id }}">{{ p.kurz }}</a>
+          <span class="auf-meta">
+            {{ p.format }}
+            · {% if p.tag %}{{ p.tag }}{% if p.uhrzeit %} {{ p.uhrzeit }}{% endif %}{% else %}<span class="auf-fehlt">noch kein Termin</span>{% endif %}
+            {% if p.vorbei %}<span class="auf-chip warn">Termin vorbei</span>{% elif p.bald %}<span class="auf-chip warn">{{ p.bald_text }}</span>{% endif %}
+            {% if p.laeuft %}<span class="auf-chip">kajo: {{ p.laeuft }}</span>{% endif %}
+            {% if g.key != 'termin' and not p.tag %}<span class="auf-chip">Termin fehlt auch</span>{% endif %}
+          </span>
+        </div>
+        <div class="auf-aktion">
+          {% if g.key == 'termin' %}
+          <label class="auf-datum"><span class="sr-only">Termin für {{ p.kurz }}</span><input type="date" min="{{ heute }}" value="{{ p.datum if not p.vorbei }}" data-termin="{{ p.id }}" autocomplete="off"></label>
+          <span class="auf-gespeichert" data-ok hidden>Eingeplant ✓</span>
+          {% elif g.key == 'input' and p.input_id %}
+          <a class="button small" href="/input">{{ g.aktion }}</a>
+          {% else %}
+          <a class="button small" href="/planen/{{ p.id }}">{{ g.aktion }}</a>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+  {% else %}
+  <section class="card auf-leer">
+    <span class="auf-haken" aria-hidden="true">✓</span>
+    <h2>Alles erledigt</h2>
+    <p class="muted">Nichts wartet auf deine Freigabe, keinem Post fehlt ein Termin oder Input.</p>
+    <a class="button" href="/planen?ansicht=kalender">Zum Kalender</a>
+  </section>
+  {% endif %}
+
+  {% if zu.arbeit or zu.geplant %}
+  <p class="auf-rest muted small">
+    {%- if zu.geplant %}<a href="/planen?ansicht=kalender">{{ zu.geplant }} Post{{ 's sind' if zu.geplant != 1 else ' ist' }} fix geplant</a>{% endif %}{% if zu.arbeit and zu.geplant %}, {% endif %}
+    {%- if zu.arbeit %}kajo arbeitet gerade an {{ zu.arbeit }} Post{{ 's' if zu.arbeit != 1 }}{% endif %}. Darum musst du dich nicht kümmern.
+  </p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -130,6 +130,7 @@ def page(request, name, **ctx):
         ctx["offene_inputs"] = db.one("SELECT COUNT(*) n FROM inputs WHERE brand_id=? AND status='offen'", ctx["b"]["id"])["n"]
         ctx["nav_ideen"] = ideen.anzahl(ctx["b"]["id"], "neu")
         ctx["nav_entwuerfe"] = db.one("SELECT COUNT(*) n FROM posts WHERE brand_id=? AND status='Idee'", ctx["b"]["id"])["n"]
+        ctx["nav_aufgaben"] = (ctx.get("zu_erledigen") or _zu_erledigen(ctx["b"]))["anzahl"]
         n = db.one("SELECT * FROM posts WHERE brand_id=? AND datum>=? AND status IN ('Geplant','Zur Abnahme','In Arbeit','Wartet auf Input','Freigegeben') "
                    "ORDER BY datum, uhrzeit LIMIT 1", ctx["b"]["id"], datetime.date.today().isoformat())
         if n:
@@ -565,9 +566,10 @@ def dashboard(request: Request):
     abnahme = db.one("SELECT * FROM posts WHERE brand_id=? AND status='Zur Abnahme' ORDER BY datum='' , datum, id LIMIT 1", b["id"])
     chat = db.q("SELECT * FROM (SELECT * FROM chats WHERE brand_id=? AND bereich='planen' ORDER BY id DESC LIMIT 12) ORDER BY id", b["id"])
     wochentag = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][heute.weekday()]
+    zu = _zu_erledigen(b, laufende)
     return page(request, "dashboard.html", b=b, woche=woche, ideen_neu=ideen_neu, ideen_anzahl=ideen.anzahl(b["id"], "neu"), zahlen=zahlen, chat=chat, red=red,
                 laufende=len(laufende), datum_text=f"{wochentag}, {heute.day}. {MONATE[heute.month - 1]}",
-                hinweis=_hinweis(b, zahlen, abnahme))
+                hinweis=_hinweis(b, zahlen, abnahme), zu=zu, zu_erledigen=zu)
 
 
 def _hinweis(b, zahlen, abnahme):
@@ -587,6 +589,58 @@ def _hinweis(b, zahlen, abnahme):
     if neu:
         return {"text": f"{neu} neue Idee{'n' if neu > 1 else ''} in der Werkstatt.{bis}", "link": "/ideen", "aktion": "Ideen sichten"}
     return {"text": "Alles erledigt." + bis + " Frag die Redaktion nach neuen Ideen.", "link": "/planen", "aktion": "Zur Planung"}
+
+
+# ---------------------------------------------------------------- Zu erledigen
+
+AUFGABEN = [
+    ("abnahme", "Freigeben", "Fertig gestaltet. Schau drüber und gib frei, oder sag kajo, was anders soll.", "Ansehen und freigeben"),
+    ("entwurf", "Entwürfe bestätigen", "Der Text steht. Die Visuals entstehen erst, wenn du den Entwurf freigibst.", "Entwurf ansehen"),
+    ("input", "Input fehlt", "kajo braucht etwas von dir, zum Beispiel eine Aufnahme oder ein Foto.", "Input liefern"),
+    ("termin", "Termin fehlt", "Diese Posts haben noch keinen Tag oder ihr Termin ist schon vorbei.", "Termin wählen"),
+]
+
+
+def _zu_erledigen(b, laufende=None):
+    """Alle Posts, die die Person gerade braucht, je einmal in der dringendsten Gruppe; dazu, woran kajo noch arbeitet."""
+    heute = datetime.date.today()
+    offen = {r["post_id"]: r["id"] for r in db.q("SELECT id, post_id FROM inputs WHERE brand_id=? AND status='offen' AND post_id IS NOT NULL", b["id"])}
+    gruppen = {k: [] for k, *_ in AUFGABEN}
+    arbeit = geplant = 0
+    for r in db.q("SELECT * FROM posts WHERE brand_id=? AND status!='Gepostet' ORDER BY datum='', datum, uhrzeit, id", b["id"]):
+        v = post_view(r, laufende)
+        d = datetime.date.fromisoformat(r["datum"]) if r["datum"] else None
+        v["tag"] = f"{WOCHENTAGE[d.weekday()][:2]} {d.day}.{d.month}." if d else ""
+        v["vorbei"] = bool(d and d < heute)
+        v["bald"] = bool(d and 0 <= (d - heute).days <= 2)
+        v["bald_text"] = {0: "heute", 1: "morgen", 2: "übermorgen"}.get((d - heute).days, "") if d else ""
+        v["input_id"] = offen.get(r["id"])
+        if r["status"] == "Zur Abnahme":
+            k = "abnahme"
+        elif r["status"] == "Idee":
+            k = "entwurf"
+        elif r["status"] == "Wartet auf Input" or v["input_id"]:
+            k = "input"
+        elif not d or v["vorbei"]:
+            k = "termin"
+        else:
+            k = None
+            if r["status"] == "Geplant":
+                geplant += 1
+            else:
+                arbeit += 1
+        if k:
+            gruppen[k].append(v)
+    liste = [{"key": k, "titel": t, "text": x, "aktion": a, "posts": gruppen[k]} for k, t, x, a in AUFGABEN]
+    return {"gruppen": liste, "anzahl": sum(len(g["posts"]) for g in liste), "arbeit": arbeit, "geplant": geplant}
+
+
+@app.get("/aufgaben", response_class=HTMLResponse)
+def aufgaben_seite(request: Request):
+    b = brand_of(request)
+    laufende = jobs.running(b["id"])
+    zu = _zu_erledigen(b, laufende)
+    return page(request, "aufgaben.html", b=b, zu=zu, zu_erledigen=zu, heute=datetime.date.today().isoformat(), laufende=len(laufende))
 
 
 # ---------------------------------------------------------------- Planen

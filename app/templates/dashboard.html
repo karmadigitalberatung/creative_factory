@@ -13,7 +13,22 @@
     </div>
   </div>
 
+  {% if zu.anzahl %}
+  <section class="card braucht-dich">
+    <div class="bereich-zeile"><h2>Braucht dich <span class="zahl alarm">{{ zu.anzahl }}</span></h2><a class="small" href="/aufgaben">alles ansehen</a></div>
+    <div class="bd-raster">
+      {% for g in zu.gruppen if g.posts %}
+      <a class="bd-gruppe auf-{{ g.key }}" href="/aufgaben#{{ g.key }}">
+        <span class="bd-stapel">{% for p in g.posts[:4] %}{% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy">{% else %}<span class="bd-leer">{{ p.format[:1] }}</span>{% endif %}{% endfor %}</span>
+        <span class="bd-text"><b>{{ g.posts|length }} · {{ g.titel }}</b><span class="muted small">{{ g.posts[0].kurz }}{% if g.posts|length > 1 %} und {{ g.posts|length - 1 }} weitere{% endif %}</span></span>
+        <span class="bd-pfeil" aria-hidden="true">→</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% else %}
   <a class="hinweis-leiste" href="{{ hinweis.link }}"><span>{{ hinweis.text }}</span><strong>{{ hinweis.aktion }}</strong></a>
+  {% endif %}
   {% if laufende %}<span data-poll="/jobs" hidden></span>{% endif %}
 
   <div class="dash2">

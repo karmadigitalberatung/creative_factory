@@ -38,6 +38,7 @@
     <a class="marke" href="/" aria-label="heykajo Studio, zur Übersicht">{% with hell=False %}{% include "_logo.html" %}{% endwith %}</a>
     <div class="side-gruppe">
       <a href="/" class="{{ 'on' if path == '/' }}" {% if path == '/' %}aria-current="page"{% endif %}><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Übersicht</a>
+      <a href="/aufgaben" class="{{ 'on' if path.startswith('/aufgaben') }}" {% if path.startswith('/aufgaben') %}aria-current="page"{% endif %}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg>Zu erledigen{% if nav_aufgaben %}<span class="zahl alarm">{{ nav_aufgaben }}</span>{% endif %}</a>
       {% set planen_aktiv = path.startswith('/ideen') or path.startswith('/planen') or path.startswith('/radar') or path.startswith('/leitlinien') or path.startswith('/input') %}
       {% set planen_hinweise = (nav_ideen or 0) + (offene_inputs or 0) %}
       <div class="nav-gruppe {{ 'offen' if planen_aktiv }}" data-nav-gruppe="planen" data-aktiv="{{ 1 if planen_aktiv else 0 }}">

@@ -362,7 +362,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
           headers: { "Content-Type": "application/json" }, body: JSON.stringify({ szene: S.szene }) });
         const d = await r.json();
         if (d.fehler) { markieren(d.fehler); break; }
-        bild.src = d.bild; S.elemente = d.elemente;
+        bild.src = d.bild; S.elemente = d.elemente; S.hg_ueber = d.hg_ueber;
         if (!ziehen) boxenZeichnen();
       } catch (e) { markieren("Vorschau fehlgeschlagen"); }
     } while (nochmal);
@@ -370,20 +370,51 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   }
 
   function boxenZeichnen() {
-    flaeche.querySelectorAll(".le-box, .le-linie").forEach((x) => x.remove());
-    const k = skala();
+    flaeche.querySelectorAll(".le-box, .le-linie, .le-zuschnitt-leiste").forEach((x) => x.remove());
+    const k = skala(), zs = S.zuschnitt ?? null;
+    flaeche.classList.toggle("zuschnitt-hg", zs === "hg");
+    flaeche.classList.toggle("im-zuschnitt", zs !== null);
+    if (zs !== null) {
+      const l = document.createElement("div");
+      l.className = "le-zuschnitt-leiste";
+      l.innerHTML = `<span>${zs === "hg" ? "Hintergrundbild" : "Foto"}: ziehen verschiebt das Bild, Mausrad zoomt</span><button type="button" class="small primary" data-zuschnitt-fertig>Fertig</button>`;
+      flaeche.appendChild(l);
+    }
     S.elemente.forEach(({ i, typ, box }) => {
       const d = document.createElement("div");
-      d.className = "le-box" + (i === S.aktiv ? " aktiv" : "");
+      d.className = "le-box" + (i === S.aktiv ? " aktiv" : "") + (i === zs ? " zuschnitt" : "");
       d.dataset.i = i;
       Object.assign(d.style, { left: box[0] * k + "px", top: box[1] * k + "px", width: Math.max(8, (box[2] - box[0]) * k) + "px", height: Math.max(8, (box[3] - box[1]) * k) + "px" });
       d.innerHTML = `<span class="typ">${TYP[typ] || typ}</span><span class="griff l" data-griff="l"></span><span class="griff r" data-griff="r"></span>` +
-        (hatHoehe(typ) ? '<span class="griff ru" data-griff="ru"></span>' : "");
+        (hatHoehe(typ) ? ["lo", "ro", "lu", "ru"].map((g) => `<span class="griff ${g}" data-griff="${g}"></span>`).join("") : "");
       flaeche.appendChild(d);
     });
   }
 
-  function waehlen(i) { S.aktiv = i; boxenZeichnen(); seiteZeichnen(); }
+  function waehlen(i) { if (S.zuschnitt !== undefined && S.zuschnitt !== i) S.zuschnitt = null; S.aktiv = i; boxenZeichnen(); seiteZeichnen(); }
+
+  // ---------- Zuschnitt: Bild im Rahmen (oder Hintergrundbild) verschieben und zoomen
+  const zuschnittZiel = () => S.zuschnitt === "hg" ? S.szene.hintergrund : S.zuschnitt !== null && S.zuschnitt !== undefined ? el(S.zuschnitt) : null;
+  const zuschnittUeber = (z) => (z === "hg" ? S.hg_ueber : (S.elemente.find((x) => x.i === z) || {}).ueber) || [0, 0];
+  function zuschnitt(z) {
+    inlineZu();
+    if (z !== null && z !== "hg" && S.aktiv !== z) S.aktiv = z;
+    if (z === "hg") S.aktiv = null;
+    S.zuschnitt = z; boxenZeichnen(); seiteZeichnen();
+  }
+  const zoomGrenze = (v) => Math.max(1, Math.min(4, Math.round(v * 100) / 100));
+  let radMerken = null;
+  flaeche.addEventListener("wheel", (ev) => {
+    const o = S && zuschnittZiel();
+    if (!o) return;
+    ev.preventDefault();
+    if (!radMerken) merken();
+    clearTimeout(radMerken); radMerken = setTimeout(() => (radMerken = null), 600);
+    o.zoom = zoomGrenze((o.zoom || 1) * Math.exp(-ev.deltaY * 0.0015));
+    const r = seite.querySelector("[data-zoom]"); if (r) { r.value = Math.round(o.zoom * 100); seite.querySelector("[data-zoomwert]").textContent = r.value + " %"; }
+    vorschau();
+  }, { passive: false });
+  flaeche.addEventListener("click", (ev) => { if (ev.target.closest("[data-zuschnitt-fertig]")) zuschnitt(null); });
 
   // ---------- Ziehen: verschieben oder Breite ändern, mit Hilfslinien
   function fangen(b, dx, dy, ohne) {
@@ -447,12 +478,27 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   }
   flaeche.addEventListener("dblclick", (ev) => {   // Ziel über die Position bestimmen: beim Klicken hält die Fläche den Zeiger fest
     if (ev.target.closest(".le-inline")) return;
+    if (ev.target.closest(".le-zuschnitt-leiste")) return;
     const box = document.elementsFromPoint(ev.clientX, ev.clientY).find((x) => x.classList && x.classList.contains("le-box"));
-    if (box) textBearbeiten(+box.dataset.i);
+    if (box && el(+box.dataset.i).typ === "foto") zuschnitt(+box.dataset.i);
+    else if (box) textBearbeiten(+box.dataset.i);
+    else if ("foto" in (S.szene.hintergrund || {})) zuschnitt("hg");
   });
 
   flaeche.addEventListener("pointerdown", (ev) => {
-    if (ev.target.closest(".le-inline")) return;
+    if (ev.target.closest(".le-inline, .le-zuschnitt-leiste")) return;
+    if (S.zuschnitt !== null && S.zuschnitt !== undefined) {
+      const z = S.zuschnitt;
+      if (z === "hg" || ev.target.closest(`.le-box[data-i="${z}"]`)) {
+        ev.preventDefault();
+        const o = zuschnittZiel();
+        merken();
+        ziehen = { pan: true, o, ueber: zuschnittUeber(z), x0: ev.clientX, y0: ev.clientY, fx: o.fokus_x ?? 0.5, fy: o.fokus ?? 0.5, start: JSON.stringify(o) };
+        flaeche.setPointerCapture(ev.pointerId);
+        return;
+      }
+      S.zuschnitt = null;
+    }
     inlineZu();
     const box = ev.target.closest(".le-box");
     if (!box) { waehlen(null); return; }
@@ -466,6 +512,14 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   });
   flaeche.addEventListener("pointermove", (ev) => {
     if (!ziehen) return;
+    if (ziehen.pan) {
+      const k = skala(), dx = (ev.clientX - ziehen.x0) / k, dy = (ev.clientY - ziehen.y0) / k, [ux, uy] = ziehen.ueber;
+      const klemmen = (v) => Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000;
+      if (ux > 0.5) ziehen.o.fokus_x = klemmen(ziehen.fx - dx / ux);
+      if (uy > 0.5) ziehen.o.fokus = klemmen(ziehen.fy - dy / uy);
+      vorschau();
+      return;
+    }
     const k = skala(), e = el(ziehen.i), st = ziehen.start, b = ziehen.box;
     let dx = (ev.clientX - ziehen.x0) / k, dy = (ev.clientY - ziehen.y0) / k;
     if (ev.shiftKey && !ziehen.griff) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }   // Shift: nur waagrecht oder senkrecht
@@ -484,17 +538,27 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
       const d = Math.min(f.dx, st.breite - 40);
       e.x = r1(st.x + d); e.breite = r1(st.breite - d);
       Object.assign(ziehen.div.style, { left: (b[0] + d) * k + "px", width: (b[2] - b[0] - d) * k + "px" });
-    } else if (g === "ru") {
+    } else if (["ru", "lu", "ro", "lo"].includes(g)) {   // Ecken: Rahmen größer/kleiner, Shift hält das Seitenverhältnis
       f = { linien: [] };
-      e.breite = Math.max(40, r1(st.breite + dx));
-      e.hoehe = ev.shiftKey ? r1(e.breite * st.hoehe / st.breite) : Math.max(40, r1(st.hoehe + dy));
-      Object.assign(ziehen.div.style, { width: e.breite * k + "px", height: e.hoehe * k + "px" });
+      const links = g[0] === "l", oben = g[1] === "o";
+      e.breite = Math.max(40, r1(st.breite + (links ? -dx : dx)));
+      e.hoehe = ev.shiftKey ? r1(e.breite * st.hoehe / st.breite) : Math.max(40, r1(st.hoehe + (oben ? -dy : dy)));
+      e.x = links ? r1(st.x + st.breite - e.breite) : st.x;
+      e.y = oben ? r1(st.y + st.hoehe - e.hoehe) : st.y;
+      Object.assign(ziehen.div.style, { left: (b[0] + e.x - st.x) * k + "px", top: (b[1] + e.y - st.y) * k + "px", width: e.breite * k + "px", height: e.hoehe * k + "px" });
     }
     linienZeigen(f.linien || []);
     vorschau();
   });
   const loslassen = () => {
     if (!ziehen) return;
+    if (ziehen.pan) {
+      const bewegt = ziehen.start !== JSON.stringify(ziehen.o);
+      ziehen = null;
+      if (!bewegt) { S.zurueck.pop(); if (!S.zurueck.length) { S.geaendert = false; markieren(""); } }
+      vorschau();
+      return;
+    }
     const bewegt = JSON.stringify(ziehen.start) !== JSON.stringify(el(ziehen.i));
     ziehen = null;
     linienZeigen([]);
@@ -577,6 +641,17 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   const textSetzen = (e, pfad, w) => { if (pfad === "text") e.text = w; else if (pfad === "punkte") e.punkte = w.split("\n").filter((z) => z.trim()); else e.teile[+pfad.split(".")[1]].text = w; };
   const kurz = (i) => { const e = el(i); const t = e.text || (e.teile || []).map((x) => x.text).filter(Boolean)[0] || (e.punkte || [])[0] || ""; return t ? "„" + String(t).slice(0, 28) + (String(t).length > 28 ? "…" : "") + "“" : ""; };
 
+const fotoRahmen = (o, wer) => `<div class="gruppe"><span class="label">${wer}</span>
+    <label>Größe <span class="wert" data-zoomwert>${Math.round((o.zoom || 1) * 100)} %</span><input type="range" min="100" max="400" value="${Math.round((o.zoom || 1) * 100)}" data-zoom></label>
+    <button type="button" class="small ${S.zuschnitt !== null && S.zuschnitt !== undefined ? "on" : ""}" data-zuschnitt>${S.zuschnitt !== null && S.zuschnitt !== undefined ? "Ausschnitt fertig" : "Ausschnitt verschieben"}</button>
+    <span class="hint">Oder Doppelklick aufs Bild: dann verschiebt Ziehen das Bild, das Mausrad zoomt.${wer === "Foto im Rahmen" ? " Den Rahmen selbst ziehst du an den Ecken größer oder kleiner." : ""}</span></div>`;
+  const fotoRahmenBinden = (o, z) => {
+    const r = seite.querySelector("[data-zoom]"), w = seite.querySelector("[data-zoomwert]");
+    if (r) { r.addEventListener("pointerdown", merken); r.addEventListener("input", () => { o.zoom = zoomGrenze(r.value / 100); w.textContent = r.value + " %"; vorschau(); }); }
+    const kn = seite.querySelector("[data-zuschnitt]");
+    if (kn) kn.addEventListener("click", () => zuschnitt(S.zuschnitt === z ? null : z));
+  };
+
   function seiteZeichnen() {
     if (S.aktiv === null || S.aktiv === undefined || !el(S.aktiv)) {
       S.aktiv = null;
@@ -585,7 +660,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
       seite.innerHTML = `<p class="leer">Klick einen Text oder ein Bild auf der Folie an, um es zu ändern. Doppelklick auf einen Text ändert ihn direkt.</p>
         ${!hgFoto && fotoEl ? `<div data-fotoel>${bildGruppe("Foto dieser Folie")}</div>` : ""}
         ${!hgFoto && !fotoEl ? `<div class="gruppe le-bild"><span class="label">Foto</span><div class="knoepfe"><button type="button" data-neu="foto">Foto einfügen</button></div></div>` : ""}
-        ${hgFoto ? `<div data-hg>${bildGruppe("Hintergrundbild")}<div class="gruppe"><label>Bildausschnitt <span class="wert">oben ↔ unten</span><input type="range" min="0" max="100" value="${Math.round((hg.fokus ?? 0.5) * 100)}" data-hgfokus></label></div></div>` : ""}
+        ${hgFoto ? `<div data-hg>${bildGruppe("Hintergrundbild")}${fotoRahmen(hg, "Hintergrundbild zuschneiden")}</div>` : ""}
         <div class="gruppe"><span class="label">Element hinzufügen</span><div class="knoepfe le-neu">
           <button type="button" data-neu="text">Text</button><button type="button" data-neu="rechteck">Rechteck</button><button type="button" data-neu="kreis">Kreis</button>
           <button type="button" data-neu="linie">Linie</button><button type="button" data-neu="verlauf">Verlauf</button><button type="button" data-neu="foto">Foto</button>
@@ -597,9 +672,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
       if (fotoEl && !hgFoto) bildBinden(seite.querySelector("[data-fotoel]"), { lesen: () => fotoEl.quelle || "post", setzen: (q) => { fotoEl.quelle = q; }, da: () => S.szene.elemente.includes(fotoEl), format: () => formatFuer(fotoEl.breite, fotoEl.hoehe) });
       if (hgFoto) {
         bildBinden(seite.querySelector("[data-hg]"), { lesen: () => hg.foto, setzen: (q) => { S.szene.hintergrund.foto = q; }, da: () => S.szene.hintergrund === hg, format: () => "4:5" });
-        const hf = seite.querySelector("[data-hgfokus]");
-        hf.addEventListener("pointerdown", merken);
-        hf.addEventListener("input", () => { S.szene.hintergrund.fokus = hf.value / 100; vorschau(); });
+        fotoRahmenBinden(hg, "hg");
       }
       return;
     }
@@ -616,7 +689,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
       h += `<div class="gruppe"><span class="label">Ausrichtung</span><div class="knoepfe">${["links", "mitte", "rechts"].map((a) => `<button type="button" data-ausr="${a}" class="${a === al ? "on" : ""}">${a[0].toUpperCase() + a.slice(1)}</button>`).join("")}</div>
         <button type="button" class="small" data-zentrieren>Waagrecht mittig auf der Slide</button></div>`;
     }
-    if (typ === "foto") h += `<div data-fotobild>${bildGruppe("Bild")}</div><div class="gruppe"><label>Bildausschnitt <span class="wert">oben ↔ unten</span><input type="range" min="0" max="100" value="${Math.round((e.fokus ?? 0.5) * 100)}" data-fokus></label></div>`;
+    if (typ === "foto") h += `<div data-fotobild>${bildGruppe("Bild")}</div>` + fotoRahmen(e, "Foto im Rahmen");
     const texte = info.texte || [];
     if (texte.length) {
       h += `<div class="gruppe"><span class="label">Text</span>` + texte.map((t) => `<textarea rows="${Math.min(6, t.wert.split("\n").length + 1)}" data-text="${t.pfad}">${esc(textVon(e, t.pfad))}</textarea>`).join("") +
@@ -668,8 +741,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
     if (z) z.addEventListener("click", () => { merken(); e.x = r1((S.W - e.breite) / 2); e.ausrichtung = "mitte"; if (typ === "stapel") (e.teile || []).forEach((t) => delete t.ausrichtung); seiteZeichnen(); vorschau(); });
     const fb = seite.querySelector("[data-fotobild]");
     if (fb) bildBinden(fb, { lesen: () => e.quelle || "post", setzen: (q) => { e.quelle = q; }, da: () => S.szene.elemente.includes(e), format: () => formatFuer(e.breite, e.hoehe) });
-    const fo = seite.querySelector("[data-fokus]");
-    if (fo) { fo.addEventListener("pointerdown", merken); fo.addEventListener("input", () => { e.fokus = fo.value / 100; vorschau(); }); }
+    if (typ === "foto") fotoRahmenBinden(e, i);
     seite.querySelectorAll("[data-text]").forEach((t) => {
       t.addEventListener("focus", merken);
       t.addEventListener("input", () => { textSetzen(e, t.dataset.text, t.value); vorschau(); });
@@ -787,6 +859,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
     if (le.hidden || !S) return;
     const imFeld = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z" && !imFeld) { ev.preventDefault(); ev.shiftKey ? schritt(S.vor, S.zurueck) : schritt(S.zurueck, S.vor); return; }
+    if ((ev.key === "Escape" || ev.key === "Enter") && S.zuschnitt !== null && S.zuschnitt !== undefined && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { ev.preventDefault(); zuschnitt(null); return; }
     if (ev.key === "Escape") { ev.preventDefault(); if (inline) inlineZu(); else if (imFeld) document.activeElement.blur(); else if (S.aktiv !== null) waehlen(null); else schliessen(); return; }
     if (imFeld || S.aktiv === null) return;
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
@@ -1261,3 +1334,19 @@ document.querySelectorAll("[data-html-kopieren]").forEach((k) => k.addEventListe
   zeit?.addEventListener("change", zeichnen);
   zeichnen();
 })();
+
+// Zu erledigen: Termin direkt in der Liste wählen (gleicher Weg wie Ziehen im Kalender)
+document.querySelectorAll("[data-termin]").forEach((feld) => {
+  feld.addEventListener("change", async () => {
+    if (!feld.value) return;
+    const zeile = feld.closest(".auf-zeile"), ok = zeile.querySelector("[data-ok]");
+    feld.disabled = true;
+    try {
+      const r = await fetch(`/planen/${feld.dataset.termin}/termin`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ datum: feld.value }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.fehler || "Das hat nicht geklappt.");
+      ok.hidden = false; zeile.classList.add("erledigt");
+      setTimeout(() => location.reload(), 900);
+    } catch (e) { feld.disabled = false; ok.hidden = false; ok.textContent = e.message; ok.classList.add("fehler"); }
+  });
+});

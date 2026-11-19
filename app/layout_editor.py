@@ -65,9 +65,16 @@ def _rendern(b, p, szene, nr, gesamt, slide):
         felder = e.get("_felder") or {}
         el["texte"] = [{"pfad": pf, "wert": w, "feld": felder.get(pf)} for pf, w in _texte(e)]
     elemente = [el for el in elemente if el["typ"] in EDITIERBAR]
+    fotos = _renderer(b, p).fotos
+    for el in elemente:   # Überstand des Fotos im Rahmen: daraus rechnet der Editor das Verschieben des Ausschnitts
+        e = szene["elemente"][el["i"]]
+        if el["typ"] == "foto" and fotos.get(e.get("quelle", "post")) is not None:
+            el["ueber"] = scene.ueberstand(fotos[e.get("quelle", "post")], e.get("breite", 1080), e.get("hoehe", 1350), e.get("zoom", 1))
+    hg = szene.get("hintergrund") or {}
+    hg_ueber = scene.ueberstand(fotos[hg["foto"]], 1080, 1350, hg.get("zoom", 1)) if hg.get("foto") and fotos.get(hg["foto"]) is not None else None
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=86)
-    return {"bild": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode(), "elemente": elemente}
+    return {"bild": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode(), "elemente": elemente, "hg_ueber": hg_ueber}
 
 
 def _laden(b, p, nr):

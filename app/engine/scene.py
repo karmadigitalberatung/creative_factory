@@ -3,7 +3,7 @@
 Szene (JSON, Koordinaten in Pixel auf 1080 x 1350, Ursprung oben links):
 {
   "hintergrund": {"farbe": "#F4EFE8"}
-               | {"foto": "post", "fokus": 0.4, "abdunkeln": 0.2, "unschaerfe": 0}
+               | {"foto": "post", "fokus": 0.4, "fokus_x": 0.5, "zoom": 1, "abdunkeln": 0.2, "unschaerfe": 0}
                | {"verlauf": ["#F4EFE8", "#E8D9C8"], "richtung": "vertikal"}   (oder "winkel": 135 statt richtung: zweite Farbe in diese Richtung),
   "elemente": [ ... in Zeichenreihenfolge ... ]
 }
@@ -14,7 +14,7 @@ Elemente (gemeinsam: x, y, breite, hoehe, deckkraft):
   text       text, rolle (titel|text|akzent), groesse, farbe, gewicht, ausrichtung (links|mitte|rechts),
              zeilenhoehe, sperrung, versalien, anker (oben|mitte|unten: bezieht sich auf y),
              max_hoehe (verkleinert bis es passt), schatten (0..1), box {farbe, polster, radius}
-  foto       quelle (post|referenz), fokus (0..1), radius, kreis (true)
+  foto       quelle (post|referenz), fokus (0..1, Ausschnitt senkrecht), fokus_x (0..1, waagrecht), zoom (1..5), radius, kreis (true)
   form       form (rechteck|kreis|linie), farbe, radius, kontur, konturbreite
   farbfelder farben [hex], namen [text], form (kreis|quadrat), spalten, abstand, textfarbe
   liste      punkte [text], nummeriert, rolle, groesse, farbe, abstand, markerfarbe
@@ -32,6 +32,23 @@ from .profil import hex2rgb
 
 NBSP = " "
 _fonts = {}
+
+
+def ausschnitt(img, w, h, fx=0.5, fy=0.5, zoom=1.0):
+    """Bild füllend in w x h einpassen; zoom > 1 vergrößert, fx/fy (0..1) wählen den Ausschnitt waagrecht/senkrecht."""
+    w, h = max(1, int(w)), max(1, int(h))
+    s = max(w / img.width, h / img.height) * max(1.0, min(5.0, float(zoom or 1)))
+    sw, sh = w / s, h / s
+    fx, fy = (min(1.0, max(0.0, float(v))) for v in (fx, fy))
+    l, t = (img.width - sw) * fx, (img.height - sh) * fy
+    return img.convert("RGB").resize((w, h), Image.LANCZOS, box=(l, t, l + sw, t + sh))
+
+
+def ueberstand(img, w, h, zoom=1.0):
+    """Wie viele Pixel das eingepasste Bild waagrecht/senkrecht über den Rahmen hinausragt (für das Verschieben im Editor)."""
+    w, h = max(1, float(w)), max(1, float(h))
+    s = max(w / img.width, h / img.height) * max(1.0, min(5.0, float(zoom or 1)))
+    return round(img.width * s - w, 1), round(img.height * s - h, 1)
 
 
 # ---------------------------------------------------------------- Schriften
@@ -173,7 +190,7 @@ class Szene:
     def hintergrund(self, hg):
         W, H = self.W, self.H
         if "foto" in hg and self.fotos.get(hg["foto"]) is not None:
-            img = cover_crop(self.fotos[hg["foto"]], W, H, float(hg.get("fokus", 0.5)))
+            img = ausschnitt(self.fotos[hg["foto"]], W, H, hg.get("fokus_x", 0.5), hg.get("fokus", 0.5), hg.get("zoom", 1))
             if hg.get("unschaerfe"):
                 img = img.filter(ImageFilter.GaussianBlur(float(hg["unschaerfe"])))
             if hg.get("abdunkeln"):
@@ -298,7 +315,8 @@ class Szene:
             return
         x, y = int(e.get("x", 0)), int(e.get("y", 0))
         w, h = int(e.get("breite", self.W)), int(e.get("hoehe", self.H))
-        ph = cover_crop(src, w, h, float(e.get("fokus", 0.5))).convert("RGBA")
+        w, h = max(1, w), max(1, h)
+        ph = ausschnitt(src, w, h, e.get("fokus_x", 0.5), e.get("fokus", 0.5), e.get("zoom", 1)).convert("RGBA")
         mask = Image.new("L", (w, h), 0)
         md = ImageDraw.Draw(mask)
         if e.get("kreis"):

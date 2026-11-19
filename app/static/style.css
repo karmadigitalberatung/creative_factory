@@ -1562,3 +1562,76 @@ details.pv-werkzeug:not(.pv-block) > :not(summary) { margin: 8px 0 0; }
   .mini-kal-info { flex-direction: column; align-items: flex-start; }
   .mini-kal-eigen { flex-wrap: wrap; }
 }
+
+/* Layout-Editor: Fotos zuschneiden (Ausschnitt verschieben, zoomen) und an allen Ecken skalieren */
+.le-box .griff.lo { left: -8px; top: -8px; cursor: nwse-resize; }
+.le-box .griff.ro { right: -8px; top: -8px; cursor: nesw-resize; }
+.le-box .griff.lu { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.le-flaeche.im-zuschnitt .le-box:not(.zuschnitt) { pointer-events: none; opacity: .35; }
+.le-flaeche.zuschnitt-hg { cursor: grab; }
+.le-flaeche.zuschnitt-hg:active { cursor: grabbing; }
+.le-box.zuschnitt { outline: 3px dashed var(--akzent) !important; outline-offset: -1px; cursor: grab; background: none; }
+.le-box.zuschnitt:active { cursor: grabbing; }
+.le-box.zuschnitt .griff, .le-box.zuschnitt .typ { display: none !important; }
+.le-flaeche.zuschnitt-hg::after { content: ""; position: absolute; inset: 0; outline: 3px dashed var(--akzent); outline-offset: -3px; pointer-events: none; }
+.le-zuschnitt-leiste { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 10px;
+  padding: 6px 6px 6px 14px; border-radius: var(--pille); background: var(--tinte); color: #FFF; font-size: 12px; white-space: nowrap; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.le-zuschnitt-leiste .primary { background: var(--akzent); color: var(--tinte); border: 0; }
+
+/* Zu erledigen: Posts, die die Person braucht, mit Vorschau */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.aufgaben .head { margin-bottom: 20px; }
+.auf-sprung { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+.auf-sprung a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px 7px 7px; border-radius: var(--pille); background: var(--karte); color: var(--tinte); text-decoration: none; font-weight: 500; font-size: 14px; }
+.auf-sprung a b, .auf-marke { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: var(--pille); background: var(--tinte); color: #FFF; font-size: 12px; font-weight: 700; }
+.auf-sprung a.auf-sprung-abnahme b, .auf-abnahme .auf-marke { background: var(--akzent); color: var(--tinte); }
+.auf-sprung a:hover { box-shadow: inset 0 0 0 1.5px var(--tinte); }
+.auf-gruppe { margin-bottom: 16px; scroll-margin-top: 20px; }
+.auf-kopf { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 6px; }
+.auf-kopf .auf-marke { margin-top: 3px; }
+.auf-kopf h2 { margin: 0 0 2px; }
+.auf-kopf p { margin: 0; }
+.auf-liste { list-style: none; margin: 0; padding: 0; }
+.auf-zeile { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--linie); transition: opacity .3s; }
+.auf-zeile:first-child { border-top: 0; }
+.auf-zeile.erledigt { opacity: .45; }
+.auf-vorschau { display: block; width: 52px; aspect-ratio: 4 / 5; border-radius: 8px; overflow: hidden; background: var(--flaeche-2); }
+.auf-vorschau img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.auf-vorschau span { display: flex; height: 100%; align-items: center; justify-content: center; font-size: 10px; color: var(--muted); text-align: center; }
+.auf-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.auf-titel { color: var(--tinte); font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auf-titel:hover { text-decoration: underline; }
+.auf-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; color: var(--muted); }
+.auf-fehlt { color: var(--tinte); font-weight: 500; }
+.auf-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--pille); background: var(--flaeche-2); color: var(--tinte-2); font-size: 11px; font-weight: 600; }
+.auf-chip.warn { background: var(--akzent); color: var(--tinte); }
+.auf-aktion { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.auf-datum input { height: 36px; }
+.auf-gespeichert { font-size: 13px; font-weight: 600; }
+.auf-gespeichert.fehler { color: #B3261E; font-weight: 500; max-width: 220px; }
+.auf-leer { text-align: center; padding: 48px 24px; }
+.auf-haken { display: inline-flex; width: 48px; height: 48px; align-items: center; justify-content: center; border-radius: 50%; background: var(--akzent); font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.auf-rest { margin: 18px 4px 0; }
+.auf-rest a { color: var(--tinte); }
+@media (max-width: 640px) {
+  .auf-zeile { grid-template-columns: 44px minmax(0, 1fr); }
+  .auf-vorschau { width: 44px; }
+  .auf-aktion { grid-column: 2; justify-content: flex-start; }
+  .auf-titel { white-space: normal; }
+}
+
+/* Übersicht: Block „Braucht dich“ */
+.braucht-dich { margin-bottom: 20px; }
+.braucht-dich h2 { display: inline-flex; align-items: center; gap: 8px; }
+.bd-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.bd-gruppe { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; background: var(--flaeche); color: var(--tinte); text-decoration: none; min-width: 0; }
+.bd-gruppe:hover { box-shadow: inset 0 0 0 1.5px var(--tinte); }
+.bd-gruppe.auf-abnahme { background: var(--karte); box-shadow: inset 0 0 0 2px var(--akzent); }
+.bd-stapel { display: flex; flex: none; }
+.bd-stapel img, .bd-leer { width: 34px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 5px; box-shadow: 0 0 0 2px var(--karte); background: var(--flaeche-2); }
+.bd-stapel > * + * { margin-left: -14px; }
+.bd-leer { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
+.bd-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.bd-text .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-pfeil { font-size: 16px; color: var(--muted); }
+.braucht-dich h2 .zahl { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: var(--pille); background: var(--akzent); color: var(--tinte); font: 700 12px/1 var(--sans); }
