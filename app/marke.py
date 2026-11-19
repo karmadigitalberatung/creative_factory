@@ -96,9 +96,12 @@ class _Fotos(dict):
             return self[key]
         if isinstance(key, str) and key[:1] == "m" and key[1:].isdigit():
             from . import db
-            m = db.one("SELECT datei FROM medien WHERE id=? AND brand_id=?", int(key[1:]), self.brand_id)
+            m = db.one("SELECT datei, lizenz FROM medien WHERE id=? AND brand_id=?", int(key[1:]), self.brand_id)
             if m:
-                self[key] = Image.open(storage.abs_path(self.brand_id, m["datei"])).convert("RGB")
+                im = Image.open(storage.abs_path(self.brand_id, m["datei"])).convert("RGB")
+                if m["lizenz"]:
+                    im.info["heykajo-lizenzbild"] = "1"
+                self[key] = im
                 return self[key]
         return default
 

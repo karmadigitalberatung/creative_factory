@@ -573,6 +573,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
   const BILDER = window.BILDER || [], POST_BILD = window.POST_BILD || {}, GEN = window.GENERATOREN || {};
   const bildGruppe = (titel) => `<div class="gruppe le-bild"><span class="label">${titel}</span>
       <div class="knoepfe"><button type="button" data-bild="mediathek">Mediathek</button><button type="button" data-bild="hochladen">Hochladen</button><button type="button" data-bild="ki">Neu erzeugen</button></div>
+      <label class="check small le-lizenz" title="Gekauft oder nur für Social Media lizenziert: geht nie an KI-Dienste"><input type="checkbox" data-lizenzbild ${window.LIZENZ_STANDARD ? "checked" : ""}> Hochgeladenes Bild ist ein Lizenzbild (nicht an KI)</label>
       <div class="le-bild-feld" hidden></div><input type="file" accept="image/*" hidden></div>`;
   const ideeZu = (q) => { const m = BILDER.find((x) => "m" + x.id === q); if (!m || !m.beschreibung) return POST_BILD.idee || "";
     const name = Object.values(GEN).find((n) => m.beschreibung.endsWith(` (${n})`));   // der Generator steht hinten in Klammern
@@ -592,8 +593,8 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
       wurzel.querySelectorAll("[data-bild]").forEach((b) => b.classList.toggle("on", b.dataset.bild === was));
       if (was === "mediathek") {
         const jetzt = ziel.lesen();
-        const eintraege = (POST_BILD.datei ? [{ q: "post", datei: POST_BILD.datei, titel: "Bild des Posts" }] : []).concat(BILDER.map((m) => ({ q: "m" + m.id, datei: m.datei, titel: m.titel })));
-        feld.innerHTML = eintraege.length ? `<div class="pick">${eintraege.map((x) => `<button type="button" class="pick-item ${x.q === jetzt ? "on" : ""}" data-q="${x.q}" title="${esc(x.titel || "")}"><img src="/media/${esc(x.datei)}" alt="${esc(x.titel || "")}" loading="lazy"></button>`).join("")}</div>`
+        const eintraege = (POST_BILD.datei ? [{ q: "post", datei: POST_BILD.datei, titel: "Bild des Posts" }] : []).concat(BILDER.map((m) => ({ q: "m" + m.id, datei: m.datei, titel: m.titel, lizenz: m.lizenz })));
+        feld.innerHTML = eintraege.length ? `<div class="pick">${eintraege.map((x) => `<button type="button" class="pick-item ${x.q === jetzt ? "on" : ""} ${x.lizenz ? "lizenzbild" : ""}" data-q="${x.q}" title="${esc((x.lizenz ? "Lizenzbild · " : "") + (x.titel || ""))}"><img src="/media/${esc(x.datei)}" alt="${esc(x.titel || "")}" loading="lazy"></button>`).join("")}</div>`
           : '<span class="hint">Noch keine Bilder in der Mediathek. Lade eins hoch oder erzeuge eins.</span>';
         feld.querySelectorAll("[data-q]").forEach((b) => b.addEventListener("click", () => {
           merken(); ziel.setzen(b.dataset.q); vorschau();
@@ -629,6 +630,7 @@ document.querySelectorAll("button[data-warnen]").forEach((b) => b.addEventListen
     datei.addEventListener("change", async () => {
       if (!datei.files[0]) return;
       const fd = new FormData(); fd.append("datei", datei.files[0]); datei.value = "";
+      if (wurzel.querySelector("[data-lizenzbild]")?.checked) fd.append("lizenzbild", "1");
       markieren("Lädt hoch …");
       await holen(`${BILD}/upload`, fd);
     });
@@ -1349,4 +1351,21 @@ document.querySelectorAll("[data-termin]").forEach((feld) => {
       setTimeout(() => location.reload(), 900);
     } catch (e) { feld.disabled = false; ok.hidden = false; ok.textContent = e.message; ok.classList.add("fehler"); }
   });
+});
+
+// Zu erledigen: Skript, Anleitung und Upload eines Inputs aufklappen (per #input-ID direkt offen)
+document.querySelectorAll("[data-input-auf]").forEach((k) => {
+  const feld = document.getElementById(k.getAttribute("aria-controls"));
+  const setzen = (auf) => { feld.hidden = !auf; k.setAttribute("aria-expanded", auf ? "true" : "false"); k.textContent = auf ? "Zuklappen" : "Input liefern"; };
+  k.addEventListener("click", () => setzen(feld.hidden));
+  if (location.hash === "#" + feld.id) { setzen(true); feld.scrollIntoView({ block: "center" }); }
+});
+
+// Mediathek: Bild anklicken öffnet ein kleines Fenster mit Titel, Alttext, Lizenzbild und Aktionen
+document.querySelectorAll("[data-medium-auf]").forEach((k) => {
+  const d = document.getElementById(k.dataset.mediumAuf);
+  if (!d || !d.showModal) return;
+  k.addEventListener("click", () => d.showModal());
+  d.addEventListener("click", (e) => { if (e.target === d || e.target.closest("[data-dialog-zu]")) d.close(); });   // Klick daneben schließt
+  d.addEventListener("close", () => k.focus());
 });

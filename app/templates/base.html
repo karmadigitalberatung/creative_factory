@@ -28,7 +28,7 @@
 <div class="app">
   <header class="mobil-leiste">
     <a class="marke" href="/" aria-label="heykajo Studio, zur Übersicht">{% with hell=False %}{% include "_logo.html" %}{% endwith %}</a>
-    {% set menue_hinweise = (nav_ideen or 0) + (offene_inputs or 0) %}
+    {% set menue_hinweise = (nav_ideen or 0) + (nav_aufgaben or 0) %}
     <button type="button" class="menue-knopf" data-menue-auf aria-controls="hauptmenue" aria-expanded="false" aria-label="Menü öffnen{{ ', ' ~ menue_hinweise ~ ' offen' if menue_hinweise }}">
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>{% if menue_hinweise %}<span class="zahl" aria-hidden="true">{{ menue_hinweise }}</span>{% endif %}
     </button>
@@ -38,15 +38,14 @@
     <a class="marke" href="/" aria-label="heykajo Studio, zur Übersicht">{% with hell=False %}{% include "_logo.html" %}{% endwith %}</a>
     <div class="side-gruppe">
       <a href="/" class="{{ 'on' if path == '/' }}" {% if path == '/' %}aria-current="page"{% endif %}><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Übersicht</a>
-      <a href="/aufgaben" class="{{ 'on' if path.startswith('/aufgaben') }}" {% if path.startswith('/aufgaben') %}aria-current="page"{% endif %}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg>Zu erledigen{% if nav_aufgaben %}<span class="zahl alarm">{{ nav_aufgaben }}</span>{% endif %}</a>
-      {% set planen_aktiv = path.startswith('/ideen') or path.startswith('/planen') or path.startswith('/radar') or path.startswith('/leitlinien') or path.startswith('/input') %}
-      {% set planen_hinweise = (nav_ideen or 0) + (offene_inputs or 0) %}
+      <a href="/aufgaben" class="{{ 'on' if path.startswith('/aufgaben') or path.startswith('/input') }}" {% if path.startswith('/aufgaben') %}aria-current="page"{% endif %}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg>Zu erledigen{% if nav_aufgaben %}<span class="zahl alarm">{{ nav_aufgaben }}</span>{% endif %}</a>
+      {% set planen_aktiv = path.startswith('/ideen') or path.startswith('/planen') or path.startswith('/radar') or path.startswith('/leitlinien') %}
+      {% set planen_hinweise = (nav_ideen or 0) %}
       <div class="nav-gruppe {{ 'offen' if planen_aktiv }}" data-nav-gruppe="planen" data-aktiv="{{ 1 if planen_aktiv else 0 }}">
       <button type="button" class="unterpunkt-kopf {{ 'on' if planen_aktiv }}" aria-expanded="{{ 'true' if planen_aktiv else 'false' }}" aria-controls="nav-planen"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>Planen{% if planen_hinweise %}<span class="zahl alarm kopf-zahl">{{ planen_hinweise }}</span>{% endif %}<svg class="pfeil" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
       <div class="unterpunkte" id="nav-planen">
         <a href="/planen?ansicht=kalender" class="unterpunkt {{ 'on' if path.startswith('/planen') }}" {% if path.startswith('/planen') %}aria-current="page"{% endif %}>Redaktionsplan{% if nav_entwuerfe %}<span class="zahl">{{ nav_entwuerfe }}</span>{% endif %}</a>
         <a href="/ideen" class="unterpunkt {{ 'on' if path.startswith('/ideen') or path.startswith('/radar') }}" {% if path.startswith('/ideen') %}aria-current="page"{% endif %}>Ideen{% if nav_ideen %}<span class="zahl alarm">{{ nav_ideen }}</span>{% endif %}</a>
-        <a href="/input" class="unterpunkt {{ 'on' if path.startswith('/input') }}" {% if path.startswith('/input') %}aria-current="page"{% endif %}>Input{% if offene_inputs %}<span class="zahl alarm">{{ offene_inputs }}</span>{% endif %}</a>
         <a href="/leitlinien" class="unterpunkt {{ 'on' if path.startswith('/leitlinien') }}" {% if path.startswith('/leitlinien') %}aria-current="page"{% endif %}>Leitlinien</a>
       </div>
       </div>

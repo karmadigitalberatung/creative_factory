@@ -61,7 +61,8 @@ MIGRATION = [("posts", "video_roh", "TEXT"), ("posts", "video", "TEXT"), ("posts
              ("users", "rolle", "TEXT NOT NULL DEFAULT 'nutzer'"),
              ("jobs", "schritt", "TEXT"),   # nutzer | admin
              ("users", "aktiv", "INTEGER NOT NULL DEFAULT 1"), ("users", "letzter_login", "REAL"),
-             ("posts", "quelle_id", "INTEGER")]   # Ableitung: Social-Post aus einem Blogbeitrag   # {Buffer-Kanal-ID: ["post" | "reel" | "story", …]}
+             ("posts", "quelle_id", "INTEGER"),
+             ("medien", "lizenz", "INTEGER NOT NULL DEFAULT 0")]   # Lizenzbild: geht nie an KI-Dienste (siehe lizenz.py)   # Ableitung: Social-Post aus einem Blogbeitrag   # {Buffer-Kanal-ID: ["post" | "reel" | "story", …]}
 
 
 def init():

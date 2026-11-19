@@ -16,6 +16,7 @@
           <label>Titel (optional) <input name="titel" placeholder="z. B. Herbst-Check"></label>
           <div class="row"><label>Datum <input type="date" name="datum"></label><label>Uhrzeit <input type="time" name="uhrzeit" value="08:30"></label></div>
           {% if ki_text %}<label class="check small"><input type="checkbox" name="captions" value="1" checked> Titel und Captions von Claude schreiben lassen</label>{% endif %}
+          <label class="check small" title="Gekauft oder nur für Social Media lizenziert: geht nie an KI-Dienste"><input type="checkbox" name="lizenzbild" value="1" {{ 'checked' if auf.lizenz_standard }}> Enthält Lizenzbilder (nicht an KI)</label>
           <button class="primary">Hochladen</button>
         </form>
       </details>
@@ -154,7 +155,7 @@
               <td class="aktionen">
                 {% if p.status == 'Idee' %}<form method="post" action="/planen/{{ p.id }}/freigeben"><button class="small">Freigeben</button></form>
                 {% elif p.status == 'Zur Abnahme' %}<a class="button small" href="/planen/{{ p.id }}#abnehmen">Abnehmen</a>
-                {% elif p.status == 'Wartet auf Input' %}<a class="button small" href="/input">Aufnahme</a>{% endif %}
+                {% elif p.status == 'Wartet auf Input' %}<a class="button small" href="/aufgaben#input">Aufnahme</a>{% endif %}
               </td>
             </tr>
             {% else %}
@@ -191,7 +192,7 @@
                 <form method="post" action="/planen/{{ p.id }}/verwerfen" onsubmit="return confirm('Idee verwerfen?')"><button class="small">Verwerfen</button></form>
               </div>
               {% elif p.status == 'Wartet auf Input' %}
-              <div class="ticket-actions"><a class="button small primary" href="/input">Aufnahme hochladen</a></div>
+              <div class="ticket-actions"><a class="button small primary" href="/aufgaben#input">Aufnahme hochladen</a></div>
               {% elif p.status == 'Zur Abnahme' %}
               <div class="ticket-actions"><a class="button small primary" href="/planen/{{ p.id }}#abnehmen">Ansehen und abnehmen</a></div>
               {% endif %}

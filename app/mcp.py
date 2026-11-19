@@ -8,7 +8,7 @@ Die Werkzeuge rufen dieselben Funktionen auf wie die Weboberfläche (Jobs laufen
 """
 import base64, datetime, hashlib, io, json, os, re, secrets
 from PIL import Image
-from . import config, db, fertig, hub, ideen, jobs, leitlinien, marke, medien, radar, redaktion, storage
+from . import ai, config, db, fertig, lizenz, hub, ideen, jobs, leitlinien, marke, medien, radar, redaktion, storage
 
 PROTOKOLL = "2025-06-18"
 VERSION = "1.1"
@@ -75,6 +75,8 @@ def _text(obj):
 
 
 def _bild(im, w=560):
+    if lizenz.ist(im):   # Lizenzbilder gehen auch nicht an Claude Desktop
+        return _text("[Lizenzbild: wird nicht übertragen. Die Person sieht es in heykajo Studio.]")
     im = im.copy(); im.thumbnail((w, w * 2))
     buf = io.BytesIO(); im.convert("RGB").save(buf, "JPEG", quality=82)
     return {"type": "image", "data": base64.b64encode(buf.getvalue()).decode(), "mimeType": "image/jpeg"}
@@ -169,7 +171,9 @@ def post_lesen(b, a):
     if p["format"] == "Newsletter":
         return [_text(dict(_kurz(p), newsletter=inhalt.get("newsletter"), vorher_pruefen=p["vorher_pruefen"]))]
     out = [_text(d)]
-    if a.get("bilder", True) and (p["video"] or p["rendered_at"]):
+    if a.get("bilder", True) and (p["video"] or p["rendered_at"]) and ai.lizenzschutz(b):
+        out.append(_text("Bilder werden nicht übertragen: Für diese Marke ist der Lizenzschutz an. Die Person sieht die Slides in heykajo Studio."))
+    elif a.get("bilder", True) and (p["video"] or p["rendered_at"]):
         bilder = fertig.bilder_des_posts(b["id"], p)
         out += [_bild(im) for im in bilder[:10]]
         if p["video"]:
@@ -279,7 +283,9 @@ def medien_lesen(b, a):
     art = a.get("art") if a.get("art") in medien.ARTEN else None
     rows = medien.liste(b["id"], art)[: max(1, min(int(a.get("anzahl") or 20), 40))]
     out = [_text([{"medien_id": m["id"], "art": m["art"], "titel": m["titel"], "inhalt": m["inhalt"]} for m in rows])]
-    if a.get("bilder"):
+    if a.get("bilder") and ai.lizenzschutz(b):
+        out.append(_text("Bilder werden nicht übertragen: Für diese Marke ist der Lizenzschutz an. Nutze Titel und Beschreibung."))
+    elif a.get("bilder"):
         for m in rows[:12]:
             try:
                 out += [_text(f"medien_id {m['id']}: {m['titel']}"), _bild(medien.bild_von(b["id"], m), 360)]

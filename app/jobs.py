@@ -2,7 +2,7 @@
 import json, os, traceback
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
-from . import ai, config, db, marke, storage
+from . import ai, config, db, lizenz, marke, storage
 from .engine import layouts, render
 
 _pool = ThreadPoolExecutor(max_workers=2)
@@ -79,7 +79,7 @@ def render_post(brand_id, post_id, design=None):
     storage.clear_post_renders(brand_id, post_id)
     d = storage.post_dir(brand_id, post_id)
     for i, im in enumerate(imgs, start=1):
-        im.save(os.path.join(d, f"slide-{i:02d}.png"))
+        lizenz.speichern(im, os.path.join(d, f"slide-{i:02d}.png"))
     if imgs:
         render.pdf(imgs, os.path.join(d, "linkedin.pdf"))
     db.run("UPDATE posts SET design=?, rendered_at=?, slide_count=?, updated=? WHERE id=?",
@@ -227,7 +227,7 @@ def _muster_speichern(d, imgs):
     for f in os.listdir(d):
         os.remove(os.path.join(d, f))
     for i, im in enumerate(imgs, start=1):
-        im.resize((540, 675), Image.LANCZOS).save(os.path.join(d, f"muster-{i:02d}.jpg"), quality=88)
+        lizenz.speichern(im.resize((540, 675), Image.LANCZOS), os.path.join(d, f"muster-{i:02d}.jpg"), quality=88)
 
 
 def musterseiten(brand_id):

@@ -18,6 +18,7 @@
 
   <div class="m-main">
     {% if laeuft %}<span data-poll="/jobs" hidden></span>{% endif %}
+    {% if auf.lizenzschutz %}<p class="mediathek-schutz">Lizenzschutz ist an: Diese Bilder gehen nicht an KI-Dienste. <a href="/einstellungen#lizenzschutz">Einstellung</a></p>{% endif %}
     {% if fehler and not laeuft %}<p class="error">Zuletzt fehlgeschlagen: {{ fehler }}</p>{% endif %}
 
     {% if ansicht == 'alle' %}
@@ -30,6 +31,7 @@
       <div class="drop-art">
         <label class="check small"><input type="radio" name="art" value="foto" {{ 'checked' if art != 'vorbild' }}> als Foto</label>
         <label class="check small"><input type="radio" name="art" value="vorbild" {{ 'checked' if art == 'vorbild' }}> als allgemeines Vorbild (Design &amp; Layout)</label>
+        <label class="check small lizenz-haken" title="Gekauft oder nur für Social Media lizenziert: geht nie an KI-Dienste"><input type="checkbox" name="lizenzbild" value="1" {{ 'checked' if auf.lizenz_standard }}> Lizenzbild (nicht an KI)</label>
       </div>
     </form>
 
@@ -39,33 +41,46 @@
       <button class="small">Suchen</button>{% if suche %}<a class="small" href="/mediathek{{ '?art=' ~ art if art }}">zurücksetzen</a>{% endif %}
     </form>
     {% if 'Beschreibt Bilder' in laeuft %}<p class="hinweis-leiste klein" data-arbeitet="Claude beschreibt deine Bilder">Claude sieht sich {{ 'noch ' ~ ohne_text ~ ' Bilder' if ohne_text else 'das Bild' }} an und schreibt dazu, was zu sehen ist. Daran erkennt es später die passenden Bilder für Posts, Reels und Storys.</p>
+    {% elif ohne_text and auf.lizenzschutz %}<p class="hinweis-leiste klein">{{ ohne_text }} Bild{{ 'er haben' if ohne_text != 1 else ' hat' }} noch keine Beschreibung. Wegen des Lizenzschutzes sieht Claude die Bilder nicht. Ein kurzer Titel oder eine Beschreibung von Hand hilft kajo, das passende Bild zu wählen.</p>
     {% elif ohne_text and not ki_text %}<p class="hinweis-leiste klein warn">{{ ohne_text }} Bilder haben noch keine Beschreibung. Zum automatischen Beschreiben braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY); von Hand geht es an jedem Bild.</p>{% endif %}
 
     <div class="media-grid">
       {% if 'Erzeugt Bild' in laeuft and not art %}<figure class="medium platzhalter" data-arbeitet="Bild wird erzeugt"><div class="leer"></div></figure>{% endif %}
       {% for m in medien %}
-      <figure class="medium {{ m.art }}">
-        <a href="/media/{{ m.datei }}" target="_blank"><img src="/media/{{ m.datei }}" alt="{{ m.titel }}" loading="lazy"></a>
-        <figcaption>
-          <span class="badge">{{ arten[m.art] }}</span>
-          <span class="small grow ellipsis" title="{{ m.beschreibung or m.titel }}">{{ m.titel }}</span>
-        </figcaption>
-        {% if m.art in beschreibbar %}
-        <details class="medium-inhalt">
-          <summary class="small {{ 'muted' if not m.inhalt }}" title="Beschreibung ansehen oder ändern">{{ m.inhalt or ('wird gerade beschrieben …' if 'Beschreibt Bilder' in laeuft else 'noch ohne Beschreibung') }}</summary>
-          <form method="post" action="/mediathek/{{ m.id }}/inhalt" class="stack">
-            <input type="hidden" name="zurueck" value="/mediathek{{ '?art=' ~ art if art }}">
-            <label class="small">Titel <input name="titel" value="{{ m.titel }}" maxlength="200"></label>
-            <label class="small">Was ist zu sehen? <textarea name="inhalt" rows="4" maxlength="400" placeholder="z. B. Philipp am Küchentisch mit Notizbuch, Seitenlicht vom Fenster, schwarzweiß, oben ruhige Wand">{{ m.inhalt }}</textarea></label>
-            <div class="row"><button class="small">Speichern</button>{% if ki_text %}<button class="small link" name="neu" value="1">von Claude neu beschreiben</button>{% endif %}</div>
-          </form>
-        </details>
-        {% endif %}
-        <div class="medium-actions">
-          <a class="link small" href="/media/{{ m.datei }}" download>laden</a>
-          {% if m.art in ('foto', 'generiert') %}<form method="post" action="/mediathek/{{ m.id }}/referenzfoto"><button class="link small">als Referenzfoto</button></form>{% endif %}
-          <form method="post" action="/mediathek/{{ m.id }}/loeschen" onsubmit="return confirm('Bild löschen?')"><input type="hidden" name="zurueck" value="/mediathek{{ '?art=' ~ art if art }}"><button class="link danger small">löschen</button></form>
-        </div>
+      <figure class="medium {{ m.art }} {{ 'lizenzbild' if m.lizenz }}">
+        <button type="button" class="medium-bild" data-medium-auf="medium-{{ m.id }}" aria-haspopup="dialog" title="{{ m.titel }}">
+          <img src="/media/{{ m.datei }}" alt="{{ m.inhalt or m.titel }}" loading="lazy">
+          {% if m.lizenz %}<span class="lizenz-marke">Lizenzbild</span>{% endif %}
+          {% if m.art in beschreibbar and not m.inhalt and not m.lizenz %}<span class="medium-hinweis" title="noch ohne Beschreibung"></span>{% endif %}
+        </button>
+        <dialog class="medium-dialog" id="medium-{{ m.id }}" aria-label="Bild „{{ m.titel }}“">
+          <div class="md-bild"><img src="/media/{{ m.datei }}" alt="" loading="lazy"></div>
+          <div class="md-seite">
+            <div class="md-kopf"><span class="badge">{{ arten[m.art] }}</span>{% if m.lizenz %}<span class="lizenz-marke statisch">Lizenzbild</span>{% endif %}<span class="grow"></span>
+              <button type="button" class="quadrat small" data-dialog-zu aria-label="Schließen">×</button></div>
+            <form method="post" action="/mediathek/{{ m.id }}/inhalt" class="stack md-form">
+              <input type="hidden" name="zurueck" value="/mediathek{{ '?art=' ~ art if art }}">
+              <label class="small">Titel <input name="titel" value="{{ m.titel }}" maxlength="200"></label>
+              {% if m.art in beschreibbar %}
+              <label class="small">Alttext · was ist zu sehen? <textarea name="inhalt" rows="4" maxlength="400" placeholder="z. B. Philipp am Küchentisch mit Notizbuch, Seitenlicht vom Fenster, schwarzweiß">{{ m.inhalt }}</textarea></label>
+              <span class="hint">{% if m.lizenz or auf.lizenzschutz %}Lizenzbilder beschreibt Claude nicht. Ein guter Alttext hilft kajo, das Bild passend einzusetzen.{% elif not m.inhalt and 'Beschreibt Bilder' in laeuft %}Claude beschreibt das Bild gerade …{% else %}Hilft kajo, das Bild passend einzusetzen, und dient als Alttext.{% endif %}</span>
+              {% endif %}
+              <div class="row"><button class="small">Speichern</button>{% if m.art in beschreibbar and ki_text and not m.lizenz and not auf.lizenzschutz %}<button class="small link" name="neu" value="1">von Claude neu beschreiben</button>{% endif %}</div>
+            </form>
+            {% if m.datei.endswith(('.jpg', '.jpeg', '.png')) %}
+            <form method="post" action="/mediathek/{{ m.id }}/lizenz" class="md-lizenz">
+              <label class="schalter"><input type="checkbox" name="an" value="1" {{ 'checked' if m.lizenz }} onchange="this.form.requestSubmit()">
+                <span><strong>Lizenzbild</strong><span class="small muted">Gekauft oder nur für Social Media lizenziert: geht nie an KI-Dienste.</span></span></label>
+            </form>
+            {% endif %}
+            <div class="md-aktionen">
+              <a class="button small" href="/media/{{ m.datei }}" download>Herunterladen</a>
+              {% if m.art in ('foto', 'generiert') %}<form method="post" action="/mediathek/{{ m.id }}/referenzfoto"><button class="small">Als Referenzfoto</button></form>{% endif %}
+              <span class="grow"></span>
+              <form method="post" action="/mediathek/{{ m.id }}/loeschen" onsubmit="return confirm('Bild löschen?')"><input type="hidden" name="zurueck" value="/mediathek{{ '?art=' ~ art if art }}"><button class="small link danger">Löschen</button></form>
+            </div>
+          </div>
+        </dialog>
       </figure>
       {% else %}
       <p class="muted">{% if suche %}Kein Bild passt zu „{{ suche }}“.{% else %}Noch keine Bilder{{ ' in dieser Kategorie' if art }}.{% endif %}</p>

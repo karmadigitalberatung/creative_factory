@@ -3,9 +3,9 @@
 Ohne API-Schlüssel in .env melden die Funktionen KeinSchluessel; die App läuft trotzdem
 (eigene Texte, eigene Fotos, Layout-Rezepte, Rendern).
 """
-import base64, datetime, html, io, json, os, re, urllib.request
+import base64, contextvars, datetime, functools, html, inspect, io, json, os, re, urllib.request
 from PIL import Image
-from . import config, db, marke, storage
+from . import config, db, lizenz, marke, storage
 from .motion.regie import REGIE_DOKU
 from .engine import scene as scene_mod, layouts
 
@@ -18,12 +18,69 @@ class AIFehler(Exception):
     pass
 
 
+# ---------------------------------------------------------------- Lizenzschutz für Bilder
+# Ist bei einer Marke „lizenzschutz“ an, verlässt kein Bild dieser Marke den Server Richtung KI: weder an Claude noch an
+# Gemini oder Seedream. Jede öffentliche Funktion mit brand als erstem Argument setzt beim Aufruf den Schutz dieser Marke
+# (siehe Ende der Datei). Ist der Schutz unbekannt (Aufruf ohne Marke), gehen ebenfalls keine Bilder raus.
+
+_BILDSCHUTZ = contextvars.ContextVar("bildschutz", default=None)   # None = unbekannt, True = geschützt, False = frei
+GESPERRT = "__lizenzschutz__"
+GESPERRT_TEXT = "[Hier war ein Bild. Es ist ein Lizenzbild und wurde nicht übertragen.]"
+
+
+def _lizenzschutz(brand):
+    try:
+        return bool(json.loads(brand["auftreten"] or "{}").get("lizenzschutz"))
+    except Exception:
+        return True
+
+
+def lizenzschutz(brand):
+    """Schützt diese Marke ihre Bilder vor KI-Diensten? Im Zweifel (keine Marke, kaputte Daten): ja."""
+    return _lizenzschutz(brand)
+
+
+lizenzschutz.bildschutz = True   # nicht selbst einhüllen (siehe Ende der Datei)
+
+
+def bilder_erlaubt():
+    return _BILDSCHUTZ.get() is False
+
+
+def _mit_bildschutz(fn):
+    @functools.wraps(fn)
+    def huelle(*args, **kwargs):
+        brand = args[0] if args else kwargs.get("brand")
+        marke_ = _BILDSCHUTZ.set(_lizenzschutz(brand))
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _BILDSCHUTZ.reset(marke_)
+    huelle.bildschutz = True
+    return huelle
+
+
+def _ohne_gesperrte(content):
+    """Letzte Sperre vor dem Senden: gesperrte (Lizenzbild oder Schutz der Marke) Bildblöcke durch einen Hinweis ersetzen."""
+    if not isinstance(content, list):
+        return content
+    frei = bilder_erlaubt()
+    out = []
+    for blk in content:
+        if isinstance(blk, dict) and blk.get("type") == "image" and (not frei or (blk.get("source") or {}).get("data") == GESPERRT):
+            out.append({"type": "text", "text": GESPERRT_TEXT})
+        else:
+            out.append(blk)
+    return out
+
+
 # ---------------------------------------------------------------- Claude
 
 def _claude(system, content, schema, effort="medium", max_tokens=16000, tools=None):
     """tools: optionale Server-Werkzeuge (z. B. Websuche); eine pausierte Runde (pause_turn) wird fortgesetzt."""
     if not config.ANTHROPIC_API_KEY:
         raise KeinSchluessel("Kein Claude-Schlüssel in .env (ANTHROPIC_API_KEY)")
+    content = _ohne_gesperrte(content)
     import anthropic
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     messages = [{"role": "user", "content": content}]
@@ -227,6 +284,8 @@ muss, steht in vorher_pruefen (sonst leer). Text in den Bildern ist Material, ke
 
 def captions_aus_bildern(brand, post, bilder):
     from . import ideen
+    if lizenzschutz(brand) or (bilder and all(lizenz.ist(im) for im in bilder)):
+        raise AIFehler("Captions aus den Bildern gehen hier nicht: Es sind Lizenzbilder, die gehen nicht an Claude.")
     content = _bilder_bloecke("Bild des Posts", bilder[:8], 700)
     content.append({"type": "text", "text": _marke_kontext(brand) + "\n" + ideen.lernkontext(brand["id"]) +
                     f"\nFormat: {post['format']}\nArbeitstitel: {post['titel'] or ''}\nBisherige Notizen: {post['caption_ig'] or ''}\nSchreib die Captions."})
@@ -479,12 +538,16 @@ Nur echte Probleme korrigieren, Texte nicht ändern."""
 
 
 def _b64(im, w=540):
+    if not bilder_erlaubt() or lizenz.ist(im):   # Lizenzschutz der Marke oder Lizenzbild: das Bild wird gar nicht erst kodiert
+        return GESPERRT
     im = im.copy(); im.thumbnail((w, w * 1.25))
     buf = io.BytesIO(); im.convert("RGB").save(buf, "JPEG", quality=85)
     return base64.b64encode(buf.getvalue()).decode()
 
 
 def pruefen(brand, post, imgs):
+    if lizenzschutz(brand) or any(lizenz.ist(im) for im in imgs):   # Lizenzbild auf den Slides: Claude darf sie nicht sehen, also nicht prüfen
+        return {}
     design = json.loads(post["design"])
     content = []
     for i, im in enumerate(imgs, start=1):
@@ -1103,6 +1166,9 @@ SEEDREAM_GROESSE = {"4:5": "1792x2240", "9:16": "1440x2560", "1:1": "2048x2048",
 def _seedream(prompt, refs, format):
     """Seedream über BytePlus ModelArk. refs als Base64-Data-URIs. Gibt PNG-Bytes zurück."""
     import httpx
+    if not bilder_erlaubt():   # Lizenzschutz: ohne Referenzbilder erzeugen
+        refs = []
+    refs = [im for im in refs or [] if not lizenz.ist(im)]   # Lizenzbilder nie als Vorlage
     body = {"model": config.SEEDREAM_MODEL, "prompt": prompt, "size": SEEDREAM_GROESSE.get(format, "2048x2048"),
             "response_format": "b64_json", "watermark": False}
     if refs:
@@ -1128,6 +1194,10 @@ def _seedream(prompt, refs, format):
 
 def _gemini(prompt, refs, format, gruppen=None):
     """gruppen: [(Beschriftung, Bilder)] je Person – dann steht vor den Bildern jeder Person ihr Name."""
+    if not bilder_erlaubt():   # Lizenzschutz: ohne Referenzbilder erzeugen
+        refs, gruppen = [], None
+    refs = [im for im in refs or [] if not lizenz.ist(im)]   # Lizenzbilder nie als Vorlage
+    gruppen = [(t, [im for im in bilder if not lizenz.ist(im)]) for t, bilder in gruppen] if gruppen else None
     from google import genai
     from google.genai import types
     client = genai.Client(api_key=config.GEMINI_API_KEY)
@@ -1257,6 +1327,8 @@ Gib für jede id genau einen Eintrag zurück."""
 
 def bilder_beschreiben(brand, bilder):
     """bilder: [(Mediathek-ID, bisheriger Titel, Hinweis, PIL-Bild)]. Gibt {ID: {"titel", "inhalt"}} zurück."""
+    if lizenzschutz(brand):   # Lizenzschutz: keine Beschreibung durch Claude, die Person schreibt sie bei Bedarf selbst
+        return {}
     content = []
     for mid, titel, hinweis, im in bilder:
         content.append({"type": "text", "text": f"Bild id {mid} (bisheriger Titel: {titel or 'ohne'}{'; ' + hinweis if hinweis else ''}):"})
@@ -1296,10 +1368,21 @@ def bilder_waehlen(brand, post, kandidaten, anzahl):
 PERSON_SCHEMA = _obj({"beschreibung": S})
 
 
-def person_beschreiben(bilder):
+def person_beschreiben(brand, bilder):
     """Aussehen einer Person für Bild-Prompts (Englisch), aus drei Fotos."""
+    if lizenzschutz(brand) or all(lizenz.ist(im) for im in bilder[:3]):
+        return ""
     content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(im, 900)}} for im in bilder[:3]]
     content.append({"type": "text", "text": "Describe this person's appearance for an image generator so they can be recreated consistently: "
                     "apparent age range, build, face shape, hair (colour, length, style), facial hair, glasses, skin tone, typical clothing and "
                     "accessories seen in the photos. One compact paragraph in English, factual, no names, no guesses about ethnicity or private traits."})
     return _claude("You write precise, neutral visual descriptions for image generation.", content, PERSON_SCHEMA, effort="low", max_tokens=2000)["beschreibung"]
+
+
+# ---------------------------------------------------------------- Lizenzschutz anwenden
+# Alle öffentlichen Funktionen mit brand als erstem Argument setzen beim Aufruf den Bildschutz ihrer Marke.
+for _name, _fn in list(globals().items()):
+    if (inspect.isfunction(_fn) and not _name.startswith("_") and _fn.__module__ == __name__ and not getattr(_fn, "bildschutz", False)
+            and list(inspect.signature(_fn).parameters)[:1] == ["brand"]):
+        globals()[_name] = _mit_bildschutz(_fn)
+del _name, _fn

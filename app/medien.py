@@ -13,15 +13,16 @@ import io, json, os, uuid
 
 from PIL import Image, ImageOps
 
-from . import ai, config, db, marke, storage
+from . import ai, config, db, lizenz, marke, storage
 
 ARTEN = {"foto": "Foto", "generiert": "Erzeugt", "person": "Person", "sheet": "Referenz-Sheet", "vorbild": "Vorbild"}
 FORMATE = {"4:5": "Hochformat 4:5", "9:16": "Story 9:16", "1:1": "Quadrat 1:1", "16:9": "Querformat 16:9"}
 MAX_SEITE = 2400
 
 
-def speichern(brand_id, raw, art, titel="", beschreibung="", person_id=None):
-    """Bild prüfen, verkleinern, speichern und in die Mediathek eintragen. Gibt die neue Zeile zurück."""
+def speichern(brand_id, raw, art, titel="", beschreibung="", person_id=None, lizenzbild=False):
+    """Bild prüfen, verkleinern, speichern und in die Mediathek eintragen. Gibt die neue Zeile zurück.
+    lizenzbild: gekauftes/lizenziertes Bild, geht nie an KI-Dienste (Markierung steckt in der Datei, siehe lizenz.py)."""
     if len(raw) > storage.MAX_BYTES:
         raise ValueError("Bild ist größer als 25 MB")
     try:
@@ -34,12 +35,10 @@ def speichern(brand_id, raw, art, titel="", beschreibung="", person_id=None):
     alpha = im.mode in ("RGBA", "LA", "P") and im.convert("RGBA").getextrema()[3][0] < 255
     rel = os.path.join("medien", f"{uuid.uuid4().hex[:12]}.{'png' if alpha else 'jpg'}")
     pfad = storage.brand_dir(brand_id, rel)
-    if alpha:
-        im.convert("RGBA").save(pfad)
-    else:
-        im.convert("RGB").save(pfad, quality=90)
-    mid = db.run("INSERT INTO medien (brand_id, datei, art, titel, beschreibung, person_id, breite, hoehe, created) VALUES (?,?,?,?,?,?,?,?,?)",
-                 brand_id, rel, art, titel[:200], beschreibung[:2000], person_id, im.width, im.height, db.now())
+    im = lizenz.markieren(im.convert("RGBA" if alpha else "RGB"), bool(lizenzbild))
+    lizenz.speichern(im, pfad, **({} if alpha else {"quality": 90}))
+    mid = db.run("INSERT INTO medien (brand_id, datei, art, titel, beschreibung, person_id, breite, hoehe, lizenz, created) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                 brand_id, rel, art, titel[:200], beschreibung[:2000], person_id, im.width, im.height, 1 if lizenzbild else 0, db.now())
     if art in ("foto", "person"):   # hochgeladen: Claude beschreibt im Hintergrund, was zu sehen ist (erzeugte Bilder beschreibt ihr eigener Ablauf)
         try:
             beschreiben_starten(brand_id)
@@ -57,7 +56,7 @@ def kurz(m):
 
 
 def ohne_beschreibung(brand_id):
-    return db.one(f"SELECT COUNT(*) n FROM medien WHERE brand_id=? AND inhalt='' AND art IN ({','.join('?' * len(BESCHREIBBAR))})",
+    return db.one(f"SELECT COUNT(*) n FROM medien WHERE brand_id=? AND inhalt='' AND lizenz=0 AND art IN ({','.join('?' * len(BESCHREIBBAR))})",
                   brand_id, *BESCHREIBBAR)["n"]
 
 
@@ -76,9 +75,9 @@ def beschreiben(brand_id, ids=None, neu=False):
     versucht, fertig, fehler = set(), 0, None
     while True:
         if ids is None:
-            rows = db.q(f"SELECT * FROM medien WHERE brand_id=? AND inhalt='' AND art IN ({marken}) ORDER BY id DESC", brand_id, *BESCHREIBBAR)
+            rows = db.q(f"SELECT * FROM medien WHERE brand_id=? AND inhalt='' AND lizenz=0 AND art IN ({marken}) ORDER BY id DESC", brand_id, *BESCHREIBBAR)
         else:
-            rows = [m for m in (db.one("SELECT * FROM medien WHERE id=? AND brand_id=?", i, brand_id) for i in ids) if m and (neu or not m["inhalt"])]
+            rows = [m for m in (db.one("SELECT * FROM medien WHERE id=? AND brand_id=?", i, brand_id) for i in ids) if m and (neu or not m["inhalt"]) and not m["lizenz"]]
         rows = [m for m in rows if m["id"] not in versucht][:6]
         if not rows:
             break
@@ -115,6 +114,8 @@ def beschreiben_starten(brand_id):
     from . import jobs
     if not config.ANTHROPIC_API_KEY or not ohne_beschreibung(brand_id):
         return False
+    if ai.lizenzschutz(db.one("SELECT auftreten FROM brands WHERE id=?", brand_id)):   # Lizenzschutz: Claude sieht die Bilder nicht
+        return False
     if any(j["kind"] == "bildtext" for j in jobs.running(brand_id)):
         return False
     jobs.start(brand_id, None, "bildtext", beschreiben, brand_id)
@@ -142,7 +143,26 @@ def liste(brand_id, art=None):
 
 
 def bild_von(brand_id, m):
-    return Image.open(storage.abs_path(brand_id, m["datei"]))
+    im = Image.open(storage.abs_path(brand_id, m["datei"]))
+    return lizenz.markieren(im, bool(m["lizenz"]))   # doppelt hält besser: auch ohne Markierung in der Datei
+
+
+def lizenz_setzen(brand_id, mid, an):
+    """Bild nachträglich als Lizenzbild markieren oder die Markierung entfernen (Datei und Datenbank).
+    Beim Markieren werden auch die Musterseiten markiert: sie könnten das Bild enthalten und gehen sonst als Stil-Vorbild an Claude."""
+    m = db.one("SELECT * FROM medien WHERE id=? AND brand_id=?", mid, brand_id)
+    if not m:
+        return False
+    lizenz.datei_setzen(storage.abs_path(brand_id, m["datei"]), bool(an))
+    db.run("UPDATE medien SET lizenz=? WHERE id=?", 1 if an else 0, mid)
+    if an:
+        d = storage.brand_dir(brand_id, "muster")
+        for f in (os.listdir(d) if os.path.isdir(d) else []):
+            try:
+                lizenz.datei_setzen(os.path.join(d, f), True)
+            except (OSError, ValueError):
+                pass
+    return True
 
 
 def loeschen(brand_id, mid):
@@ -315,7 +335,7 @@ def referenz_sheet(brand_id, person_id):
     bilder = [bild_von(brand_id, m).convert("RGB") for m in fotos]
     if config.ANTHROPIC_API_KEY:
         try:
-            db.run("UPDATE personen SET beschreibung=? WHERE id=?", ai.person_beschreiben(bilder), person_id)
+            db.run("UPDATE personen SET beschreibung=? WHERE id=?", ai.person_beschreiben(b, bilder), person_id)
         except Exception:
             pass
     raw, art, hinweis, gen = None, "fotos", "", ""

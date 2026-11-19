@@ -142,6 +142,7 @@
                 {% endif %}
                 <label>Fertiges Video <input type="file" name="dateien" accept="video/*" required form="fertigform"></label>
                 <label class="check small"><input type="checkbox" name="captions" value="1" form="fertigform" {{ 'checked' if ki_text and not p.caption_ig }}> Captions von Claude schreiben lassen</label>
+                <label class="check small" title="Gekauft oder nur für Social Media lizenziert: geht nie an KI-Dienste"><input type="checkbox" name="lizenzbild" value="1" form="fertigform" {{ 'checked' if auf.lizenz_standard }}> Enthält Lizenzbilder (nicht an KI)</label>
                 <button form="fertigform" class="small">{{ 'Anderes fertiges Video hochladen' if fertig else 'Fertiges Video hochladen' }}</button>
               </div>
             </details>
@@ -235,6 +236,7 @@
             <div class="stack" data-erwaehnen-wurzel>
               {% if p.photo %}<img class="thumb" src="/media/{{ p.photo }}" alt="Foto des Posts">{% elif b.ref_photo %}<img class="thumb faded" src="/media/{{ b.ref_photo }}" alt="Referenzfoto" title="Ohne eigenes Foto wird dein Referenzfoto genutzt">{% endif %}
               <div class="row"><input type="file" name="foto" accept="image/*" required form="fotoform"><button class="small" form="fotoform">Foto hochladen</button></div>
+              <label class="check small" title="Gekauft oder nur für Social Media lizenziert: geht nie an KI-Dienste"><input type="checkbox" name="lizenzbild" value="1" form="fotoform" {{ 'checked' if auf.lizenz_standard }}> Lizenzbild (nicht an KI)</label>
               <label>Foto mit KI erzeugen {% if not ki_bild %}<span class="hint">(kein Bildgenerator in .env)</span>{% endif %}
                 <textarea name="beschreibung" rows="2" form="fotokiform" data-erwaehnen placeholder="Szene, Licht, Hintergrund, Pose … Personen mit @Name">{{ p.bildidee }}</textarea></label>
               <ul class="erwaehnen-personen" hidden>{% for pp in personen %}<li data-name="{{ pp.name }}" data-bild="{{ '/media/' ~ (pp.sheet.datei if pp.sheet else (pp.fotos[0].datei if pp.fotos else '')) }}"></li>{% endfor %}</ul>
@@ -257,6 +259,7 @@
             <div class="stack">
               <label>Bilder in der Reihenfolge der Folien <input type="file" name="dateien" accept="image/*" multiple required form="fertigform"></label>
               <label class="check small"><input type="checkbox" name="captions" value="1" form="fertigform" {{ 'checked' if ki_text and not p.caption_ig }}> Captions von Claude schreiben lassen</label>
+              <label class="check small" title="Gekauft oder nur für Social Media lizenziert: geht nie an KI-Dienste"><input type="checkbox" name="lizenzbild" value="1" form="fertigform" {{ 'checked' if auf.lizenz_standard }}> Enthält Lizenzbilder (nicht an KI)</label>
               <button class="small" form="fertigform">Hochladen</button>
               <span class="hint">Ein Bild wird ein Einzelbild, mehrere ein Carousel. Die Folien werden so gepostet, ohne Gestaltung.</span>
             </div>
@@ -372,7 +375,7 @@
           {% if inputs %}
           <div class="pv-block">
             <div class="pv-block-kopf"><h3>Aufnahmen</h3></div>
-            {% for i in inputs %}<p class="small">{{ i.art }} · <strong>{{ i.status }}</strong>{% if i.datei %} · <a href="/media/{{ i.datei }}" target="_blank">ansehen</a>{% endif %} · <a href="/input">zu Input</a></p>{% endfor %}
+            {% for i in inputs %}<p class="small">{{ i.art }} · <strong>{{ i.status }}</strong>{% if i.datei %} · <a href="/media/{{ i.datei }}" target="_blank">ansehen</a>{% endif %} · <a href="/aufgaben#input">zu Input</a></p>{% endfor %}
           </div>
           {% endif %}
 
@@ -394,6 +397,6 @@
   </div>
 </template>
 <script>window.FELDER = {{ felder|tojson }}; window.POST_ID = {{ p.id }};
-window.BILDER = {{ bilder|tojson }}; window.POST_BILD = {{ {'datei': p.photo or b.ref_photo or '', 'idee': p.bildidee}|tojson }};
+window.LIZENZ_STANDARD = {{ (auf.lizenz_standard or false)|tojson }}; window.BILDER = {{ bilder|tojson }}; window.POST_BILD = {{ {'datei': p.photo or b.ref_photo or '', 'idee': p.bildidee}|tojson }};
 window.GENERATOREN = {{ generatoren|tojson }}; window.PLAN_KAL = {{ plan_kal|tojson }};</script>
 {% endblock %}

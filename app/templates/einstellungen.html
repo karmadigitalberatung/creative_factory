@@ -22,6 +22,27 @@
     {% endif %}
   </section>
 
+  <section class="card" id="lizenzschutz">
+    <div class="bereich-zeile"><h2>Bilder und KI</h2>{% if auf.lizenzschutz %}<span class="chip schutz-an">Alle Bilder geschützt</span>{% endif %}</div>
+    <p class="small muted">Fertige Posts entstehen auf unserem Server: Gestaltung, Zuschnitt und Export laufen dort ohne KI.
+      Für einige Schritte schickt heykajo Bilder an KI-Dienste, zum Beispiel für Bildbeschreibungen in der Mediathek, zur Prüfung fertiger Slides
+      oder als Vorlage beim Erzeugen neuer Fotos. <strong>Lizenzbilder</strong> (gekauft oder nur für Social Media lizenziert) gehen nie dorthin,
+      auch nicht als Teil einer fertigen Slide oder eines Reels. Sie gehen nur zu den Plattformen, auf denen du postest.
+      Markieren kannst du ein Bild beim Hochladen oder später in der Mediathek.</p>
+    <form method="post" action="/einstellungen/lizenzschutz" class="schutz-form">
+      <label class="schalter"><input type="checkbox" name="standard" value="1" {{ 'checked' if auf.lizenz_standard }} onchange="this.form.requestSubmit()">
+        <span><strong>Neue Bilder vorab als Lizenzbild markieren</strong><span class="small muted">Beim Hochladen ist das Häkchen „Lizenzbild“ schon gesetzt. Du kannst es je Upload abwählen.</span></span></label>
+      <label class="schalter"><input type="checkbox" name="an" value="1" {{ 'checked' if auf.lizenzschutz }} onchange="this.form.requestSubmit()">
+        <span><strong>Alle Bilder dieser Marke schützen</strong><span class="small muted">Kein einziges Bild geht an Claude, Gemini oder Seedream, auch Website-Screenshots und Beispielbilder nicht.</span></span></label>
+      <noscript><button class="small">Speichern</button></noscript>
+    </form>
+    <ul class="small muted schutz-folgen">
+      <li>Lizenzbilder bekommen keine automatische Beschreibung. Ein kurzer Titel hilft kajo, das passende Bild zu wählen.</li>
+      <li>Slides mit Lizenzbild werden nicht automatisch von Claude geprüft, und Lizenzbilder dienen nie als Vorlage für neue KI-Fotos.</li>
+      <li>Texte, Ideen, Captions und Layouts schreibt kajo weiter mit Claude, nur ohne diese Bilder zu sehen.</li>
+    </ul>
+  </section>
+
   <section class="card" id="claude">
     <div class="bereich-zeile"><h2>Claude</h2><span class="small muted">Verbindung für {{ auf.label or auf.name or 'diesen Account' }}</span></div>
     <p class="small muted">Damit planst du direkt mit Claude: Plan lesen, Posts anlegen und ändern, Slides und Reels gestalten lassen, Ideen und Trends,

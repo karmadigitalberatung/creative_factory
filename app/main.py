@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, auswertung, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
+from . import ai, auswertung, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, lizenz, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI(title="heykajo Studio")
@@ -328,6 +328,21 @@ def einstellungen(request: Request):
                 mcp_prompt=prompt, mcp_konfig=konfig, mcp_slug=slug)
 
 
+@app.post("/einstellungen/lizenzschutz")
+def lizenzschutz_setzen(request: Request, an: str = Form(""), standard: str = Form("")):
+    """Bilder und KI: standard = neue Uploads sind vorab als Lizenzbild angehakt; an = gar kein Bild der Marke an KI-Dienste."""
+    b = brand_of(request, onboarding_ok=True)
+    a = json.loads(b["auftreten"])
+    vorher = (bool(a.get("lizenzschutz")), bool(a.get("lizenz_standard")))
+    a["lizenzschutz"], a["lizenz_standard"] = bool(an), bool(standard)
+    db.run("UPDATE brands SET auftreten=? WHERE id=?", json.dumps(a, ensure_ascii=False), b["id"])
+    if vorher[0] != bool(an):
+        flash(request, "Alle Bilder dieser Marke sind jetzt geschützt: Keines geht an KI-Dienste." if an else "Der Schutz für alle Bilder ist aus. Einzelne Lizenzbilder bleiben geschützt.")
+    else:
+        flash(request, "Neue Bilder sind beim Hochladen jetzt als Lizenzbild angehakt." if standard else "Neue Bilder sind beim Hochladen nicht mehr vorab als Lizenzbild angehakt.")
+    return go("/einstellungen#lizenzschutz")
+
+
 @app.post("/einstellungen/passwort")
 def passwort_aendern(request: Request, alt: str = Form(...), neu: str = Form(...)):
     brand_of(request, onboarding_ok=True)
@@ -581,7 +596,7 @@ def _hinweis(b, zahlen, abnahme):
         return {"text": f"{n} Post{'s warten' if n > 1 else ' wartet'} auf deine Abnahme.{bis}", "link": f"/planen/{abnahme['id']}", "aktion": "Jetzt ansehen"}
     if zahlen["Wartet auf Input"]:
         n = zahlen["Wartet auf Input"]
-        return {"text": f"{n} Aufnahme{'n' if n > 1 else ''} von dir {'fehlen' if n > 1 else 'fehlt'} noch.{bis}", "link": "/input", "aktion": "Zum Input"}
+        return {"text": f"{n} Aufnahme{'n' if n > 1 else ''} von dir {'fehlen' if n > 1 else 'fehlt'} noch.{bis}", "link": "/aufgaben#input", "aktion": "Zum Input"}
     if zahlen["Idee"]:
         n = zahlen["Idee"]
         return {"text": f"{n} Entw{'ürfe warten' if n > 1 else 'urf wartet'} auf deine Freigabe.{bis}", "link": "/planen", "aktion": "Entwürfe ansehen"}
@@ -596,7 +611,7 @@ def _hinweis(b, zahlen, abnahme):
 AUFGABEN = [
     ("abnahme", "Freigeben", "Fertig gestaltet. Schau drüber und gib frei, oder sag kajo, was anders soll.", "Ansehen und freigeben"),
     ("entwurf", "Entwürfe bestätigen", "Der Text steht. Die Visuals entstehen erst, wenn du den Entwurf freigibst.", "Entwurf ansehen"),
-    ("input", "Input fehlt", "kajo braucht etwas von dir, zum Beispiel eine Aufnahme oder ein Foto.", "Input liefern"),
+    ("input", "Input fehlt", "kajo braucht etwas von dir, zum Beispiel eine Aufnahme oder ein Foto. Skript und Anleitung stehen jeweils dabei.", "Input liefern"),
     ("termin", "Termin fehlt", "Diese Posts haben noch keinen Tag oder ihr Termin ist schon vorbei.", "Termin wählen"),
 ]
 
@@ -604,8 +619,10 @@ AUFGABEN = [
 def _zu_erledigen(b, laufende=None):
     """Alle Posts, die die Person gerade braucht, je einmal in der dringendsten Gruppe; dazu, woran kajo noch arbeitet."""
     heute = datetime.date.today()
-    offen = {r["post_id"]: r["id"] for r in db.q("SELECT id, post_id FROM inputs WHERE brand_id=? AND status='offen' AND post_id IS NOT NULL", b["id"])}
+    inputs = db.q("SELECT * FROM inputs WHERE brand_id=? AND status='offen' ORDER BY faellig='', faellig, id", b["id"])
+    offen = {r["post_id"]: r["id"] for r in inputs if r["post_id"]}
     gruppen = {k: [] for k, *_ in AUFGABEN}
+    posts_nach_id = {}
     arbeit = geplant = 0
     for r in db.q("SELECT * FROM posts WHERE brand_id=? AND status!='Gepostet' ORDER BY datum='', datum, uhrzeit, id", b["id"]):
         v = post_view(r, laufende)
@@ -615,11 +632,14 @@ def _zu_erledigen(b, laufende=None):
         v["bald"] = bool(d and 0 <= (d - heute).days <= 2)
         v["bald_text"] = {0: "heute", 1: "morgen", 2: "übermorgen"}.get((d - heute).days, "") if d else ""
         v["input_id"] = offen.get(r["id"])
+        posts_nach_id[r["id"]] = v
+        if v["input_id"]:   # offener Input: steht unten als eigener Eintrag mit Skript und Upload
+            continue
         if r["status"] == "Zur Abnahme":
             k = "abnahme"
         elif r["status"] == "Idee":
             k = "entwurf"
-        elif r["status"] == "Wartet auf Input" or v["input_id"]:
+        elif r["status"] == "Wartet auf Input":
             k = "input"
         elif not d or v["vorbei"]:
             k = "termin"
@@ -631,6 +651,15 @@ def _zu_erledigen(b, laufende=None):
                 arbeit += 1
         if k:
             gruppen[k].append(v)
+    for i in inputs:   # jeder offene Input ein Eintrag, mit Post (Vorschau, Termin) oder ohne
+        v = dict(posts_nach_id.get(i["post_id"]) or {"id": None, "kurz": i["titel"], "format": i["art"], "thumb": None, "tag": "", "uhrzeit": "",
+                                                       "vorbei": False, "bald": False, "bald_text": "", "laeuft": None, "datum": ""})
+        v["input"] = dict(i)
+        if i["faellig"] and not v.get("tag"):
+            d = datetime.date.fromisoformat(i["faellig"])
+            v.update(tag=f"{WOCHENTAGE[d.weekday()][:2]} {d.day}.{d.month}.", bald=0 <= (d - heute).days <= 2,
+                     bald_text={0: "heute", 1: "morgen", 2: "übermorgen"}.get((d - heute).days, ""), vorbei=d < heute)
+        gruppen["input"].append(v)
     liste = [{"key": k, "titel": t, "text": x, "aktion": a, "posts": gruppen[k]} for k, t, x, a in AUFGABEN]
     return {"gruppen": liste, "anzahl": sum(len(g["posts"]) for g in liste), "arbeit": arbeit, "geplant": geplant}
 
@@ -714,7 +743,7 @@ def _offen(brand_id):
         rows = db.q("SELECT * FROM posts WHERE brand_id=? AND status=? ORDER BY datum='', datum, uhrzeit, id", brand_id, status)
         if rows:
             link = (f"/planen/{rows[0]['id']}" if len(rows) == 1 else
-                    "/input" if status == "Wartet auf Input" else f"/planen?ansicht=tabelle&status={urllib.parse.quote(status)}")
+                    "/aufgaben#input" if status == "Wartet auf Input" else f"/planen?ansicht=tabelle&status={urllib.parse.quote(status)}")
             ansichten = [post_view(r, []) for r in rows[:3]]
             erster = rows[0]
             wann = ""
@@ -1017,7 +1046,7 @@ def post_edit(request: Request, pid: int):
                "titel": sc.get("titel", ""), "begruendung": sc.get("begruendung", ""),
                "einblendungen": sorted(f for f in os.listdir(storage.post_dir(b["id"], pid)) if f.startswith("einblendung-"))}
     medien_auswahl = [m for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert", "person")][:24]
-    bilder = [{"id": m["id"], "datei": m["datei"], "titel": m["titel"], "beschreibung": m["beschreibung"]}
+    bilder = [{"id": m["id"], "datei": m["datei"], "titel": m["titel"], "beschreibung": m["beschreibung"], "lizenz": bool(m["lizenz"])}
               for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert", "person")][:60]
     return page(request, "post.html", b=b, p=p, slides=slides, inhalt=inhalt, chat=chat, inputs=inp, cut=cut,
                 medien_auswahl=medien_auswahl, bilder=bilder, mit_foto=layout_editor.mit_foto(p), personen=medien.personen(b["id"]),
@@ -1126,11 +1155,11 @@ async def post_save(request: Request, pid: int):
 
 
 @app.post("/planen/{pid}/foto")
-async def post_photo(request: Request, pid: int, foto: UploadFile = File(...)):
+async def post_photo(request: Request, pid: int, foto: UploadFile = File(...), lizenzbild: str = Form("")):
     b = brand_of(request)
     p = post_of(b, pid)
     try:
-        rel = medien.speichern(b["id"], await foto.read(), "foto", f"Foto zu „{p['titel']}“")["datei"]
+        rel = medien.speichern(b["id"], await foto.read(), "foto", f"Foto zu „{p['titel']}“", lizenzbild=bool(lizenzbild))["datei"]
     except ValueError as e:
         flash(request, str(e))
         return go(f"/planen/{pid}")
@@ -1175,15 +1204,15 @@ def post_photo_library(request: Request, pid: int, medien_id: int = Form(...)):
 # ---------------------------------------------------------------- Bild einer einzelnen Slide tauschen (im Layout-Editor)
 
 def _bild_json(m):
-    return {"id": m["id"], "datei": m["datei"], "titel": m["titel"], "beschreibung": m["beschreibung"]}
+    return {"id": m["id"], "datei": m["datei"], "titel": m["titel"], "beschreibung": m["beschreibung"], "lizenz": bool(m["lizenz"])}
 
 
 @app.post("/planen/{pid}/bild/upload")
-async def bild_upload(request: Request, pid: int, datei: UploadFile = File(...)):
+async def bild_upload(request: Request, pid: int, datei: UploadFile = File(...), lizenzbild: str = Form("")):
     b = brand_of(request)
     p = post_of(b, pid)
     try:
-        return JSONResponse(_bild_json(medien.speichern(b["id"], await datei.read(), "foto", f"Foto zu „{p['titel']}“")))
+        return JSONResponse(_bild_json(medien.speichern(b["id"], await datei.read(), "foto", f"Foto zu „{p['titel']}“", lizenzbild=bool(lizenzbild))))
     except ValueError as e:
         return JSONResponse({"fehler": str(e)}, status_code=400)
 
@@ -1437,7 +1466,7 @@ async def post_reihenfolge(request: Request, pid: int):
         with Image.open(os.path.join(d, f"slide-{i:02d}.png")) as im:
             bilder.append(im.convert("RGB"))
     for i, im in enumerate(bilder, start=1):
-        im.save(os.path.join(d, f"slide-{i:02d}.png"))
+        lizenz.speichern(im, os.path.join(d, f"slide-{i:02d}.png"))
     jobs.render.pdf(bilder, os.path.join(d, "linkedin.pdf"))
     db.run("UPDATE posts SET inhalt=?, design=?, rendered_at=?, updated=? WHERE id=?",
            json.dumps(inhalt, ensure_ascii=False), json.dumps(design, ensure_ascii=False), db.now(), db.now(), pid)
@@ -1483,6 +1512,11 @@ def jobs_status(request: Request):
 
 @app.get("/input", response_class=HTMLResponse)
 def input_page(request: Request):
+    """Früher eigene Seite; offene Inputs stehen jetzt in „Zu erledigen“."""
+    return go("/aufgaben#input")
+
+
+def _input_alt(request: Request):
     b = brand_of(request)
     offen = db.q("SELECT i.*, p.titel ptitel, p.datum pdatum FROM inputs i LEFT JOIN posts p ON p.id=i.post_id "
                  "WHERE i.brand_id=? AND i.status='offen' ORDER BY i.faellig='', i.faellig, i.id", b["id"])
@@ -1500,7 +1534,7 @@ async def input_upload(request: Request, iid: int, datei: UploadFile = File(...)
     ext = os.path.splitext(datei.filename or "")[1].lower()
     if ext not in MEDIA_EXT:
         flash(request, "Bitte ein Video (MP4, MOV), eine Tonaufnahme oder ein Foto hochladen.")
-        return go("/input")
+        return go("/aufgaben#input")
     rel = os.path.join("inputs", f"input-{iid}-{int(db.now())}{ext}")
     path = storage.brand_dir(b["id"], rel)
     size = 0
@@ -1513,7 +1547,7 @@ async def input_upload(request: Request, iid: int, datei: UploadFile = File(...)
             if size > MAX_MEDIA:
                 f.close(); os.remove(path)
                 flash(request, "Datei ist größer als 500 MB.")
-                return go("/input")
+                return go("/aufgaben#input")
             f.write(chunk)
     db.run("UPDATE inputs SET status='hochgeladen', datei=? WHERE id=?", rel, iid)
     if i["post_id"]:
@@ -1524,7 +1558,7 @@ async def input_upload(request: Request, iid: int, datei: UploadFile = File(...)
             flash(request, "Danke! Die Aufnahme ist da und wird jetzt geschnitten: Untertitel, Titel, Pausen und Versprecher raus. Das dauert ein bis drei Minuten.")
             return go(f"/planen/{i['post_id']}")
     flash(request, "Danke! Die Aufnahme ist da und liegt beim Post.")
-    return go("/input")
+    return go("/aufgaben#input")
 
 
 @app.post("/planen/{pid}/video")
@@ -1808,7 +1842,7 @@ async def _uploads(request, dateien):
 
 
 @app.post("/planen/{pid}/fertig")
-async def post_fertig(request: Request, pid: int, dateien: List[UploadFile] = File(...), captions: str = Form("")):
+async def post_fertig(request: Request, pid: int, dateien: List[UploadFile] = File(...), captions: str = Form(""), lizenzbild: str = Form("")):
     """Fertige Slides oder ein fertiges Video in einen bestehenden Post übernehmen."""
     b = brand_of(request)
     post_of(b, pid)
@@ -1820,14 +1854,14 @@ async def post_fertig(request: Request, pid: int, dateien: List[UploadFile] = Fi
     except ValueError as e:
         flash(request, str(e))
         return go(f"/planen/{pid}")
-    jobs.start(b["id"], pid, "fertig", fertig.uebernehmen, b["id"], pid, liste, bool(captions) and bool(config.ANTHROPIC_API_KEY))
+    jobs.start(b["id"], pid, "fertig", fertig.uebernehmen, b["id"], pid, liste, bool(captions) and bool(config.ANTHROPIC_API_KEY), bool(lizenzbild))
     flash(request, "Übernehme die fertigen Dateien. Der Post wird so gepostet, wie du ihn hochgeladen hast.")
     return go(f"/planen/{pid}")
 
 
 @app.post("/hochladen")   # nicht unter /planen/…: dort fängt /planen/{pid} jeden Pfad ab
 async def planen_hochladen(request: Request, dateien: List[UploadFile] = File(...), titel: str = Form(""), datum: str = Form(""),
-                           uhrzeit: str = Form("08:30"), captions: str = Form("")):
+                           uhrzeit: str = Form("08:30"), captions: str = Form(""), lizenzbild: str = Form("")):
     """Neuen Post aus fertigen Dateien anlegen: ein Video wird ein Reel, ein Bild ein Einzelbild, mehrere Bilder ein Carousel."""
     b = brand_of(request)
     try:
@@ -1837,7 +1871,7 @@ async def planen_hochladen(request: Request, dateien: List[UploadFile] = File(..
         return go("/planen")
     art = "video" if any(fertig.art_von(n) == "video" for n, _ in liste) else "bild"
     pid = fertig.neuer_post(b["id"], titel.strip()[:200], datum.strip(), uhrzeit, None, art, len(liste))
-    jobs.start(b["id"], pid, "fertig", fertig.uebernehmen, b["id"], pid, liste, bool(captions) and bool(config.ANTHROPIC_API_KEY))
+    jobs.start(b["id"], pid, "fertig", fertig.uebernehmen, b["id"], pid, liste, bool(captions) and bool(config.ANTHROPIC_API_KEY), bool(lizenzbild))
     return go(f"/planen/{pid}")
 
 
@@ -1986,7 +2020,7 @@ def design_typ(request: Request, slug: str):
     from .motion import stil as vstil
     chat = db.q("SELECT * FROM chats WHERE brand_id=? AND bereich=? ORDER BY id", b["id"], f"design-{slug}")
     beispiele = db.q("SELECT * FROM medien WHERE brand_id=? AND art='vorbild' AND beschreibung=? ORDER BY id DESC", b["id"], f"design:{t}")
-    bilder = [{"id": m["id"], "datei": m["datei"], "titel": m["titel"], "beschreibung": m["beschreibung"]}
+    bilder = [{"id": m["id"], "datei": m["datei"], "titel": m["titel"], "beschreibung": m["beschreibung"], "lizenz": bool(m["lizenz"])}
               for m in medien.liste(b["id"]) if m["art"] in ("foto", "generiert", "person")][:60]
     return page(request, "design_typ.html", b=b, typ=t, slug=slug, info=vorlagen.TYPEN[t], vorlagen_liste=vorlagen.liste(b["id"], t), bilder=bilder,
                 beispiel=vorlagen.beispiel_video(b["id"], t) if vorlagen.TYPEN[t]["art"] == "video" else None,
@@ -2143,10 +2177,10 @@ async def design_vorlage_speichern(request: Request, vid: int):
 
 
 @app.post("/medien/bild/upload")
-async def medien_bild_upload(request: Request, datei: UploadFile = File(...)):
+async def medien_bild_upload(request: Request, datei: UploadFile = File(...), lizenzbild: str = Form("")):
     b = brand_of(request)
     try:
-        return JSONResponse(_bild_json(medien.speichern(b["id"], await datei.read(), "foto", os.path.splitext(datei.filename or "Foto")[0])))
+        return JSONResponse(_bild_json(medien.speichern(b["id"], await datei.read(), "foto", os.path.splitext(datei.filename or "Foto")[0], lizenzbild=bool(lizenzbild))))
     except ValueError as e:
         return JSONResponse({"fehler": str(e)}, status_code=400)
 
@@ -2347,13 +2381,13 @@ def mediathek_neu(request: Request):
 
 
 @app.post("/mediathek/upload")
-def mediathek_upload(request: Request, dateien: List[UploadFile] = File(...), art: str = Form("foto")):
+def mediathek_upload(request: Request, dateien: List[UploadFile] = File(...), art: str = Form("foto"), lizenzbild: str = Form("")):
     b = brand_of(request)
     art = art if art in ("foto", "vorbild") else "foto"
     ok, fehler = 0, []
     for d in dateien[:30]:
         try:
-            medien.speichern(b["id"], d.file.read(), art, os.path.splitext(d.filename or "")[0])
+            medien.speichern(b["id"], d.file.read(), art, os.path.splitext(d.filename or "")[0], lizenzbild=bool(lizenzbild))
             ok += 1
         except ValueError as e:
             fehler.append(f"{d.filename}: {e}")
@@ -2434,12 +2468,24 @@ def mediathek_inhalt(request: Request, mid: int, titel: str = Form(""), inhalt: 
     if m and neu:
         if not config.ANTHROPIC_API_KEY:
             flash(request, "Dafür braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY).")
+        elif ai.lizenzschutz(b):
+            flash(request, "Der Lizenzschutz ist an: Claude sieht die Bilder nicht. Schreib die Beschreibung bitte von Hand.")
         else:
             jobs.start(b["id"], None, "bildtext", medien.beschreiben, b["id"], [mid], True)
     elif m:
         db.run("UPDATE medien SET titel=?, inhalt=? WHERE id=?", titel.strip()[:200] or m["titel"], inhalt.strip()[:400], mid)
         flash(request, "Beschreibung gespeichert.")
     return go(zurueck if zurueck.startswith("/") and not zurueck.startswith("//") else "/mediathek")
+
+
+@app.post("/mediathek/{mid}/lizenz")
+def mediathek_lizenz(request: Request, mid: int, an: str = Form("")):
+    """Bild als Lizenzbild markieren (geht nie an KI-Dienste) oder die Markierung entfernen."""
+    b = brand_of(request)
+    if medien.lizenz_setzen(b["id"], mid, bool(an)):
+        flash(request, "Als Lizenzbild markiert: Das Bild geht nicht mehr an KI-Dienste." if an else "Markierung entfernt.")
+    zurueck = request.headers.get("referer") or ""
+    return go(zurueck if zurueck.startswith(str(request.base_url)) else "/mediathek")
 
 
 @app.post("/mediathek/{mid}/referenzfoto")

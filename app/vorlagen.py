@@ -9,7 +9,7 @@ Beispielbilder (Vorbilder), die man im Chat eines Typs anhängt, landen in der M
 """
 import json, os
 from PIL import Image
-from . import ai, config, db, marke, storage
+from . import ai, config, db, lizenz, marke, storage
 
 TYPEN = {
     "Carousel": {"slug": "carousel", "titel": "Carousels", "art": "slides",
@@ -72,7 +72,7 @@ def _rendern(b, vid, szene):
         return ""
     img = marke.renderer(b).render(szene, 1, 1)[0]
     rel = os.path.join("vorlagen", f"{vid}.jpg")
-    img.resize((540, round(540 * img.height / img.width)), Image.LANCZOS).save(storage.brand_dir(b["id"], rel), quality=88)
+    lizenz.speichern(img.resize((540, round(540 * img.height / img.width)), Image.LANCZOS), storage.brand_dir(b["id"], rel), quality=88)
     return rel
 
 

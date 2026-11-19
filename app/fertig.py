@@ -5,7 +5,7 @@ Captions kann Claude auf Wunsch aus den Bildern bzw. Standbildern des Videos sch
 """
 import io, json, os, re, shutil, subprocess, tempfile
 from PIL import Image, ImageOps
-from . import ai, config, db, marke, storage
+from . import ai, config, db, lizenz, marke, storage
 
 BILD_EXT = (".jpg", ".jpeg", ".png", ".webp", ".heic")
 VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm")
@@ -54,8 +54,9 @@ def slides_uebernehmen(brand_id, post_id, raws):
     from .engine import render
     storage.clear_post_renders(brand_id, post_id)
     d = storage.post_dir(brand_id, post_id)
+    marke_ = lizenz.post_hat(brand_id, db.one("SELECT * FROM posts WHERE id=?", post_id))
     for i, im in enumerate(imgs, start=1):
-        im.save(os.path.join(d, f"slide-{i:02d}.png"))
+        lizenz.speichern(lizenz.markieren(im, marke_), os.path.join(d, f"slide-{i:02d}.png"))
     render.pdf(imgs, os.path.join(d, "linkedin.pdf"))
     fmt = "Einzelbild" if len(imgs) == 1 else "Carousel"
     db.run("UPDATE posts SET design='[]', rendered_at=?, slide_count=?, format=CASE WHEN format IN ('Carousel','Einzelbild') THEN ? ELSE format END, "
@@ -92,8 +93,9 @@ def video_uebernehmen(brand_id, post_id, quelle):
 
 
 def standbilder(brand_id, post_id, n=3):
-    """Ein paar Standbilder aus dem Video (für Claude)."""
+    """Ein paar Standbilder aus dem Video (für Claude). Enthält das Video Lizenzbilder, sind die Standbilder markiert."""
     from .schnitt import ffmpeg
+    geschuetzt = lizenz.post_hat(brand_id, db.one("SELECT * FROM posts WHERE id=?", post_id))
     pfad = os.path.join(storage.post_dir(brand_id, post_id), "reel.mp4")
     out = []
     tmp = tempfile.mkdtemp(prefix="standbild-")
@@ -106,18 +108,19 @@ def standbilder(brand_id, post_id, n=3):
             ziel = os.path.join(tmp, f"{k}.jpg")
             subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-ss", f"{t:.2f}", "-i", pfad, "-frames:v", "1", "-q:v", "4", ziel], capture_output=True)
             if os.path.exists(ziel):
-                out.append(Image.open(ziel).convert("RGB"))
+                out.append(lizenz.markieren(Image.open(ziel).convert("RGB"), geschuetzt))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return out
 
 
 def bilder_des_posts(brand_id, post):
-    """Slides oder Standbilder eines Posts als PIL-Bilder."""
+    """Slides oder Standbilder eines Posts als PIL-Bilder. Steckt im Post ein Lizenzbild, sind alle markiert (siehe lizenz.py)."""
     if post["video"]:
         return standbilder(brand_id, post["id"])
     d = storage.post_dir(brand_id, post["id"])
-    return [Image.open(os.path.join(d, n)).convert("RGB") for n in sorted(os.listdir(d)) if re.fullmatch(r"slide-\d+\.png", n)]
+    geschuetzt = lizenz.post_hat(brand_id, post)
+    return [lizenz.markieren(Image.open(os.path.join(d, n)).convert("RGB"), geschuetzt) for n in sorted(os.listdir(d)) if re.fullmatch(r"slide-\d+\.png", n)]
 
 
 def captions_schreiben(brand_id, post_id, nur_leere=True):
@@ -149,9 +152,14 @@ def neuer_post(brand_id, titel="", datum="", uhrzeit="08:30", format=None, art="
     return db.run(f"INSERT INTO posts (brand_id,{','.join(cols)}) VALUES (?{',?' * len(cols)})", brand_id, *cols.values())
 
 
-def uebernehmen(brand_id, post_id, dateien, captions=False):
+def uebernehmen(brand_id, post_id, dateien, captions=False, lizenzbild=False):
     """Job: hochgeladene Dateien [(name, pfad)] in den Post übernehmen (ein Video oder Bilder als Slides), danach optional Captions.
-    Die Dateien werden danach gelöscht."""
+    lizenzbild: der Post enthält gekaufte/lizenzierte Bilder und geht nie an KI-Dienste. Die Dateien werden danach gelöscht."""
+    if lizenzbild:
+        p = db.one("SELECT inhalt FROM posts WHERE id=?", post_id)
+        inhalt = json.loads(p["inhalt"] or "{}")
+        inhalt["lizenzbild"] = True
+        db.run("UPDATE posts SET inhalt=? WHERE id=?", json.dumps(inhalt, ensure_ascii=False), post_id)
     try:
         videos = [p for n, p in dateien if art_von(n) == "video"]
         if videos:
@@ -169,7 +177,7 @@ def uebernehmen(brand_id, post_id, dateien, captions=False):
                 os.remove(p)
             except OSError:
                 pass
-    if captions:
+    if captions and not lizenzbild:   # Captions aus den Bildern bräuchten Claude, das die Lizenzbilder nicht sehen darf
         db.run("UPDATE jobs SET kind='captions' WHERE post_id=? AND status='läuft' AND kind='fertig'", post_id)
         captions_schreiben(brand_id, post_id)
 

@@ -129,5 +129,5 @@
   {% endif %}
 </section>
 <script>window.LAYOUT_BASIS = "/design/vorlage"; window.BILD_BASIS = "/medien/bild";
-window.BILDER = {{ bilder|default([])|tojson }}; window.POST_BILD = {{ {'datei': b.ref_photo or '', 'idee': ''}|tojson }}; window.GENERATOREN = {{ generatoren|tojson }};</script>
+window.LIZENZ_STANDARD = {{ (auf.lizenz_standard or false)|tojson }}; window.BILDER = {{ bilder|default([])|tojson }}; window.POST_BILD = {{ {'datei': b.ref_photo or '', 'idee': ''}|tojson }}; window.GENERATOREN = {{ generatoren|tojson }};</script>
 {% endblock %}

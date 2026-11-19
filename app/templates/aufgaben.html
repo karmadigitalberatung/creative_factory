@@ -9,7 +9,7 @@
     </div>
     {% set erster = (zu.gruppen|selectattr('posts')|first) %}
     {% if erster %}
-    <div class="kopf-aktionen"><a class="button gelb" href="/planen/{{ erster.posts[0].id }}{{ '#planen' if erster.key == 'termin' else '' }}">Mit dem ersten anfangen →</a></div>
+    <div class="kopf-aktionen">{% set e = erster.posts[0] %}<a class="button gelb" href="{{ '#input-' ~ e.input.id if e.input else '/planen/' ~ e.id ~ ('#planen' if erster.key == 'termin' else '') }}">Mit dem ersten anfangen →</a></div>
     {% endif %}
   </div>
   {% if laufende %}<span data-poll="/jobs" hidden></span>{% endif %}
@@ -29,11 +29,20 @@
     </div>
     <ul class="auf-liste">
       {% for p in g.posts %}
-      <li class="auf-zeile" data-post="{{ p.id }}">
-        <a class="auf-vorschau" href="/planen/{{ p.id }}" tabindex="-1" aria-hidden="true">
+      <li class="auf-zeile {{ 'mit-input' if p.input }}" data-post="{{ p.id or '' }}">
+        <a class="auf-vorschau" href="{{ '/planen/' ~ p.id if p.id else '#input-' ~ p.input.id }}" tabindex="-1" aria-hidden="true">
           {% if p.thumb %}<img src="/media/{{ p.thumb }}?v={{ p.rendered_at|int }}" alt="" loading="lazy">{% else %}<span>{{ p.format }}</span>{% endif %}
         </a>
         <div class="auf-text">
+          {% if p.input %}
+          <span class="auf-titel">{{ p.input.titel }}</span>
+          <span class="auf-meta">
+            <span class="auf-chip">{{ p.input.art }}</span>
+            {% if p.tag %}für {{ p.tag }}{% endif %}
+            {% if p.id %}· zum Post <a href="/planen/{{ p.id }}">{{ p.kurz }}</a>{% endif %}
+            {% if p.vorbei %}<span class="auf-chip warn">überfällig</span>{% elif p.bald %}<span class="auf-chip warn">{{ p.bald_text }}</span>{% endif %}
+          </span>
+          {% else %}
           <a class="auf-titel" href="/planen/{{ p.id }}">{{ p.kurz }}</a>
           <span class="auf-meta">
             {{ p.format }}
@@ -42,17 +51,30 @@
             {% if p.laeuft %}<span class="auf-chip">kajo: {{ p.laeuft }}</span>{% endif %}
             {% if g.key != 'termin' and not p.tag %}<span class="auf-chip">Termin fehlt auch</span>{% endif %}
           </span>
+          {% endif %}
         </div>
         <div class="auf-aktion">
           {% if g.key == 'termin' %}
           <label class="auf-datum"><span class="sr-only">Termin für {{ p.kurz }}</span><input type="date" min="{{ heute }}" value="{{ p.datum if not p.vorbei }}" data-termin="{{ p.id }}" autocomplete="off"></label>
           <span class="auf-gespeichert" data-ok hidden>Eingeplant ✓</span>
-          {% elif g.key == 'input' and p.input_id %}
-          <a class="button small" href="/input">{{ g.aktion }}</a>
+          {% elif p.input %}
+          <button type="button" class="button small" aria-expanded="false" aria-controls="input-{{ p.input.id }}" data-input-auf>{{ g.aktion }}</button>
           {% else %}
           <a class="button small" href="/planen/{{ p.id }}">{{ g.aktion }}</a>
           {% endif %}
         </div>
+        {% if p.input %}
+        <div class="auf-liefern" id="input-{{ p.input.id }}" hidden>
+          {% if p.input.skript %}<div><h3>Skript</h3><div class="teleprompter">{{ p.input.skript }}</div></div>{% endif %}
+          <div class="stack">
+            {% if p.input.anleitung %}<h3>So nimmst du es auf</h3><p class="pre small">{{ p.input.anleitung }}</p>{% endif %}
+            <form method="post" action="/input/{{ p.input.id }}/upload" enctype="multipart/form-data" class="stack" data-busy="Wird hochgeladen …">
+              <input type="file" name="datei" accept="video/*,audio/*,image/*" required>
+              <button class="button">Hochladen</button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
       </li>
       {% endfor %}
     </ul>

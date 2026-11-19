@@ -32,6 +32,12 @@ from .profil import hex2rgb
 
 NBSP = " "
 _fonts = {}
+LIZENZ = "heykajo-lizenzbild"   # wie lizenz.SCHLUESSEL (die Engine kennt die App nicht)
+
+
+def _lizenzbild(im):
+    info = getattr(im, "info", None) or {}
+    return bool(info.get(LIZENZ)) or info.get("comment") == b"heykajo-lizenzbild"
 
 
 def ausschnitt(img, w, h, fx=0.5, fy=0.5, zoom=1.0):
@@ -470,7 +476,12 @@ class Szene:
             if neu:
                 elemente.append({"i": i, "typ": typ, "box": [round(min(b[0] for b in neu)), round(min(b[1] for b in neu)),
                                                              round(max(b[2] for b in neu)), round(max(b[3] for b in neu))]})
-        return img.convert("RGB"), ctx["boxen"]
+        out = img.convert("RGB")
+        hg = szene.get("hintergrund") or {}
+        quellen = ([hg["foto"]] if hg.get("foto") else []) + [e.get("quelle", "post") for e in szene.get("elemente") or [] if typ_von(e) == "foto"]
+        if any(_lizenzbild(self.fotos.get(q)) for q in quellen):   # Lizenzbild auf der Slide: die Slide ist selbst eins
+            out.info[LIZENZ] = "1"
+        return out, ctx["boxen"]
 
 
 # Standardwerte der Renderer-Funktionen, damit der Editor mit festen Zahlen rechnen kann.
