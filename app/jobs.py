@@ -8,7 +8,7 @@ from .engine import layouts, render
 _pool = ThreadPoolExecutor(max_workers=2)
 
 LABELS = {"ideen": "Sucht neue Ideen", "radar": "Trendradar sucht", "swipe": "Analysiert Post", "radar_idee": "Macht eine Idee daraus", "leitlinien": "Entwirft Leitlinien", "website": "Liest die Website", "reelfotos": "Erzeugt Fotos", "bildtext": "Beschreibt Bilder", "bildwahl": "Wählt Fotos aus", "vorlagen": "Gestaltet Vorlagen", "blog": "Schreibt den Blogbeitrag", "aufteilen": "Teilt in Posts auf", "newsletter": "Schreibt den Newsletter", "uebergabe": "Übergibt als Entwurf", "fertig": "Übernimmt die Dateien", "captions": "Schreibt Captions", "redaktion": "Redaktion plant", "videostil": "Leitet Video-Stil ab", "gestalten": "Gestaltet Visuals", "foto": "Erzeugt Foto", "render": "Rendert", "pruefen": "Prüft Visuals",
-          "schnitt": "Schneidet Video", "animation": "Animiert Reel",
+          "schnitt": "Schneidet Video", "animation": "Animiert Reel", "konzept": "Konzipiert das Reel",
           "muster": "Musterseiten", "buffer": "Gleicht mit Buffer ab", "einrichtung": "Richtet dein Konto ein", "input": "Bereitet Aufnahme vor", "bild": "Erzeugt Bild", "person": "Erstellt Referenz-Sheet"}
 
 
@@ -100,18 +100,16 @@ def gestalten(brand_id, post_id, neu=True):
         db.run("UPDATE jobs SET kind=? WHERE post_id=? AND status='läuft'", "blog" if p["format"] == "Blog" else "newsletter", post_id)
         (hub.blog_schreiben if p["format"] == "Blog" else hub.newsletter_schreiben)(brand_id, post_id)
         return
-    if p["format"] in ("Reel", "Story"):   # Video: mit Aufnahme schneiden, ohne Aufnahme als reine Animation
-        if not p["video_roh"] and json.loads(p["inhalt"]).get("aufnahme"):   # die Person spricht selbst: Aufnahme anfragen
+    if p["format"] in ("Reel", "Story"):   # Video: ein Weg für alles (reel.erstellen): gesprochene Clips schneiden, sonst Animation mit dem Material
+        from . import material, reel
+        clips = [e for e in material.liste(p) if e.get("art") == "video"]
+        if not clips and json.loads(p["inhalt"]).get("aufnahme"):   # die Person spricht selbst: Aufnahme anfragen
             _input_anlegen(b, p)
             return
-        if p["video_roh"]:
-            from . import schnitt
-            schnitt.schneiden(brand_id, post_id, not os.path.exists(os.path.join(storage.post_dir(brand_id, post_id), "transkript.json")))
-        else:
-            from . import schnitt
+        if not clips:
             neue_bilder(b, p)
-            db.run("UPDATE jobs SET kind='animation' WHERE post_id=? AND status='läuft'", post_id)
-            schnitt.animieren(brand_id, post_id)
+        db.run("UPDATE jobs SET kind='animation' WHERE post_id=? AND status='läuft'", post_id)
+        reel.erstellen(brand_id, post_id)
         return
 
     from . import medien

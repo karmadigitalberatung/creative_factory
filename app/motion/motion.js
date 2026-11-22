@@ -50,6 +50,18 @@
     return img.decode().catch(() => {});
   }
 
+  // Clips in Szenen: <img data-frames="videos/…/#.jpg" data-s data-n> zeigt je Frame das passende Bild des Clips
+  const CLIPS = $$('img[data-frames]').map((el) => ({ el, s: +el.dataset.s, n: +el.dataset.n, muster: el.dataset.frames, src: '' }));
+  function clips(t) {
+    return Promise.all(CLIPS.map((c) => {
+      const k = Math.max(1, Math.min(c.n, Math.round((t - c.s + 0.2) * R.fps) + 1));   // 0,2 s Vorlauf: die Szene blendet schon vorher ein
+      const s = c.muster.replace('#', String(k).padStart(5, '0'));
+      if (s === c.src) return null;
+      c.src = s; c.el.src = s;
+      return c.el.decode().catch(() => {});
+    }));
+  }
+
   // ── Animationen ─────────────────────────────────────────────────────────
   const A = [];
   for (const sz of $$('.sz')) {
@@ -157,7 +169,7 @@
     grund(t);
     for (const a of A) anwenden(a, t);
     untertitel(t);
-    return bild(t);
+    return Promise.all([bild(t), clips(t)]);
   };
   window.READY = Promise.all([document.fonts.ready, ...$$('img').filter((i) => i.src).map((i) => i.decode().catch(() => {}))])
     .then(() => { titelwoerter(); return window.SEEK(0); }).then(() => true);

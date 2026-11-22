@@ -708,28 +708,36 @@ Material: Du schneidest aus mehreren Clips und Fotos. Im Transkript steht jedes 
 - Bilder, die als Platzhalter erscheinen, sind Lizenzbilder: du siehst sie nicht, nutze sie über ihre Beschreibung."""
 
 
-def reel_plan(brand, post, clips, fotos, words):
-    """clips: [(Material-Eintrag, Analyse, [Standbilder])], fotos: [(ID, Beschreibung, Mediathek-Zeile)], words: gemeinsame Wortliste.
-    Gibt einen Schnitt (siehe schnitt.py) mit zusätzlichem "gesichter" {Clip: {x, y, h} oder None} zurück, oder None."""
+def _material_bloecke(brand, clips, fotos):
+    """Material eines Reels als Text- und Bildblöcke: je Clip die Standbilder, je Foto das Bild (Lizenzmaterial wird beim Senden ersetzt)."""
     from . import medien
-    inhalt = json.loads(post["inhalt"])
     bloecke = []
-    for e, a, bilder in clips[:6]:
+    for e, a, bilder in (clips or [])[:6]:
         bloecke.append({"type": "text", "text": f"Clip {e['id']} „{e.get('titel') or ''}“: {a['dauer']} s, {'mit Sprache' if a['woerter'] else 'ohne Sprache'}"
                         f"{', Lizenzmaterial' if e.get('lizenz') else ''}. Standbilder bei {', '.join(f'{z} s' for z in a['standbilder'])}:"})
         for im in bilder:
             bloecke.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(im, 480)}})
-    for fid, text, m in fotos[:10]:
+    for fid, text, m in (fotos or [])[:10]:
         bloecke.append({"type": "text", "text": f"Foto {fid}: {text}"})
         try:
             bloecke.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(medien.bild_von(brand["id"], m).convert("RGB"), 480)}})
         except Exception:
             pass
+    return bloecke
+
+
+def reel_plan(brand, post, clips, fotos, words, vorgaben=""):
+    """clips: [(Material-Eintrag, Analyse, [Standbilder])], fotos: [(ID, Beschreibung, Mediathek-Zeile)], words: gemeinsame Wortliste.
+    vorgaben: Animationshinweise und Konzept der Person (gehen vor). Gibt einen Schnitt (siehe schnitt.py) mit zusätzlichem
+    "gesichter" {Clip: {x, y, h} oder None} zurück, oder None."""
+    inhalt = json.loads(post["inhalt"])
+    bloecke = _material_bloecke(brand, clips, fotos)
     t = " ".join(f"{i}:{w.get('c', 'c1')}:{w['w']}[{w['s']}-{w['e']}]" for i, w in enumerate(words))
     user = (_marke_kontext(brand) + f"\nPost: {post['titel']} ({post['format']})\nGeplantes Skript: {inhalt.get('skript', '')}"
             f"\nCover-Texte: {json.dumps((inhalt.get('slides') or [{}])[0], ensure_ascii=False)}"
             f"\nBilder für Szenen: {', '.join([n for n, v in (('logo', brand['logo']), ('foto', brand['ref_photo'])) if v] + [f for f, _, _ in fotos]) or 'keine'}"
             f"\nClips: {', '.join(e['id'] for e, _, _ in clips)}; Fotos: {', '.join(f for f, _, _ in fotos) or 'keine'}"
+            + (f"\n\n{vorgaben}" if vorgaben else "") +
             f"\n\nTranskript: {t}")
     res = _claude(SCHNITT_SYSTEM + REEL_ZUSATZ + REGIE_DOKU, _stil_bloecke(brand) + bloecke + [{"type": "text", "text": user}], REEL_SCHEMA,
                   effort="high", max_tokens=32000)
@@ -843,8 +851,22 @@ Gestalte die Szenen, die das Skript zeigen:
 - titel: kurzer Titel für die ersten Sekunden (höchstens 6 Wörter) oder leer, wenn die erste Szene schon der Titel ist."""
 
 
-def animation(brand, post, words, laenge, post_fotos=None, zusatz=""):
-    """post_fotos: [(Name wie „foto1“, Titel)] eigens für den Post erzeugte oder ausgewählte Fotos. zusatz: weitere Vorgaben (z. B. Wunsch für Vorlagen)."""
+MATERIAL_DOKU = """
+
+Eigenes Material der Person: Du siehst die Fotos und je Clip drei Standbilder. Dieses Material ist der Kern des Reels, nicht Beiwerk:
+- Fotos und Clips setzt du über ihre ID als Bildquelle ein: <img class="vollfoto" src="m12"> (Foto) oder <img class="vollfoto" src="c2"> (Clip).
+  Ein Clip läuft dann als bewegtes Bild über die ganze Szene, ohne Ton. Mit class "vollfoto klar" bleibt das Bild unabgedunkelt
+  (für Szenen mit wenig Text, der unten oder oben steht); ohne "klar" wird es abgedunkelt und die Schrift hell.
+- Kleiner in einer Karte: <img class="foto" src="m12">.
+- Nutze jedes Foto und jeden Clip mindestens einmal, außer das Konzept oder die Hinweise sagen etwas anderes. Ordne das Material der Szene zu,
+  zu der es inhaltlich passt (Beschreibung und Bild ansehen). Szenen ohne eigenes Material bleiben reine Typo-Szenen.
+- Eine Clip-Szene dauert höchstens so lange wie der Clip (Dauer steht dabei); bei kurzen Clips die Szene kurz halten.
+- Platzhalter statt Bild = Lizenzmaterial: du siehst es nicht, setz es über ID und Beschreibung ein."""
+
+
+def animation(brand, post, words, laenge, post_fotos=None, zusatz="", clips=None, fotos=None, vorgaben=""):
+    """post_fotos: [(Name wie „foto1“, Titel)] eigens für den Post erzeugte oder ausgewählte Fotos. zusatz: weitere Vorgaben (z. B. Wunsch für Vorlagen).
+    clips, fotos: eigenes Material wie bei reel_plan (Claude sieht es als Bilder). vorgaben: Animationshinweise und Konzept der Person."""
     t = " ".join(f"{i}:{w['w']}[{w['s']}-{w['e']}]" for i, w in enumerate(words))
     inhalt = json.loads(post["inhalt"])
     story = ("\nFormat: Story (Instagram/Facebook). 1 bis 3 Szenen, wirkt persönlich und direkt; oben 280 px und unten 520 px bleiben frei "
@@ -865,8 +887,11 @@ def animation(brand, post, words, laenge, post_fotos=None, zusatz=""):
             f"\nBilder für Szenen: {', '.join(n for n, v in (('logo', brand['logo']), ('foto', brand['ref_photo'])) if v) or 'keine'}"
             + (f"\nFotos für diesen Post (src = Name; als vollfoto oder foto einsetzen, jedes in einer passenden Szene, möglichst alle nutzen): "
                + "; ".join(f"{n}: {ti}" for n, ti in post_fotos) if post_fotos else "") +
+            (f"\n\n{vorgaben}" if vorgaben else "") +
             f"\n\nSkript: {t}")
-    res = _claude(ANIMATION_SYSTEM + REGIE_DOKU, _stil_bloecke(brand) + [{"type": "text", "text": user}], ANIMATION_SCHEMA,
+    material = _material_bloecke(brand, clips, fotos)
+    res = _claude(ANIMATION_SYSTEM + REGIE_DOKU + (MATERIAL_DOKU if material else ""),
+                  _stil_bloecke(brand) + material + [{"type": "text", "text": user}], ANIMATION_SCHEMA,
                   effort="high", max_tokens=32000)
     n = len(words)
     szenen = [{"von": z["von"], "bis": z["bis"], "lage": "frei", "grund": z["grund"], "html": z["html"]}
@@ -876,6 +901,54 @@ def animation(brand, post, words, laenge, post_fotos=None, zusatz=""):
     return {"teile": [{"von": 0, "bis": n - 1, "zoom": False}], "titel": res["titel"], "untertitel": res["untertitel"],
             "zeilen": [[z["von"], z["bis"]] for z in res["zeilen"] if 0 <= z["von"] <= z["bis"] < n],
             "szenen": szenen, "begruendung": res["begruendung"]}
+
+
+# ---------------------------------------------------------------- Reel-Studio: Konzept aus Text, Hinweisen und Material
+
+KONZEPT_SCHEMA = _obj({"idee": S, "skript": S,
+                       "szenen": {"type": "array", "items": _obj({"text": S, "material": S, "hinweis": S})}})
+
+KONZEPT_SYSTEM = """Du bist Creative Director für Reels und Storys (Instagram, LinkedIn) einer Personal Brand. Die Person gibt dir, was sie hat:
+einen Text (Thema, Notizen oder fertiges Skript), Animationshinweise und eigenes Material (Fotos und Videoclips, die du als Bilder siehst;
+bei Clips mit Sprache auch das Transkript). Du planst daraus das ganze Reel neu, passend zum Thema. Die Person prüft und ändert deinen Plan,
+erst danach wird animiert. Schreib im Schreibstil der Marke, auf Deutsch, ohne Markdown.
+- idee: 1 bis 2 Sätze: Aufhänger und roter Faden des Reels.
+- skript: der Text des Reels, so wie er zu lesen bzw. zu hören ist: Hook im ersten Satz, klarer Abschluss oder Aufruf, 40 bis 90 Wörter.
+  Bleib beim Thema und bei den Fakten aus dem Text der Person, erfinde keine Zahlen, Namen oder Ereignisse. Ist der Text schon ein gutes
+  Skript, straffe ihn nur. Spricht die Person in den Clips selbst, ist das Skript die Auswahl ihrer besten Sätze in sinnvoller Reihenfolge
+  (wörtlich aus dem Transkript, ohne Füllwörter).
+- szenen: 4 bis 8 Szenen in Abspielreihenfolge. Je Szene:
+  text = was in dieser Szene auf dem Bild steht (kurz, höchstens 14 Wörter; die Szenen zusammen tragen das Skript),
+  material = ID des Fotos oder Clips, der in dieser Szene zu sehen ist (z. B. m12 oder c2), oder leer für eine reine Typo-Szene,
+  hinweis = wie die Szene aussieht und sich bewegt, ein kurzer Satz, höchstens 20 Wörter, ohne Schriftnamen und Farbwerte
+  (z. B. „Clip läuft im Vollbild, Text unten“, „Zahl zählt hoch“, „drei Punkte erscheinen nacheinander“).
+- Das eigene Material ist der Kern: Sieh dir jedes Foto und jeden Clip an und ordne es der Szene zu, zu der es inhaltlich passt.
+  Nutze jedes Stück mindestens einmal, wenn es zum Thema passt; was nicht passt, lässt du weg und sagst es in der idee.
+- Animationshinweise der Person gehen vor und gelten für alle Szenen.
+- Platzhalter statt Bild = Lizenzmaterial: du siehst es nicht, plane es über die Beschreibung ein."""
+
+
+def reel_konzept(brand, post, clips, fotos, words, text="", hinweise=""):
+    """Plant ein Reel neu: {"idee", "skript", "szenen": [{"text", "material", "hinweis"}]}.
+    clips: [(Material-Eintrag, Analyse, [Standbilder])], fotos: [(ID, Beschreibung, Mediathek-Zeile)], words: Wörter aller Clips (leer ohne Sprache)."""
+    ids = {e["id"] for e, _, _ in clips or []} | {f for f, _, _ in fotos or []}
+    inhalt = json.loads(post["inhalt"])
+    t = " ".join(f"{w.get('c', 'c1')}:{w['w']}" for w in words[:1800])
+    from . import vorlagen
+    typ = "Story" if post["format"] == "Story" else "Reel"
+    regeln = vorlagen.regeln(json.loads(brand["auftreten"]), typ)
+    user = (_marke_kontext(brand) + f"\nPost: {post['titel']} ({post['format']})"
+            + (f"\nRegeln für {typ}s: {regeln}" if regeln else "")
+            + ("\nFormat Story: 1 bis 3 Szenen, persönlich und direkt." if typ == "Story" else "")
+            + f"\nBisher geplante Szenen: {json.dumps(inhalt.get('slides') or [], ensure_ascii=False)[:3000]}"
+            + f"\nMaterial-IDs: {', '.join(sorted(ids)) or 'kein eigenes Material'}"
+            + (f"\n\nTranskript der Clips (Clip:Wort): {t}" if t else "\n\nIn den Clips wird nicht gesprochen: Das Reel ist eine Animation mit Text.")
+            + f"\n\nAnimationshinweise der Person: {hinweise or '(keine)'}\n\nText der Person:\n{text or '(noch keiner: plane aus Titel, Material und Marke)'}")
+    res = _claude(KONZEPT_SYSTEM, _material_bloecke(brand, clips, fotos) + [{"type": "text", "text": user}], KONZEPT_SCHEMA,
+                  effort="high", max_tokens=12000)
+    szenen = [{"text": z["text"].strip(), "material": z["material"].strip() if z["material"].strip() in ids else "", "hinweis": z["hinweis"].strip()}
+              for z in res["szenen"] if z["text"].strip() or z["material"].strip() in ids]
+    return {"idee": res["idee"].strip(), "skript": res["skript"].strip(), "szenen": szenen[:10]}
 
 
 # ---------------------------------------------------------------- Chat zum Auftreten

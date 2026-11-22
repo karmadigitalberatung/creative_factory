@@ -496,14 +496,16 @@ def schneiden(brand_id, post_id, neu_transkribieren=False, schnitt=None):
     d = storage.post_dir(brand_id, post_id)
     json.dump({"woerter": words, "dauer": round(sum(a["dauer"] for _, a in analysen), 2), "clips": {e["id"]: a["dauer"] for e, a in analysen}},
               open(os.path.join(d, "transkript.json"), "w"), ensure_ascii=False)
-    fotos = mat.fotos(brand_id, eintraege)
+    from . import reel
+    fotos = reel.fotos(brand_id, p)
     if schnitt is None:
         from .jobs import video_stil_sicherstellen
         video_stil_sicherstellen(brand_id)
         b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
         if config.ANTHROPIC_API_KEY:
             try:
-                schnitt = ai.reel_plan(b, p, [(e, a, mat.standbilder(brand_id, post_id, e)) for e, a in analysen], fotos, words)
+                schnitt = ai.reel_plan(b, p, [(e, a, mat.standbilder(brand_id, post_id, e)) for e, a in analysen], fotos, words,
+                                       reel.vorgaben(json.loads(p["inhalt"])))
             except Exception as e:
                 from .jobs import hinweis
                 hinweis("Der Schnitt durch Claude hat nicht geklappt (" + ai.fehlertext(e) + "). Ich habe automatisch geschnitten.", b, post_id)
@@ -544,6 +546,9 @@ def text_fuer_animation(inhalt):
     """Skript des Reels; fehlt es, die Texte der Szenen in Reihenfolge."""
     if (inhalt.get("skript") or "").strip():
         return inhalt["skript"].strip()
+    teile = [str(z.get("text") or "").strip() for z in (inhalt.get("konzept") or {}).get("szenen") or []]
+    if any(teile):
+        return " ".join(t if re.search(r"[.!?…:]$", t) else t + "." for t in teile if t)
     teile = []
     for s in inhalt.get("slides") or []:
         for k, v in s.items():
@@ -595,6 +600,41 @@ def auto_animation(slides, words, titel="", ohne_akzent=False):
             "begruendung": "Automatisch: je Szene eine Aussage, ohne Claude."}
 
 
+def konzept_animation(konzept, words, quellen):
+    """Ohne Claude: je Konzept-Szene eine Szene mit ihrem Text; zugeordnetes Material (Foto oder Clip) füllt das Bild."""
+    import html as h
+    zs = [z for z in konzept.get("szenen") or [] if (z.get("text") or "").strip() or z.get("material") in quellen]
+    n, k = len(words), len(zs)
+    if not k or not n:
+        return None
+    gruende = ["grund", "dunkel", "flaeche"]
+    szenen = []
+    for j, z in enumerate(zs):
+        von, bis = round(n * j / k), round(n * (j + 1) / k) - 1
+        if von > bis:
+            continue
+        bild = f'<img class="vollfoto" src="{z["material"]}">' if z.get("material") in quellen else ""
+        text = h.escape((z.get("text") or "").strip())
+        szenen.append({"von": von, "bis": bis, "lage": "frei", "grund": gruende[j % 3],
+                       "html": bild + (f'<{"h1" if len(text) < 60 else "h2"}>{text}</{"h1" if len(text) < 60 else "h2"}>' if text else "")})
+    return {"teile": [{"von": 0, "bis": n - 1, "zoom": False}], "titel": "", "untertitel": False, "szenen": szenen,
+            "begruendung": "Automatisch aus dem Konzept: je Szene ihr Text, mit dem zugeordneten Material als Bild."}
+
+
+def clip_frames(clip, ordner, name, dauer):
+    """Bilder eines Clips im Hochformat für eine Szene (30 pro Sekunde, kurze Clips laufen in Schleife). Gibt (Muster, Anzahl) zurück."""
+    from .motion import regie
+    ziel = os.path.join(ordner, "videos", name)
+    os.makedirs(ziel, exist_ok=True)
+    _, _, filt, _ = zuschnitt(clip["seite"], clip.get("gesicht") or {"x": 0.5, "y": 0.45})
+    res = subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-stream_loop", "-1", "-i", clip["pfad"], "-t", f"{dauer:.2f}", "-an",
+                          "-vf", f"fps={regie.FPS},{filt}", "-q:v", "4", os.path.join(ziel, "%05d.jpg")], capture_output=True, text=True)
+    anzahl = len(os.listdir(ziel))
+    if res.returncode != 0 or not anzahl:
+        raise RuntimeError("Ein Clip aus dem Material ließ sich nicht lesen: " + (res.stderr or "")[-300:])
+    return f"videos/{name}/#.jpg", anzahl
+
+
 def _lueckenlos(szenen, laenge):
     """Ohne Kamera darf nie Leere zu sehen sein: jede Szene läuft bis zur nächsten, die erste ab 0, die letzte bis zum Ende."""
     if not szenen:
@@ -606,8 +646,9 @@ def _lueckenlos(szenen, laenge):
     return szenen
 
 
-def render_animation(brand, words, schnitt, laenge, out_mp4, out_cover, post_titel="", story=False, extra_bilder=None):
-    """Reel ohne Aufnahme: Motion-Seite ohne Kamera -> Chrome rendert jedes Bild -> MP4 mit stummer Tonspur."""
+def render_animation(brand, words, schnitt, laenge, out_mp4, out_cover, post_titel="", story=False, extra_bilder=None, clips=None):
+    """Reel ohne Aufnahme: Motion-Seite ohne Kamera -> Chrome rendert jedes Bild -> MP4 mit stummer Tonspur.
+    clips: {Clip-ID: {"pfad", "seite", "dauer", "gesicht"}} eigene Clips, die Szenen als Bewegtbild zeigen (<img src="c2">)."""
     import html as _html, math
     from .motion import regie
     segs = [{"s": 0.0, "e": laenge, "von": 0, "bis": len(words) - 1, "zoom": False}]
@@ -631,7 +672,9 @@ def render_animation(brand, words, schnitt, laenge, out_mp4, out_cover, post_tit
         ut = [] if not schnitt.get("untertitel", True) else [
             {"s": z["s"], "e": z["e"], "w": [[_html.escape(w), s0, e0] for w, s0, e0 in z["w"]]} for z in zeilen]
         seite, _ = regie.seite(tmp, a, p, lambda d: marke.font_path(brand["id"], d), {"w": W, "h": H}, nframes,
-                               szenen, pos, laenge, ut, titel, [], bilder, ohne_kamera=True, post_titel=post_titel, story=story)
+                               szenen, pos, laenge, ut, titel, [], bilder, ohne_kamera=True, post_titel=post_titel, story=story,
+                               videos={cid: (lambda k, sz, cid=cid, c=c: clip_frames(c, tmp, f"{k}-{cid}", sz["e"] - sz["s"] + 1.0))
+                                       for cid, c in (clips or {}).items()})
         bild = os.path.join(tmp, "bild.mp4")
         regie.video(ffmpeg(), seite, nframes, bild)
         subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-i", bild, "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
@@ -653,8 +696,9 @@ def render_animation(brand, words, schnitt, laenge, out_mp4, out_cover, post_tit
 
 
 def animieren(brand_id, post_id, schnitt=None, mit_claude=True):
-    """Job: Reel ohne Aufnahme aus Skript und Szenen als Animation rendern."""
-    from . import ai
+    """Job: Reel ohne gesprochene Aufnahme als Animation rendern, aus Skript, Konzept, Hinweisen und dem eigenen Material
+    (Fotos als Bilder, Clips ohne Sprache als Bewegtbild in den Szenen)."""
+    from . import ai, medien, reel, material as mat
     b = db.one("SELECT * FROM brands WHERE id=?", brand_id)
     p = db.one("SELECT * FROM posts WHERE id=?", post_id)
     from .jobs import video_stil_sicherstellen
@@ -663,26 +707,34 @@ def animieren(brand_id, post_id, schnitt=None, mit_claude=True):
     inhalt = json.loads(p["inhalt"])
     text = text_fuer_animation(inhalt)
     if not text:
-        raise ValueError("Für die Animation fehlt ein Skript oder Text in den Szenen")
+        raise ValueError("Für die Animation fehlt ein Text. Schreib einen Text oder lass das Reel erst konzipieren.")
     words, laenge = woerter_aus_text(text)
     d = storage.post_dir(brand_id, post_id)
     json.dump({"woerter": words, "dauer": laenge, "animation": True}, open(os.path.join(d, "animation.json"), "w"), ensure_ascii=False)
-    from . import medien
-    pf = medien.post_fotos(brand_id, p)
-    extra = {n: storage.abs_path(brand_id, m["datei"]) for n, m in pf}
+    fotos = reel.fotos(brand_id, p)   # [(„m12“, Beschreibung, Mediathek-Zeile)]: Material und gewählte Fotos
+    extra = {fid: storage.abs_path(brand_id, m["datei"]) for fid, _, m in fotos}
+    extra.update({n: storage.abs_path(brand_id, m["datei"]) for n, m in medien.post_fotos(brand_id, p)})   # ältere Animationen: foto1 …
+    analysen = [(e, mat.analyse(brand_id, p, e)) for e in mat.liste(p) if e.get("art") == "video"]
+    clips = {e["id"]: {"pfad": mat.clip_pfad(brand_id, e), "seite": a["seite"], "dauer": a["dauer"], "gesicht": a.get("gesicht")}
+             for e, a in analysen if a["dauer"] > 0.5}
+    konzept = inhalt.get("konzept") or {}
     if schnitt is None and mit_claude and config.ANTHROPIC_API_KEY:
         try:
-            schnitt = ai.animation(b, p, words, laenge, [(n, medien.kurz(m)) for n, m in pf])
+            schnitt = ai.animation(b, p, words, laenge, None, "",
+                                   clips=[(e, a, mat.standbilder(brand_id, post_id, e)) for e, a in analysen if e["id"] in clips],
+                                   fotos=fotos, vorgaben=reel.vorgaben(inhalt))
         except Exception as e:
             from .jobs import hinweis
             hinweis("Die Regie durch Claude hat nicht geklappt (" + ai.fehlertext(e) + "). Ich habe die Szenen automatisch gebaut.", b, post_id)
+    if not schnitt or not schnitt.get("szenen"):
+        schnitt = konzept_animation(konzept, words, set(extra) | set(clips)) if konzept.get("szenen") else None
     if not schnitt or not schnitt.get("szenen"):
         c = (inhalt.get("slides") or [{}])[0]
         from .motion import stil as vstil
         schnitt = auto_animation(inhalt.get("slides") or [], words, " ".join(x for x in (c.get("zeile1"), c.get("zeile2")) if x),
                                  ohne_akzent=vstil.von_marke(json.loads(b["auftreten"]))["akzent_sparsam"])
     info = render_animation(b, words, schnitt, laenge, os.path.join(d, "reel.mp4"), os.path.join(d, "reel-cover.jpg"), (p["titel"] or "").upper(),
-                            story=p["format"] == "Story", extra_bilder=extra)
+                            story=p["format"] == "Story", extra_bilder=extra, clips=clips)
     schnitt["info"] = info
     schnitt["animation"] = True
     db.run("UPDATE posts SET schnitt=?, video='posts/' || ? || '/reel.mp4', rendered_at=?, status=CASE WHEN status IN ('In Arbeit','Freigegeben','Wartet auf Input') "

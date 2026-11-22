@@ -1732,3 +1732,34 @@ label.schalter strong { font-size: 14px; color: var(--tinte); }
 .ab-bild { width: 72px; }
 .ab-weg { grid-column: 2; justify-self: start; }
 .ab-kopf .auf-chip { white-space: nowrap; }
+
+/* ---------- Reel-Studio: eigenes Interface für Reels und Storys (Text, Hinweise, Material, Konzept, Animieren) */
+.pv-layout.reel { grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); }
+.pv-layout.reel .pv-buehne { position: sticky; top: calc(var(--admin-h, 0px) + 20px); min-height: 0; }
+.pv-layout.reel .pv-seite { position: static; }
+.rs { position: relative; display: flex; flex-direction: column; gap: 12px; }
+.rs-nr { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--tinte); color: #FFF; font: 600 12px/22px var(--kopf); text-align: center; align-self: center; }
+.rs-schritt.material { margin: 0; background: var(--karte); padding: 16px 18px; border-radius: var(--rund-gross); }
+.rs .mat-raster { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+.rs-mehr > summary { cursor: pointer; color: var(--muted); }
+.rs-mehr[open] > summary { margin-bottom: 10px; }
+.rs-aktion { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 2px 4px; }
+.rs-aktion .hint { flex: 1 1 260px; }
+.rs-szenen { display: flex; flex-direction: column; gap: 10px; }
+.rs-szenen:empty { display: none; }
+.rs-szene { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; padding: 12px; border-radius: 14px; background: var(--flaeche); }
+.rs-bild { aspect-ratio: 9 / 16; border-radius: 8px; overflow: hidden; background: var(--flaeche-2); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); align-self: start; }
+.rs-bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rs-felder { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rs-felder .rs-hinweis { font-size: 13px; color: var(--muted); }
+.rs-szene-kopf { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.rs-szene-kopf label.check { align-items: center; }
+.rs-szene:has(input[name^="k_weg_"]:checked) { opacity: .45; }
+@media (max-width: 1100px) {
+  .pv-layout.reel { grid-template-columns: minmax(0, 1fr); }
+  .pv-layout.reel .pv-buehne { position: static; }
+}
+/* Reel-Vorschau: Instagram-Oberfläche stark zurückgenommen, damit das Video zählt; beim Darüberfahren oder Bearbeiten wieder voll */
+.ig-telefon.reel .ig-reel-kopf, .ig-telefon.reel .ig-reel-seite, .ig-telefon.reel .ig-reel-unten { opacity: .15; transition: opacity .2s; }
+.ig-telefon.reel .ig-reel-kopf:hover, .ig-telefon.reel .ig-reel-seite:hover, .ig-telefon.reel .ig-reel-unten:hover,
+.ig-telefon.reel .ig-reel-kopf:focus-within, .ig-telefon.reel .ig-reel-unten:focus-within, .ig-telefon.reel .ig-reel-unten:has(.pv-inline) { opacity: 1; }

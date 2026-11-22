@@ -1387,3 +1387,19 @@ document.querySelectorAll("[data-ut-auto]").forEach((k) => {
   k.addEventListener("change", () => { regler.disabled = k.checked; });
   regler.addEventListener("input", () => { k.checked = false; });
 });
+
+// Reel-Studio: Szene im Konzept hinzufügen, Vorschaubild folgt dem gewählten Material.
+(() => {
+  const box = document.getElementById("kszenen"), tpl = document.getElementById("kszenetpl");
+  if (!box || !tpl) return;
+  const bild = (sel) => {
+    const ziel = sel.closest(".rs-szene").querySelector("[data-k-bild]"), src = sel.selectedOptions[0]?.dataset.vorschau;
+    ziel.innerHTML = src ? `<img src="${src}" alt="">` : "<span>Text</span>";
+  };
+  box.addEventListener("change", (e) => { if (e.target.matches("[data-k-material]")) bild(e.target); });
+  let n = 20;   // neue Szenen bekommen Nummern hinter den vorhandenen, die Reihenfolge im Formular bleibt
+  document.querySelector("[data-k-neu]")?.addEventListener("click", () => {
+    box.insertAdjacentHTML("beforeend", tpl.innerHTML.replaceAll("__i__", n++));
+    box.lastElementChild.querySelector("textarea").focus();
+  });
+})();

@@ -26,7 +26,7 @@
   <div class="ig-telefon reel">
     <div class="ig-medium">
       {% if hat_video %}<video src="/media/{{ p.video }}?v={{ p.rendered_at|int }}" poster="/media/posts/{{ p.id }}/reel-cover.jpg?v={{ p.rendered_at|int }}" autoplay muted loop playsinline data-ig-video></video>
-      {% else %}<div class="ig-leer"><span>Noch kein Video</span><span class="small">Rechts animieren, eine Aufnahme schneiden oder ein fertiges Video hochladen</span></div>{% endif %}
+      {% else %}<div class="ig-leer"><span>Noch kein Video</span><span class="small">Rechts Text und Material eingeben, dann animieren</span></div>{% endif %}
     </div>
     <div class="ig-reel-kopf"><strong>Reels</strong>{% if hat_video %}<button type="button" class="ig-ton" data-ig-ton aria-label="Ton an">{{ icon('ton') }}</button>{% endif %}</div>
     <div class="ig-reel-seite">

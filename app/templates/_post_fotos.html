@@ -1,6 +1,6 @@
 {# Fotos für einen Post: Reel/Story (Reiter Fotos) und Carousel/Einzelbild (Karte unter dem Post). Felder hängen per form=… an Formularen außerhalb von #postform. #}
           {% set ding = ('die Story' if p.format == 'Story' else 'das Reel') if video else ('den Post' if p.format == 'Einzelbild' else 'das Carousel') %}
-          <p class="muted small">{% if video %}Fotos, die die Animation als Vollbild oder Bild in die Szenen setzt. Claude plant sie passend zu den Szenen und im Look deiner vorhandenen Fotos; danach links „Neu animieren“.{% else %}Fotos, aus denen die Slides gestaltet werden, je Slide möglichst ein anderes. Claude plant sie passend zu den Slides und im Look deiner vorhandenen Fotos; danach „Neu gestalten“.{% endif %}</p>
+          <p class="muted small">{% if video %}Fotos, die die Animation als Vollbild oder Bild in die Szenen setzt. Claude plant sie passend zu den Szenen und im Look deiner vorhandenen Fotos; mit „Animieren“ kommen sie ins Video.{% else %}Fotos, aus denen die Slides gestaltet werden, je Slide möglichst ein anderes. Claude plant sie passend zu den Slides und im Look deiner vorhandenen Fotos; danach „Neu gestalten“.{% endif %}</p>
           {% if reel_fotos %}
           <div class="reel-fotos-raster gross">
             {% for n, m in reel_fotos %}

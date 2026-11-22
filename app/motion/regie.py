@@ -163,9 +163,11 @@ def szenen_zeiten(eintraege, pos, laenge):
 
 
 def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, zooms, bilder, ohne_kamera=False, post_titel="", story=False,
-          fokus_plan=None, ut_plan=None):
+          fokus_plan=None, ut_plan=None, videos=None):
     """Schreibt ordner/seite.html. szenen mit s/e (Sekunden), lage, grund, html (roh). bilder: {Name: Dateipfad}.
-    ohne_kamera: reine Animation, keine Aufnahme; jede Szene hat lage „frei“ und einen eigenen Hintergrund."""
+    ohne_kamera: reine Animation, keine Aufnahme; jede Szene hat lage „frei“ und einen eigenen Hintergrund.
+    videos: {Clip-ID: fn(k, szene) -> (Muster „videos/…/#.jpg“ relativ zu ordner, Anzahl Bilder)}: <img src="c2"> zeigt den Clip als
+    Bildfolge, solange die Szene läuft (motion.js tauscht das Bild je Frame)."""
     os.makedirs(os.path.join(ordner, "bilder"), exist_ok=True)
     namen = {}
     for name, pfad in (bilder or {}).items():
@@ -198,7 +200,12 @@ def seite(ordner, auf, p, font_path, quelle, n, szenen, pos, laenge, ut, titel, 
         direkt = vorige is not None and vorige["lage"] == lage and vorige["farbe"] == farbe and sz["s"] - vorige["e"] < 0.8
         cx, cy = KREIS[lage]
         dunkel = _lum(farbe) < 0.25
-        roh = sz["html"] if sz.get("intern") else saeubern(sz.get("html", ""), namen)
+        roh = sz["html"] if sz.get("intern") else saeubern(sz.get("html", ""), dict(namen, **{c: f"video:{c}" for c in videos or {}}))
+        if videos and not sz.get("intern"):
+            def _clip(m, k=k, sz=sz):
+                muster, anzahl = videos[m.group(1)](k, sz)
+                return f'src="{muster.replace("#", "00001")}" data-frames="{muster}" data-s="{sz["s"]}" data-n="{anzahl}"'
+            roh = re.sub(r'src="video:(\w+)"', _clip, roh)
         inhalt = _zeit_umrechnen(roh, sz["s"], sz["e"], pos)
         kopf = ""
         m = re.search(r'<(\w+)([^>]*class="[^"]*\bkopf\b[^"]*"[^>]*)>', inhalt)

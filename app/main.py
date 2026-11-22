@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, auswertung, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, lizenz, material, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, schnitt, storage
+from . import ai, auswertung, buffer, buffer_sync, config, db, fertig, hub, ideen, jobs, layout_editor, lizenz, material, mcp, vorlagen, leitlinien, radar, website, redaktion, marke, medien, reel, schnitt, storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI(title="heykajo Studio")
@@ -1063,7 +1063,11 @@ def post_edit(request: Request, pid: int):
                 continue
             e.update(vorschau=m["datei"], lizenz=bool(m["lizenz"]), titel=m["titel"] or e.get("titel"))
         mat.append(e)
+    for _, m in medien.post_fotos(b["id"], p):   # über „Mediathek“ oder „mit KI erzeugen“ gewählte Fotos zählen genauso zum Material
+        if not any(e["id"] == f"m{m['id']}" for e in mat):
+            mat.append({"id": f"m{m['id']}", "art": "foto", "medien_id": m["id"], "titel": m["titel"], "vorschau": m["datei"], "lizenz": bool(m["lizenz"])})
     return page(request, "post.html", b=b, p=p, slides=slides, inhalt=inhalt, chat=chat, inputs=inp, cut=cut, material=mat,
+                konzept=inhalt.get("konzept") or {},
                 medien_auswahl=medien_auswahl, bilder=bilder, mit_foto=layout_editor.mit_foto(p), personen=medien.personen(b["id"]),
                 arten=marke.ARTEN_NAMEN, felder=marke.ARTEN, formate=marke.FORMATE, status=marke.STATUS,
                 laeuft=jobs.LABELS.get(laufende[0]["kind"]) if laufende else None, fehler=jobs.last_error(b["id"], pid),
@@ -1125,6 +1129,10 @@ async def post_save(request: Request, pid: int):
         neu["skript"] = str(form.get("skript")).strip()
     if form.get("aufnahme_form"):   # Reel/Story: spricht die Person selbst?
         neu["aufnahme"] = bool(form.get("aufnahme"))
+    if form.get("hinweise") is not None:   # Reel-Studio: Animationshinweise
+        neu["hinweise"] = str(form.get("hinweise")).strip()[:3000]
+    if form.get("konzept_form"):   # Reel-Studio: von der Person geänderte Szenen des Konzepts
+        neu["konzept"] = dict(alt.get("konzept") or {}, idee=str(form.get("k_idee") or "").strip()[:600], szenen=reel.szenen_aus_formular(form))
     if form.get("kanaele_form"):   # Kanäle und Platzierung (Feed, Reel, Story) je Buffer-Kanal
         gueltig = {k["id"]: [x for x, _ in k["moeglich"]] for k in buffer.kanaele_fuer_post(b["id"], p)}
         wahl = {}
@@ -1142,9 +1150,23 @@ async def post_save(request: Request, pid: int):
            str(form.get("titel", "")).strip(), fmt, datum, str(form.get("uhrzeit", "08:30"))[:5],
            json.dumps(neu, ensure_ascii=False), str(form.get("caption_ig", "")).strip(), str(form.get("caption_li", "")).strip(),
            str(form.get("bildidee", "")).strip(), str(form.get("vorher_pruefen", "")).strip(), db.now(), pid)
-    texte_neu = neu["slides"] != alt.get("slides")
+    texte_neu = neu.get("slides") != alt.get("slides")
     design = json.loads(p["design"])
 
+    if aktion in ("konzipieren", "animieren", "animieren_auto") and p["format"] in marke.VIDEO_FORMATE:   # Reel-Studio
+        if jobs.running(b["id"], pid):
+            flash(request, "Gespeichert. Gerade läuft noch etwas an diesem Post, bitte kurz warten.")
+        elif aktion == "konzipieren":
+            if not config.ANTHROPIC_API_KEY:
+                flash(request, "Zum Konzipieren braucht es den Claude-Schlüssel (ANTHROPIC_API_KEY).")
+            elif not (neu.get("skript") or neu.get("hinweise") or reel.fotos(b["id"], post_of(b, pid)) or material.liste(p)):
+                flash(request, "Schreib zuerst einen Text oder lade Material hoch, dann kann Claude ein Konzept machen.")
+            else:
+                jobs.start(b["id"], pid, "konzept", reel.konzipieren, b["id"], pid)
+        else:
+            db.run("UPDATE posts SET status=CASE WHEN status='Idee' THEN 'In Arbeit' ELSE status END WHERE id=?", pid)
+            jobs.start(b["id"], pid, "animation", reel.erstellen, b["id"], pid, aktion == "animieren")
+        return go(f"/planen/{pid}")
     if aktion == "freigeben":
         _freigeben(b, pid)
         flash(request, "Freigegeben. Die Visuals entstehen jetzt.")
@@ -1161,7 +1183,7 @@ async def post_save(request: Request, pid: int):
     else:
         flash(request, "Gespeichert.")
     if texte_neu and design and aktion in ("speichern", "abnehmen"):
-        nachgezogen = marke.texte_nachziehen(alt.get("slides", []), neu["slides"], design)
+        nachgezogen = marke.texte_nachziehen(alt.get("slides", []), neu.get("slides", []), design)
         if nachgezogen is not None:
             jobs.start(b["id"], pid, "render", jobs.render_post, b["id"], pid, nachgezogen)
         else:
@@ -1611,6 +1633,7 @@ async def post_material(request: Request, pid: int, dateien: List[UploadFile] = 
                 fehler.append(f"{d.filename}: zusammen größer als 500 MB")
                 break
             eintraege.append({"id": cid, "art": "video", "datei": rel, "titel": stamm, "lizenz": bool(lizenzbild)})
+            material.vorschau(b["id"], pid, eintraege[-1])
             neu += 1
         elif art == "bild":
             try:
@@ -1625,12 +1648,11 @@ async def post_material(request: Request, pid: int, dateien: List[UploadFile] = 
     material.speichern(pid, eintraege)
     erstes = next((e for e in eintraege if e["art"] == "video"), None)
     if erstes and not p["video_roh"]:   # Hauptaufnahme für alles, was noch nach video_roh fragt
-        db.run("UPDATE posts SET video_roh=?, status=CASE WHEN status IN ('Idee','Freigegeben','Wartet auf Input') THEN 'In Arbeit' ELSE status END WHERE id=?",
-               erstes["datei"], pid)
+        db.run("UPDATE posts SET video_roh=?, status=CASE WHEN status='Wartet auf Input' THEN 'In Arbeit' ELSE status END WHERE id=?", erstes["datei"], pid)
         db.run("UPDATE inputs SET status='hochgeladen', datei=? WHERE post_id=? AND status='offen'", erstes["datei"], pid)
     flash(request, (f"{neu} Datei{'en' if neu != 1 else ''} im Material." if neu else "") + (" " + "; ".join(fehler) if fehler else "")
-          + (" Wenn alles da ist: „Reel aus dem Material schneiden“." if neu else ""))
-    return go(f"/planen/{pid}")
+          + (" Mit „Neu konzipieren“ plant Claude es ein, „Animieren“ macht das Video daraus." if neu else ""))
+    return go(f"/planen/{pid}#material")
 
 
 @app.post("/planen/{pid}/material/{mid}/loeschen")
@@ -1645,8 +1667,20 @@ def post_material_loeschen(request: Request, pid: int, mid: str):
         if weg.get("art") == "video" and p["video_roh"] == weg.get("datei"):
             naechstes = next((e for e in eintraege if e["art"] == "video"), None)
             db.run("UPDATE posts SET video_roh=? WHERE id=?", naechstes["datei"] if naechstes else None, pid)
-        flash(request, "Aus dem Material entfernt. Neu schneiden, damit das Reel es nicht mehr enthält.")
-    return go(f"/planen/{pid}")
+    gewaehlt = json.loads(p["inhalt"]).get("reel_fotos") or []
+    if re.fullmatch(r"m\d+", mid) and int(mid[1:]) in gewaehlt:   # auch aus den gewählten Fotos (Mediathek, mit KI erzeugt)
+        medien.reel_fotos_setzen(b["id"], pid, [i for i in gewaehlt if i != int(mid[1:])])
+        weg = weg or True
+    if weg:
+        inhalt = json.loads(db.one("SELECT inhalt FROM posts WHERE id=?", pid)["inhalt"])   # im Konzept nicht mehr darauf verweisen
+        k = inhalt.get("konzept") or {}
+        if any(z.get("material") == mid for z in k.get("szenen") or []):
+            for z in k["szenen"]:
+                if z.get("material") == mid:
+                    z["material"] = ""
+            db.run("UPDATE posts SET inhalt=? WHERE id=?", json.dumps(inhalt, ensure_ascii=False), pid)
+        flash(request, "Aus dem Material entfernt. Mit „Animieren“ entsteht das Video ohne es.")
+    return go(f"/planen/{pid}#material")
 
 
 def _zahl(v, a=0.0, b=1.0):
@@ -2104,7 +2138,7 @@ def post_reel_fotos(request: Request, pid: int, anzahl: int = Form(4), person_id
     else:
         jobs.start(b["id"], pid, "reelfotos", medien.reel_fotos_erzeugen, b["id"], pid, max(1, min(anzahl, 6)),
                    int(person_id) if person_id.isdigit() else None, generator or None)
-    return go(f"/planen/{pid}?tab=fotos#post-fotos")
+    return go(f"/planen/{pid}#material")
 
 
 @app.post("/planen/{pid}/reel-fotos/auswahl")
@@ -2115,8 +2149,8 @@ async def post_reel_fotos_auswahl(request: Request, pid: int):
     f = await request.form()
     ids = [int(x) for x in f.getlist("foto") if str(x).isdigit()]
     medien.reel_fotos_setzen(b["id"], pid, ids)
-    flash(request, f"{len(ids)} Foto{'s' if len(ids) != 1 else ''} für das Reel. Mit „Neu animieren“ kommen sie ins Video." if ids else "Keine Fotos mehr für das Reel gewählt.")
-    return go(f"/planen/{pid}?tab=fotos#post-fotos")
+    flash(request, f"{len(ids)} Foto{'s' if len(ids) != 1 else ''} gewählt. Mit „Animieren“ kommen sie ins Video." if ids else "Keine Fotos mehr gewählt.")
+    return go(f"/planen/{pid}#material")
 
 
 @app.post("/planen/{pid}/animieren")
@@ -2124,13 +2158,11 @@ def post_animate(request: Request, pid: int, art: str = Form("claude")):
     """Reel ohne Aufnahme (neu) als Animation erzeugen."""
     b = brand_of(request)
     p = post_of(b, pid)
-    if p["video_roh"]:
-        flash(request, "Dieser Post hat eine Aufnahme – „Neu schneiden“ verarbeitet sie mit Motion Graphics.")
-    elif jobs.running(b["id"], pid):
+    if jobs.running(b["id"], pid):
         flash(request, "Gerade läuft noch etwas an diesem Post.")
     else:
         db.run("UPDATE posts SET status=CASE WHEN status='Idee' THEN 'In Arbeit' ELSE status END WHERE id=?", pid)
-        jobs.start(b["id"], pid, "animation", schnitt.animieren, b["id"], pid, None, art != "auto")
+        jobs.start(b["id"], pid, "animation", reel.erstellen, b["id"], pid, art != "auto")
     return go(f"/planen/{pid}")
 
 

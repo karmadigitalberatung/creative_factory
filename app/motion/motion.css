@@ -175,6 +175,10 @@ em, .akzent-schrift { font-family: var(--f-akzent); font-style: normal; font-wei
 /* Helle Fotos: Verlauf in der dunklen Markenfarbe, damit helle Schrift überall lesbar bleibt */
 .bg:has(.vollfoto)::after { content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(to top, var(--dunkel-a) 0%, color-mix(in srgb, var(--dunkel) 55%, transparent) 55%, color-mix(in srgb, var(--dunkel) 25%, transparent) 100%); }
+/* „klar“: eigenes Material unabgedunkelt zeigen, nur unten ein Verlauf für die Schrift */
+.bg .vollfoto.klar { filter: var(--v-foto-filter); }
+.bg:has(.vollfoto.klar)::after { background: linear-gradient(to top, var(--dunkel-a) 0%, color-mix(in srgb, var(--dunkel) 35%, transparent) 30%, transparent 55%); }
+.bg .vollfoto[data-frames] { object-position: 50% 50%; }
 /* Mikrotexte in den Ecken jeder Szene */
 .ecken { inset: 0; z-index: 8; pointer-events: none; color: var(--text); font-family: var(--f-text); font-weight: var(--w-text); font-size: 22px; line-height: 1.35; letter-spacing: .08em; text-transform: uppercase; }
 .ecken.auf-dunkel { color: var(--hell); }

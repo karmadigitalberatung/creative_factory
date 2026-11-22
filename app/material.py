@@ -62,6 +62,20 @@ def _dauer(pfad):
     return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else 0.0
 
 
+def vorschau(brand_id, post_id, e):
+    """Gleich nach dem Hochladen ein Vorschaubild des Clips (die Analyse ersetzt es später durch ihre Standbilder)."""
+    from .schnitt import ffmpeg
+    ziel = os.path.join(ordner(brand_id, post_id), f"{e['id']}-1.jpg")
+    subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-ss", "0.5", "-i", clip_pfad(brand_id, e), "-frames:v", "1",
+                    "-vf", "scale=-2:720", "-q:v", "4", ziel], capture_output=True)
+
+
+def _hat_ton(pfad):
+    from .schnitt import ffmpeg
+    r = subprocess.run([ffmpeg(), "-i", pfad], capture_output=True)
+    return bool(re.search(r"Stream #\S+.*Audio:", r.stderr.decode(errors="ignore")))
+
+
 def analyse(brand_id, post, e, neu=False):
     """Transkript, Dauer, Seitenverhältnis und Standbilder eines Clips (zwischengespeichert)."""
     from .schnitt import ffmpeg, transkript
@@ -76,8 +90,8 @@ def analyse(brand_id, post, e, neu=False):
         t = json.load(open(alt))
         if any("c" in w and w["c"] != e["id"] for w in t.get("woerter", [])):
             t = None
-    if t is None:
-        t = transkript(src)
+    if t is None:   # Clips ohne Tonspur (Bildschirmaufnahme, B-Roll) haben nichts zu transkribieren
+        t = transkript(src) if _hat_ton(src) else {"woerter": [], "dauer": _dauer(src)}
     dauer = float(t.get("dauer") or _dauer(src) or 0)
     zeiten = [round(dauer * f, 2) for f in STANDBILDER] if dauer else [0.0]
     seite = 9 / 16

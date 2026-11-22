@@ -58,6 +58,16 @@ Am Post: Video, Begründung, Transkript (Geschnittenes durchgestrichen), „Neu 
 Werkzeuge: `imageio-ffmpeg` (ffmpeg 7.1) und `faster-whisper`; das Modell liegt in `data/models/` (ca. 460 MB, einmalig geladen).
 Test: 24-s-Aufnahme → 18-s-Reel in ca. 25 s auf einem M1 Max.
 
+## Reel-Studio (Reels und Storys)
+
+Reels und Storys haben ein eigenes Interface (`app/templates/_reel_studio.html`, Logik in `app/reel.py`), getrennt von Carousel und Einzelbild:
+1. **Text und Animationshinweise** (`inhalt.skript`, `inhalt.hinweise`), 2. **Bilder und Videos** (`inhalt.material`, dazu aus der Mediathek gewählte oder erzeugte Fotos),
+3. **Konzept** (`inhalt.konzept`: Idee und Szenen mit Text, Material und Hinweis, alles änderbar).
+**Neu konzipieren** (`reel.konzipieren`, `ai.reel_konzept`): Claude liest den Text, sieht Fotos und Standbilder der Clips und plant Skript und Szenen neu.
+**Animieren** (`reel.erstellen`): Wird in einem Clip gesprochen, schneidet Claude die Clips (`schnitt.schneiden`), sonst entsteht eine Animation
+(`schnitt.animieren`), die Fotos als Bild und Clips ohne Sprache als Bewegtbild in den Szenen zeigt (`<img class="vollfoto" src="c2">`, Bildfolge je Szene,
+`motion.js` tauscht das Bild je Frame). Hinweise und Konzept gehen als verbindliche Vorgaben an Schnitt und Regie. Clips ohne Tonspur werden nicht transkribiert.
+
 ## Reels ohne Aufnahme (reine Animation)
 
 Reel und Talking Head teilen sich die Video-Ansicht. Ohne Aufnahme entsteht das Reel als HTML-Animation (`schnitt.animieren`):
