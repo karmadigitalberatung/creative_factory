@@ -13,7 +13,7 @@ Grundsätze
 
 Je Post und Kanal/Platzierung gibt es eine Zeile in buffer_sendungen mit der Buffer-ID und einem Fingerabdruck des Inhalts.
 """
-import datetime, hashlib, json, os, threading, time, traceback
+import datetime, hashlib, json, os, re, threading, time, traceback
 from zoneinfo import ZoneInfo
 
 from . import buffer, config, db, storage
@@ -118,6 +118,26 @@ def medien(brand_id, post):
     return [{"image": {"url": _url(brand_id, f"posts/{post['id']}/{n}", stand)}} for n in slides]
 
 
+def _dokumenttitel(post):
+    """Titel des LinkedIn-Dokuments (öffentlich sichtbar über dem Karussell): ohne interne Kürzel wie „P3 · “ und Zusätze wie „(Karussell)“."""
+    t = (post["titel"] or "").strip()
+    if " · " in t:
+        t = t.split(" · ", 1)[1]
+    t = re.sub(r"\s*\([^)]*\)\s*$", "", t).strip()
+    return (t or "Karussell")[:100]
+
+
+def _als_dokument(brand_id, post, assets):
+    """Für LinkedIn: mehrere Folien als PDF-Dokument (blätterbares Karussell) statt als Bildgalerie. Ohne PDF bleibt es bei den Bildern."""
+    if len(assets) < 2 or not all("image" in a for a in assets):
+        return assets
+    pdf = f"posts/{post['id']}/linkedin.pdf"
+    if not os.path.exists(storage.abs_path(brand_id, pdf)):
+        return assets
+    stand = post["rendered_at"] or post["updated"]
+    return [{"document": {"url": _url(brand_id, pdf, stand), "title": _dokumenttitel(post), "thumbnailUrl": assets[0]["image"]["url"]}}]
+
+
 def _text(post, kanal):
     if kanal.get("dienst") == "linkedin":
         return post["caption_li"] or post["caption_ig"] or ""
@@ -138,6 +158,8 @@ def _metadaten(kanal, platz, assets):
 def eingabe(brand_id, post, kanal, platz):
     """Felder für createPost/editPost (ohne channelId bzw. id)."""
     assets = medien(brand_id, post)
+    if kanal.get("dienst") == "linkedin":
+        assets = _als_dokument(brand_id, post, assets)
     t = termin(post)
     e = {"text": _text(post, kanal), "assets": assets, "mode": "customScheduled", "schedulingType": "automatic",
          "dueAt": t.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z") if t else None}
