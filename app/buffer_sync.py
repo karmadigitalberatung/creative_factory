@@ -94,11 +94,9 @@ def medien(brand_id, post):
     if post["video"]:
         if not os.path.exists(storage.abs_path(brand_id, post["video"])):
             return []
-        video = {"url": _url(brand_id, post["video"], stand)}
-        cover = f"posts/{post['id']}/reel-cover.jpg"
-        if os.path.exists(storage.abs_path(brand_id, cover)):
-            video["thumbnailUrl"] = _url(brand_id, cover, stand)
-        return [{"video": video}]
+        # Eigene Titelbilder nehmen die Netzwerke nicht an (Buffer lehnt thumbnailUrl ab). Stattdessen das Bild
+        # nach 1 s wählen – an dieser Stelle schneiden auch fertig.py und schnitt.py das reel-cover.jpg aus.
+        return [{"video": {"url": _url(brand_id, post["video"], stand), "metadata": {"thumbnailOffset": 1000}}}]
     d = storage.post_dir(brand_id, post["id"])
     slides = sorted(n for n in os.listdir(d) if n.startswith("slide-") and n.endswith(".png")) if os.path.isdir(d) else []
     return [{"image": {"url": _url(brand_id, f"posts/{post['id']}/{n}", stand)}} for n in slides]
@@ -112,9 +110,9 @@ def _text(post, kanal):
 
 def _metadaten(kanal, platz, assets):
     d = kanal.get("dienst")
-    viele = len(assets) > 1 and all("image" in a for a in assets)
     if d == "instagram":
-        typ = "story" if platz == "story" else "reel" if platz == "reel" else "carousel" if viele else "post"
+        # Ein Karussell ist bei Buffer ein „post“ mit mehreren Bildern – den Typ „carousel“ gibt es nicht.
+        typ = "story" if platz == "story" else "reel" if platz == "reel" else "post"
         return {"instagram": {"type": typ, "shouldShareToFeed": True}}
     if d == "facebook":
         return {"facebook": {"type": "story" if platz == "story" else "reel" if platz == "reel" else "post"}}
