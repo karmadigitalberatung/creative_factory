@@ -247,14 +247,14 @@
             <span class="hint">{% if video %}Reel und Story gleichzeitig: einfach beides anhaken, es ist dasselbe 9:16-Video.{% else %}Story nimmt die erste Folie.{% endif %}</span>
             {% if buffer_sendungen %}
             <ul class="buffer-post">{% for s in buffer_sendungen if s.status != 'geloescht' %}
-              <li><span class="buffer-stand s-{{ s.status }}">{{ {'geplant': 'Bei Buffer eingeplant', 'wartet': 'Wartet auf freien Platz bei Buffer', 'gesendet': 'Veröffentlicht', 'fehler': 'Fehler bei Buffer'}[s.status] }}</span>
+              <li><span class="buffer-stand s-{{ s.status }}">{{ {'geplant': 'Bei Buffer eingeplant', 'wartet': 'Wartet auf freien Platz bei Buffer', 'vorgemerkt': 'Vorgemerkt, geht ' ~ buffer_tage ~ ' Tage vor dem Termin an Buffer', 'gesendet': 'Veröffentlicht', 'fehler': 'Fehler bei Buffer'}[s.status] }}</span>
                 <span class="small muted">{{ (kanaele|selectattr('id', 'equalto', s.kanal_id)|map(attribute='dienst_name')|first) or 'Kanal' }}{% if s.platz != 'post' %} · {{ {'reel': 'Reel', 'story': 'Story'}[s.platz] }}{% endif %}{% if s.fehler %} · {{ s.fehler }}{% endif %}</span></li>
             {% endfor %}</ul>
             {% if buffer_sendungen|selectattr('status', 'equalto', 'fehler')|list %}<button class="small" formaction="/planen/{{ p.id }}/buffer/erneut" formmethod="post" formnovalidate>Noch einmal an Buffer senden</button>{% endif %}
             {% elif buffer_sync_an and p.status == 'Geplant' and buffer_grund %}
             <p class="small muted">Geht nicht an Buffer: {{ buffer_grund }}.</p>
             {% elif buffer_sync_an and p.status == 'Geplant' %}
-            <p class="small muted">Geht beim nächsten Abgleich an Buffer (spätestens in 10 Minuten).</p>
+            <p class="small muted">Geht {{ buffer_tage }} Tage vor dem Termin an Buffer (abgeglichen wird alle 10 Minuten).</p>
             {% endif %}
             {% elif buffer_da %}
             <p class="muted small">Für das Format {{ p.format }} passt keiner deiner ausgewählten Kanäle. Unter <a href="/connectors">Connectors</a> kannst du weitere auswählen.</p>

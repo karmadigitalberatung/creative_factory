@@ -4,8 +4,10 @@ Grundsätze
 - Standardmäßig AUS. Die Person schaltet den Sync unter Connectors selbst ein.
 - Es geht nie etwas in die Vergangenheit: nur Posts mit Termin mindestens VORLAUF Minuten in der Zukunft. Rutscht ein
   eingeplanter Post in die Vergangenheit (Termin geändert), wird er bei Buffer gelöscht statt verschoben.
-- Die App bleibt der Kalender. Buffer bekommt je Kanal höchstens `max_je_kanal` Posts (Standard 8) und nie mehr, als in
-  Buffer noch frei ist (inklusive Posts, die dort von Hand eingeplant wurden).
+- Die App bleibt der Kalender. Buffer bekommt nur Posts, deren Termin in den nächsten `tage_voraus` Tagen liegt (Standard 3);
+  alles Spätere ist nur intern „vorgemerkt“ und rückt von selbst nach. Wird ein eingeplanter Post nach hinten verschoben, aus dem
+  Fenster heraus, wird er bei Buffer wieder gelöscht. Zusätzlich je Kanal höchstens `max_je_kanal` Posts (Standard 8) und nie mehr,
+  als in Buffer noch frei ist (inklusive Posts, die dort von Hand eingeplant wurden).
 - Ein Abgleich (alle 10 Minuten und auf Knopfdruck): Status aus Buffer holen (gesendet → Post „Gepostet“, Fehler merken),
   Änderungen nachziehen (Text, Bilder, Termin; gelöscht oder nicht mehr „Geplant“ → bei Buffer löschen), freie Plätze auffüllen.
 
@@ -20,6 +22,8 @@ ZONE = ZoneInfo("Europe/Vienna")
 VORLAUF = 10            # Minuten: so knapp vor dem Termin wird nichts mehr neu an Buffer geschickt
 BUFFER_LIMIT = 10       # Free-Plan: geplante Posts je Kanal
 STANDARD_MAX = 8        # davon nutzt die App höchstens so viele (Rest bleibt frei für Handarbeit in Buffer)
+STANDARD_TAGE = 3       # so viele Tage vor dem Termin geht ein Post an Buffer; Späteres bleibt intern vorgemerkt
+MAX_TAGE = 14
 TAKT = 600              # Sekunden zwischen zwei automatischen Abgleichen
 
 
@@ -29,6 +33,8 @@ def _schema():
     db.conn().execute("""CREATE TABLE IF NOT EXISTS buffer_sync (
       brand_id INTEGER PRIMARY KEY, aktiv INTEGER NOT NULL DEFAULT 0, max_je_kanal INTEGER NOT NULL DEFAULT 8,
       aktiviert REAL, letzter_lauf REAL, letzte_meldung TEXT NOT NULL DEFAULT '')""")
+    if "tage_voraus" not in {r[1] for r in db.conn().execute("PRAGMA table_info(buffer_sync)")}:
+        db.conn().execute(f"ALTER TABLE buffer_sync ADD COLUMN tage_voraus INTEGER NOT NULL DEFAULT {STANDARD_TAGE}")
     db.conn().execute("""CREATE TABLE IF NOT EXISTS buffer_sendungen (
       id INTEGER PRIMARY KEY, brand_id INTEGER NOT NULL, post_id INTEGER NOT NULL, kanal_id TEXT NOT NULL, platz TEXT NOT NULL,
       buffer_id TEXT, status TEXT NOT NULL, faellig TEXT NOT NULL DEFAULT '', fingerabdruck TEXT NOT NULL DEFAULT '',
@@ -39,10 +45,10 @@ def _schema():
 def einstellungen(brand_id):
     _schema()
     r = db.one("SELECT * FROM buffer_sync WHERE brand_id=?", brand_id)
-    return dict(r) if r else {"brand_id": brand_id, "aktiv": 0, "max_je_kanal": STANDARD_MAX, "aktiviert": None, "letzter_lauf": None, "letzte_meldung": ""}
+    return dict(r) if r else {"brand_id": brand_id, "aktiv": 0, "max_je_kanal": STANDARD_MAX, "tage_voraus": STANDARD_TAGE, "aktiviert": None, "letzter_lauf": None, "letzte_meldung": ""}
 
 
-def setzen(brand_id, aktiv=None, max_je_kanal=None):
+def setzen(brand_id, aktiv=None, max_je_kanal=None, tage_voraus=None):
     e = einstellungen(brand_id)
     if aktiv is not None:
         if aktiv and not e["aktiv"]:
@@ -50,9 +56,12 @@ def setzen(brand_id, aktiv=None, max_je_kanal=None):
         e["aktiv"] = 1 if aktiv else 0
     if max_je_kanal is not None:
         e["max_je_kanal"] = max(1, min(BUFFER_LIMIT, int(max_je_kanal)))
-    db.run("""INSERT INTO buffer_sync (brand_id, aktiv, max_je_kanal, aktiviert) VALUES (?,?,?,?)
-              ON CONFLICT (brand_id) DO UPDATE SET aktiv=excluded.aktiv, max_je_kanal=excluded.max_je_kanal, aktiviert=excluded.aktiviert""",
-           brand_id, e["aktiv"], e["max_je_kanal"], e["aktiviert"])
+    if tage_voraus is not None:
+        e["tage_voraus"] = max(1, min(MAX_TAGE, int(tage_voraus)))
+    db.run("""INSERT INTO buffer_sync (brand_id, aktiv, max_je_kanal, tage_voraus, aktiviert) VALUES (?,?,?,?,?)
+              ON CONFLICT (brand_id) DO UPDATE SET aktiv=excluded.aktiv, max_je_kanal=excluded.max_je_kanal,
+              tage_voraus=excluded.tage_voraus, aktiviert=excluded.aktiviert""",
+           brand_id, e["aktiv"], e["max_je_kanal"], e["tage_voraus"], e["aktiviert"])
     return e
 
 
@@ -75,6 +84,13 @@ def termin(post):
     except ValueError:
         return None
     return datetime.datetime(d.year, d.month, d.day, h, m, tzinfo=ZONE)
+
+
+def im_fenster(post, tage, jetzt=None):
+    """Liegt der Termin höchstens `tage` Tage voraus? Nur solche Posts gehen an Buffer."""
+    t = termin(post)
+    jetzt = jetzt or datetime.datetime.now(ZONE)
+    return bool(t and t <= jetzt + datetime.timedelta(days=tage))
 
 
 def in_zukunft(post, jetzt=None):
@@ -237,7 +253,7 @@ def abgleichen(brand_id, erzwingen=False):
 def _durchlauf(brand_id, e):
     token = buffer.token_fuer(brand_id)
     kanaele = {k["id"]: k for k in buffer.ausgewaehlte_kanaele(brand_id)}
-    zaehler = {"neu": 0, "geaendert": 0, "geloescht": 0, "gesendet": 0, "fehler": 0}
+    zaehler = {"neu": 0, "geaendert": 0, "geloescht": 0, "zurueck": 0, "gesendet": 0, "fehler": 0, "vorgemerkt": 0}
 
     # 1. Bestehende Sendungen: Status holen, Änderungen nachziehen, Hinfälliges löschen
     for s in db.q("SELECT * FROM buffer_sendungen WHERE brand_id=? AND status='geplant'", brand_id):
@@ -267,6 +283,11 @@ def _durchlauf(brand_id, e):
                     fehler="" if not post else (bereit(brand_id, post) or "Kanal abgewählt"))
             zaehler["geloescht"] += 1
             continue
+        if not im_fenster(post, e["tage_voraus"]):   # nach hinten verschoben: bei Buffer raus, bleibt intern vorgemerkt
+            _loeschen(token, s["buffer_id"])
+            _merken(brand_id, s["post_id"], s["kanal_id"], s["platz"], status="geloescht", buffer_id=None, fehler="")
+            zaehler["zurueck"] += 1
+            continue
         eing = eingabe(brand_id, post, kanal, s["platz"])
         if _fingerabdruck(eing) != s["fingerabdruck"]:
             _aendern(token, s["buffer_id"], eing)
@@ -278,8 +299,8 @@ def _durchlauf(brand_id, e):
                      HAVING SUM(status='gesendet') > 0 AND SUM(status IN ('geplant','wartet')) = 0""", brand_id):
         db.run("UPDATE posts SET status='Gepostet' WHERE id=? AND brand_id=? AND status='Geplant'", r["post_id"], brand_id)
 
-    # 2. Auffüllen: nächste bereite Posts je Kanal, nie in die Vergangenheit, nie über das Limit
-    db.run("DELETE FROM buffer_sendungen WHERE brand_id=? AND status IN ('wartet','geloescht')", brand_id)
+    # 2. Auffüllen: bereite Posts im Zeitfenster je Kanal, nie in die Vergangenheit, nie über das Limit; Späteres nur vormerken
+    db.run("DELETE FROM buffer_sendungen WHERE brand_id=? AND status IN ('wartet','geloescht','vorgemerkt')", brand_id)
     kandidaten = []
     for post in db.q("SELECT * FROM posts WHERE brand_id=? AND status='Geplant' AND datum!='' ORDER BY datum, uhrzeit, id", brand_id):
         if bereit(brand_id, post):
@@ -294,6 +315,10 @@ def _durchlauf(brand_id, e):
                 kandidaten.append((post, k, platz))
     frei = {}
     for post, k, platz in kandidaten:
+        if not im_fenster(post, e["tage_voraus"]):
+            _merken(brand_id, post["id"], k["id"], platz, status="vorgemerkt", faellig=post["datum"] + " " + post["uhrzeit"], fehler="")
+            zaehler["vorgemerkt"] += 1
+            continue
         if k["id"] not in frei:
             eigene = db.one("SELECT COUNT(*) n FROM buffer_sendungen WHERE brand_id=? AND kanal_id=? AND status='geplant'", brand_id, k["id"])["n"]
             gesamt = _geplant_bei_buffer(token, k["org_id"], k["id"])
@@ -319,6 +344,7 @@ def _durchlauf(brand_id, e):
         zaehler["neu"] += 1
 
     teile = [f"{n} {t}" for t, n in (("neu eingeplant", zaehler["neu"]), ("aktualisiert", zaehler["geaendert"]), ("bei Buffer gelöscht", zaehler["geloescht"]),
+                                     ("zurück in die Vormerkung", zaehler["zurueck"]),
                                      ("veröffentlicht", zaehler["gesendet"]), ("mit Fehler", zaehler["fehler"])) if n]
     return "Abgeglichen: " + (", ".join(teile) if teile else "nichts zu tun") + "."
 

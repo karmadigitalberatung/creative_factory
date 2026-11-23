@@ -85,11 +85,13 @@
         <span class="status-punkt {{ 'an' if sync.aktiv }}">{{ 'An' if sync.aktiv else 'Aus' }}</span>
       </div>
       <p class="small muted">Abgenommene Posts (Status „Geplant“) mit Termin in der Zukunft gehen mit Bildern, Video und Caption an die gewählten Kanäle und werden dort
-        zum Termin eingeplant. Die App schickt je Kanal nur die nächsten Posts (Buffer Free erlaubt {{ sync_max }} geplante je Kanal) und füllt alle 10 Minuten nach.
+        zum Termin eingeplant. Bei Buffer liegen nur die Posts der nächsten Tage („Tage im Voraus“); alles Spätere ist hier nur vorgemerkt und rückt
+        alle 10 Minuten von selbst nach. Wird ein Post nach hinten verschoben, nimmt die App ihn bei Buffer wieder heraus. Je Kanal höchstens so viele wie eingestellt (Buffer Free erlaubt {{ sync_max }}).
         Posts mit Termin in der Vergangenheit werden nie gesendet. Änderungen am Post ziehen nach; wird er gelöscht oder zurückgestellt, verschwindet er auch aus Buffer.</p>
       {% if not oeffentlich %}<p class="small warn">Die App läuft ohne öffentliche Adresse; Buffer könnte die Bilder nicht abholen. Der Sync läuft nur auf dem Server.</p>{% endif %}
       <form method="post" action="/connectors/buffer/sync" class="row">
         <label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if sync.aktiv }}> Buffer-Sync einschalten</label>
+        <label>Tage im Voraus <input type="number" name="tage_voraus" min="1" max="{{ tage_max }}" value="{{ sync.tage_voraus }}" style="width: 70px"></label>
         <label>Höchstens je Kanal <input type="number" name="max_je_kanal" min="1" max="{{ sync_max }}" value="{{ sync.max_je_kanal }}" style="width: 90px"></label>
         <button class="small {{ '' if sync.aktiv else 'primary' }}">Speichern</button>
       </form>
@@ -106,7 +108,7 @@
           <tr><td class="small">{{ s.faellig[8:10] }}.{{ s.faellig[5:7] }}. {{ s.faellig[11:] }}</td>
             <td><a href="/planen/{{ s.post_id }}">{{ s.titel or 'Ohne Titel' }}</a></td>
             <td class="small">{{ s.kanal }}{% if s.platz != 'post' %} · {{ {'reel': 'Reel', 'story': 'Story'}[s.platz] }}{% endif %}</td>
-            <td class="small"><span class="buffer-stand s-{{ s.status }}">{{ {'geplant': 'bei Buffer eingeplant', 'wartet': 'wartet auf freien Platz', 'fehler': 'Fehler'}[s.status] }}</span>{% if s.fehler %} <span class="muted">{{ s.fehler }}</span>{% endif %}</td></tr>
+            <td class="small"><span class="buffer-stand s-{{ s.status }}">{{ {'geplant': 'bei Buffer eingeplant', 'wartet': 'wartet auf freien Platz', 'vorgemerkt': 'vorgemerkt', 'fehler': 'Fehler'}[s.status] }}</span>{% if s.fehler %} <span class="muted">{{ s.fehler }}</span>{% endif %}</td></tr>
         {% endfor %}</tbody>
       </table>
       {% endif %}
